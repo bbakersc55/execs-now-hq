@@ -153,6 +153,10 @@ class Kpi(TenantScopedModel):
         BESTY = "besty", "Besty"
         #: Google reviews, from the company's Business Profile (2026-11-04).
         REVIEWS = "reviews", "Google reviews"
+        #: P13: the connector rails.
+        WEBHOOK = "webhook", "Webhook"
+        MCP = "mcp", "Any MCP server"
+        API = "api", "Any API"
 
     class Formula(models.TextChoices):
         """A computed KPI, one step only (spec, "Computed KPIs"): two other
@@ -327,6 +331,10 @@ class KpiReading(TenantScopedModel):
         AI = "ai", "Entered by AI"
         #: P12: a tool run's computed value, sent by a person.
         TOOL = "tool", "From a tool"
+        #: P13: the connector rails.
+        WEBHOOK = "webhook", "From a webhook"
+        MCP = "mcp", "From an MCP server"
+        API = "api", "From an API"
 
     kpi = models.ForeignKey(Kpi, on_delete=models.CASCADE, related_name="readings")
     period_start = models.DateField()
@@ -954,6 +962,169 @@ class KpiReviewsFeed(TenantScopedModel):
             models.CheckConstraint(condition=Q(star__isnull=True) | Q(star__gte=1, star__lte=5),
                                    name="kpi_reviews_feed_star_1_to_5"),
         ]
+
+
+# ---------------------------------------------------------------- P13: the connector rails
+
+class _RailState(models.Model):
+    """What every rail feed says about its last read."""
+
+    active = models.BooleanField(default=True, db_default=True)
+    read_open = models.BooleanField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="", db_default="")
+    error_since = models.DateTimeField(null=True, blank=True)
+    last_counts = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        abstract = True
+
+
+class KpiWebhookFeed(_RailState, TenantScopedModel):
+    """A KPI's own address (P13): its secret stored hashed, shown once; a post
+    replaces the period's reading or adds to it; for another system's own
+    payload, paths to the value and the date."""
+
+    class Mode(models.TextChoices):
+        REPLACE = "replace", "Replaces the period's reading"
+        ADD = "add", "Adds to the period's reading"
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="webhook_feed")
+    secret_hash = models.CharField(max_length=64, unique=True)
+    secret_hint = models.CharField(max_length=8, blank=True, default="", db_default="")
+    mode = models.CharField(max_length=8, choices=Mode.choices, default=Mode.REPLACE,
+                            db_default=Mode.REPLACE)
+    value_path = models.CharField(max_length=200, blank=True, default="", db_default="")
+    date_path = models.CharField(max_length=200, blank=True, default="", db_default="")
+    last_received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_webhook_feed"
+
+
+class CompanyWebhook(TenantScopedModel):
+    """One address per company (P13), taking a KPI key with the value."""
+
+    company = models.OneToOneField("crm.Company", on_delete=models.CASCADE,
+                                   related_name="kpi_webhook")
+    secret_hash = models.CharField(max_length=64, unique=True)
+    secret_hint = models.CharField(max_length=8, blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "company_kpi_webhook"
+
+
+class WebhookDelivery(TenantScopedModel):
+    """One post to a rail address, what it carried and what was done: the
+    last 20 per KPI, and per company address, are kept."""
+
+    company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                related_name="webhook_deliveries")
+    feed = models.ForeignKey(KpiWebhookFeed, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="deliveries")
+    via_company = models.BooleanField(default=False, db_default=False)
+    ok = models.BooleanField(default=True, db_default=True)
+    what = models.CharField(max_length=500)
+    payload = models.TextField(blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_webhook_delivery"
+        ordering = ["-created_at"]
+
+
+class McpConnection(TenantScopedModel):
+    """A company's connection to another vendor's MCP server (P13): its
+    address, and a token or headers, encrypted, never shown again."""
+
+    company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                related_name="mcp_connections")
+    name = models.CharField(max_length=120)
+    url = models.CharField(max_length=500)
+    secret_ciphertext = models.BinaryField(null=True, blank=True)
+    secret_hint = models.CharField(max_length=8, blank=True, default="", db_default="")
+    #: The server's tools, as Test connection last listed them.
+    tools = models.JSONField(default=list, blank=True)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_mcp_connection"
+
+
+class KpiMcpFeed(_RailState, TenantScopedModel):
+    """A KPI read from an MCP server's tool (P13): the tool, its arguments
+    with period placeholders, the path to the number. Read nightly, no AI."""
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="mcp_feed")
+    connection = models.ForeignKey(McpConnection, on_delete=models.CASCADE,
+                                   related_name="feeds")
+    tool = models.CharField(max_length=120)
+    arguments = models.JSONField(default=dict, blank=True)
+    value_path = models.CharField(max_length=200, blank=True, default="", db_default="")
+    #: Proposed by Claude, then previewed and confirmed by a person.
+    from_ai = models.BooleanField(default=False, db_default=False)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_mcp_feed"
+
+
+class ApiConnection(TenantScopedModel):
+    """A company's API connection (P13): a base address, and a secret that
+    goes in a header, as basic sign-in, or as a query key."""
+
+    class AuthKind(models.TextChoices):
+        HEADER = "header", "A header"
+        BASIC = "basic", "Basic sign-in"
+        QUERY = "query", "A query key"
+
+    company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
+                                related_name="api_connections")
+    name = models.CharField(max_length=120)
+    base_url = models.CharField(max_length=500)
+    auth_kind = models.CharField(max_length=8, choices=AuthKind.choices,
+                                 default=AuthKind.HEADER, db_default=AuthKind.HEADER)
+    #: The header's name, or the query key's.
+    auth_name = models.CharField(max_length=80, blank=True, default="", db_default="")
+    secret_ciphertext = models.BinaryField(null=True, blank=True)
+    secret_hint = models.CharField(max_length=8, blank=True, default="", db_default="")
+    checked_at = models.DateTimeField(null=True, blank=True)
+    check_ok = models.BooleanField(null=True, blank=True)
+    check_detail = models.TextField(blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_api_connection"
+
+
+class KpiApiFeed(_RailState, TenantScopedModel):
+    """A KPI read from an API (P13): GET or POST, period placeholders in the
+    path, query or body, and the path to the value in the JSON answer."""
+
+    class Method(models.TextChoices):
+        GET = "GET", "GET"
+        POST = "POST", "POST"
+
+    kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="api_feed")
+    connection = models.ForeignKey(ApiConnection, on_delete=models.CASCADE,
+                                   related_name="feeds")
+    method = models.CharField(max_length=4, choices=Method.choices, default=Method.GET,
+                              db_default=Method.GET)
+    path = models.CharField(max_length=500, blank=True, default="", db_default="")
+    query = models.JSONField(default=dict, blank=True)
+    body = models.JSONField(null=True, blank=True)
+    value_path = models.CharField(max_length=200, blank=True, default="", db_default="")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "kpi_api_feed"
 
 
 class KpiLibraryEntry(TenantScopedModel):

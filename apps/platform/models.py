@@ -56,6 +56,10 @@ class Feedback(TenantScopedModel):
     screenshot = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     status = models.CharField(max_length=8, choices=Status.choices, default=Status.NEW)
+    #: P13: a connector request from under the feed picker, or ordinary feedback.
+    kind = models.CharField(max_length=12, choices=[("feedback", "Feedback"),
+                                                    ("connector", "Connector request")],
+                            default="feedback", db_default="feedback")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "feedback"

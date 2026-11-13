@@ -524,6 +524,31 @@ describe("a KPI is made only by Save, and managed from both places", () => {
     expect(await within(dialog).findByText(/no Besty connection yet/)).toBeInTheDocument();
   });
 
+  it("Connect anything comes after the named connectors, and opens the rail (P13)", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/scorecard/rails/company-webhook/": { exists: false, hint: "", keys: [], deliveries: [] },
+      "GET /api/scorecard/rails/webhook/": { feed: null, key: "occupancy", test: {
+        example: "curl -X POST https://app.example/webhooks/kpi/<your address>/", zapier: ["Z1"], make: ["M1"] } },
+      "GET /api/scorecard/setup/": SETUP,
+      "GET /api/scorecard/": { ...BOARD, may_set_up: true },
+    }));
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    const tile = await screen.findByRole("region", { name: "Occupancy" });
+    await user.click(within(tile).getByRole("button", { name: "Back of Occupancy" }));
+    const names = within(tile).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
+    const reviews = names.indexOf("Google reviews measure for Occupancy");
+    const group = within(tile).getByRole("group", { name: "Connect anything to Occupancy" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(
+      ["Webhook", "Any MCP server", "Any API", "Request a connector"]);
+    expect(names.indexOf("Webhook for Occupancy")).toBeGreaterThan(reviews);
+    await user.click(within(group).getByRole("button", { name: "Webhook for Occupancy" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect anything to Occupancy" });
+    expect(within(dialog).getByRole("tab", { name: "Webhook" })).toHaveAttribute("aria-selected", "true");
+    expect(await within(dialog).findByRole("button", { name: "Make the address" })).toBeInTheDocument();
+  });
+
   it("no Edit or Archive on a tile for anyone who doesn't set the scorecard up", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, may_set_up: false } }));

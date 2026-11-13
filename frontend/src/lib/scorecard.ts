@@ -68,7 +68,8 @@ export interface KpiDef {
   computed: string;
   /** Part 3: where a fed KPI's readings come from, and why its last read
    *  failed (only for the practice and the reading owner). */
-  feed?: { kind: "sheet" | "track" | "app" | "hubspot" | "besty" | "reviews"; text: string; error: string;
+  feed?: { kind: "sheet" | "track" | "app" | "hubspot" | "besty" | "reviews" | "webhook" | "mcp" | "api";
+    text: string; error: string;
     mode?: "column" | "cell" } | null;
   /** "Helper: not shown as a tile": it only feeds a target or a formula. */
   helper?: boolean;

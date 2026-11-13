@@ -329,6 +329,20 @@ from apps.tools.models import Tool, ToolRun  # noqa: E402
 
 register(Tool, factories.ToolFactory, api_exposed=False)
 register(ToolRun, factories.ToolRunFactory, api_exposed=False)
+# P13: the connector rails. Read only through /api/scorecard/rails/, which
+# finds the company through `access.company_for` (tests/test_rails.py).
+from apps.scorecard.models import (  # noqa: E402
+    ApiConnection, CompanyWebhook, KpiApiFeed, KpiMcpFeed, KpiWebhookFeed, McpConnection,
+    WebhookDelivery,
+)
+
+register(KpiWebhookFeed, factories.KpiWebhookFeedFactory, api_exposed=False)
+register(CompanyWebhook, factories.CompanyWebhookFactory, api_exposed=False)
+register(WebhookDelivery, factories.WebhookDeliveryFactory, api_exposed=False)
+register(McpConnection, factories.McpConnectionFactory, api_exposed=False)
+register(KpiMcpFeed, factories.KpiMcpFeedFactory, api_exposed=False)
+register(ApiConnection, factories.ApiConnectionFactory, api_exposed=False)
+register(KpiApiFeed, factories.KpiApiFeedFactory, api_exposed=False)
 # 2026-11-12: per-unit pay and whole teams on a plan, read the same way.
 register(BonusUnitRule, factories.BonusUnitRuleFactory, api_exposed=False)
 register(BonusTeam, factories.BonusTeamFactory, api_exposed=False)

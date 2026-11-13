@@ -101,8 +101,9 @@ def test_the_platform_owner_reads_all_of_it_and_only_it(api, platform_owner, see
     rows = client.get("/api/platform/feedback").json()
     assert {r["practice_name"] for r in rows} == {seeded_tenant.name, tenant_b.name}
     assert {r["role"] for r in rows} == {"Assistant", "Associate"}
-    assert set(rows[0]) == {"id", "doing", "happened", "expected", "page_url", "status",
-                            "has_screenshot", "created_at", "practice_name", "role"}
+    assert set(rows[0]) == {"id", "kind", "doing", "happened", "expected", "page_url",
+                            "status", "has_screenshot", "created_at", "practice_name", "role"}
+    assert {r["kind"] for r in rows} == {"feedback"}
     with_shot = next(r for r in rows if r["has_screenshot"])
     shot = client.get(f"/api/platform/feedback/{with_shot['id']}")
     assert shot.status_code == 200 and shot.content == png()

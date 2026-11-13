@@ -2124,3 +2124,71 @@ class ToolRunFactory(TenantScopedFactory):
     name = factory.Sequence(lambda n: f"Run {n}")
     run_date = datetime.date(2026, 11, 13)
     definition = factory.LazyFunction(dict)
+
+
+# --- P13: the connector rails ----------------------------------------------------
+
+class KpiWebhookFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiWebhookFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    secret_hash = factory.Sequence(lambda n: f"{n:064d}")
+
+
+class CompanyWebhookFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.CompanyWebhook"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    secret_hash = factory.Sequence(lambda n: f"c{n:063d}")
+
+
+class WebhookDeliveryFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.WebhookDelivery"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    what = "Week of November 9: saved, now 12."
+
+
+class McpConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.McpConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    name = "Helpdesk"
+    url = "https://mcp.example.com/mcp"
+
+
+class KpiMcpFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiMcpFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    connection = factory.SubFactory(McpConnectionFactory, tenant=factory.SelfAttribute("..tenant"))
+    tool = "count"
+
+
+class ApiConnectionFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.ApiConnection"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    name = "Billing"
+    base_url = "https://api.example.com"
+
+
+class KpiApiFeedFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.KpiApiFeed"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    connection = factory.SubFactory(ApiConnectionFactory, tenant=factory.SelfAttribute("..tenant"))

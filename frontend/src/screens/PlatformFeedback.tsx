@@ -5,10 +5,17 @@ import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import { api } from "../lib/api";
 
 interface Row {
-  id: string; practice_name: string; role: string; doing: string; happened: string;
+  id: string; kind?: "feedback" | "connector"; practice_name: string; role: string;
+  doing: string; happened: string;
   expected: string; page_url: string; status: "new" | "seen" | "closed";
   has_screenshot: boolean; created_at: string;
 }
+
+/** How each kind's three answers are labelled (P13 added the connector request). */
+const LABELS = {
+  feedback: { doing: "Doing", happened: "What happened", expected: "Expected" },
+  connector: { doing: "System", happened: "Numbers wanted", expected: "Client" },
+};
 
 /** The Practices area's Feedback (P2 §7): what practice staff chose to send. */
 export function PlatformFeedback() {
@@ -26,13 +33,16 @@ export function PlatformFeedback() {
     <>
       <PageHead title="Feedback" sub="What practice teams sent with the Feedback button." />
       {list.isError && <Banner kind="bad">{(list.error as Error).message}</Banner>}
-      {rows.length === 0 ? <Empty>No feedback yet.</Empty> : rows.map((r) => (
+      {rows.length === 0 ? <Empty>No feedback yet.</Empty> : rows.map((r) => {
+        const words = LABELS[r.kind ?? "feedback"] ?? LABELS.feedback;
+        return (
         <Card key={r.id} title={`${r.practice_name} · ${r.role}`}
-          actions={<Pill kind={r.status === "new" ? "warn" : ""}>{r.status}</Pill>}>
+          actions={<>{r.kind === "connector" && <Pill kind="info">Connector request</Pill>}{" "}
+            <Pill kind={r.status === "new" ? "warn" : ""}>{r.status}</Pill></>}>
           <p className="small muted" style={{ marginTop: 0 }}>{when(r.created_at)} · {r.page_url}</p>
-          <p><strong>Doing:</strong> {r.doing}</p>
-          <p><strong>What happened:</strong> {r.happened}</p>
-          <p><strong>Expected:</strong> {r.expected}</p>
+          <p><strong>{words.doing}:</strong> {r.doing}</p>
+          <p><strong>{words.happened}:</strong> {r.happened}</p>
+          <p><strong>{words.expected}:</strong> {r.expected}</p>
           {r.has_screenshot && (
             <p><a href={`/api/platform/feedback/${r.id}`} target="_blank" rel="noreferrer">
               Open the screenshot</a></p>
@@ -44,7 +54,8 @@ export function PlatformFeedback() {
               onClick={() => mark.mutate({ id: r.id, status: "closed" })}>Close</button>}
           </div>
         </Card>
-      ))}
+        );
+      })}
     </>
   );
 }

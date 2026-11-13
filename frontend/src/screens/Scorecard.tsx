@@ -7,6 +7,7 @@ import { BonusArea, bonusLead } from "../components/ScorecardBonus";
 import { SheetFeedModal } from "../components/ScorecardFeed";
 import { BestyFeedModal } from "../components/ScorecardBesty";
 import { ReviewsFeedModal } from "../components/ScorecardReviews";
+import { ConnectorRequestModal, RailFeedModal, RailKind } from "../components/ScorecardRails";
 import { HubSpotFeedModal } from "../components/ScorecardHubSpot";
 import { TrackFeedModal } from "../components/ScorecardTrack";
 import { AppFeedModal } from "../components/ScorecardApp";
@@ -58,6 +59,8 @@ export function Scorecard({ me }: { me: Me }) {
   const [bestyKpi, setBestyKpi] = useState<string | null>(null);
   const [reviewsKpi, setReviewsKpi] = useState<string | null>(null);
   const [appKpi, setAppKpi] = useState<string | null>(null);
+  const [railKpi, setRailKpi] = useState<{ id: string; name: string; kind: RailKind } | null>(null);
+  const [requesting, setRequesting] = useState(false);
   const [search, setSearch] = useSearchParams();
   // "Reconnect Google" is a browser redirect; its outcome comes back here.
   useEffect(() => {
@@ -226,6 +229,14 @@ export function Scorecard({ me }: { me: Me }) {
         <SheetFeedModal companyId={companyId} kpiId={feedKpi} onClose={() => setFeedKpi(null)}
           onSaved={(text) => { setFeedKpi(null); setManaged({ kind: "ok", text }); }} />
       )}
+      {railKpi && (
+        <RailFeedModal companyId={companyId} kpiId={railKpi.id} kpiName={railKpi.name}
+          kind={railKpi.kind} owner={me.role === "FF"} onClose={() => setRailKpi(null)} />
+      )}
+      {requesting && (
+        <ConnectorRequestModal clientName={b.practice ? "" : b.company.name}
+          onClose={() => setRequesting(false)} />
+      )}
       {editKpi && (
         <KpiEditModal companyId={companyId} kpiId={editKpi} onClose={() => setEditKpi(null)}
           onSaved={(text) => {
@@ -246,6 +257,8 @@ export function Scorecard({ me }: { me: Me }) {
           manage={b.may_set_up ? {
             onEdit: () => setEditKpi(t.id), onArchive: () => archive.mutate(t),
             onFeed: () => setFeedKpi(t.id),
+            onRail: (kind) => setRailKpi({ id: t.id, name: t.name, kind }),
+            onRequestConnector: () => setRequesting(true),
             recommended: me.recommended_feeds,
             // The practice's own scorecard reads this app, a client's reads Track,
             // HubSpot or Besty.

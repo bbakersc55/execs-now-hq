@@ -454,6 +454,28 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert {r["name"] for r in rows} == {"Happy Hogan", "Dana Ortiz", "Kevin Walsh"}
         assert all(" × $5 = $" in r["units"][0]["text"] for r in rows)
         assert {tuple(r["via"]) for r in rows} == {(), ("Customer service",)}
+        # P13, the connector rails: one KPI on each at Pied Piper, its readings
+        # written by the rails' own code; the address's token kept nowhere.
+        from apps.scorecard.models import (ApiConnection, KpiApiFeed, KpiMcpFeed,
+                                           KpiWebhookFeed, McpConnection, WebhookDelivery)
+
+        hook = KpiWebhookFeed.objects.select_related("kpi__scorecard__company").get()
+        assert (hook.kpi.name, hook.kpi.feed) == ("New signups", "webhook")
+        assert hook.kpi.scorecard.company.name == "Pied Piper Compression"
+        assert len(hook.secret_hash) == 64 and hook.last_received_at
+        assert KpiReading.objects.filter(kpi=hook.kpi, source="webhook").count() == 12
+        deliveries = WebhookDelivery.objects.filter(feed=hook)
+        assert deliveries.count() == 13 and deliveries.filter(ok=False).count() == 1
+        mcp_feed = KpiMcpFeed.objects.select_related("kpi", "connection").get()
+        assert (mcp_feed.kpi.name, mcp_feed.tool, mcp_feed.from_ai) == (
+            "Support tickets open", "count_tickets", True)
+        assert mcp_feed.last_success_at and not mcp_feed.last_error
+        assert McpConnection.objects.get().check_ok
+        assert KpiReading.objects.filter(kpi=mcp_feed.kpi, source="mcp").count() >= 13
+        api_feed = KpiApiFeed.objects.select_related("kpi").get()
+        assert (api_feed.kpi.name, api_feed.value_path) == ("Monthly recurring revenue", "data.mrr")
+        assert api_feed.last_success_at and ApiConnection.objects.count() == 1
+        assert KpiReading.objects.filter(kpi=api_feed.kpi, source="api").count() >= 13
         # Bank feeds: the sample connection, two accounts fed, today's lines
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount

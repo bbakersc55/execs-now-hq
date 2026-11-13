@@ -2332,3 +2332,38 @@ table.ai-actions select { max-width: 13rem; }
 }
 .tl-table input.tl-num { width: 84px; min-width: 64px; }
 .tl-table input:not(.tl-num):not([type="checkbox"]), .tl-table textarea { min-width: 150px; }
+
+/* P13: the connector rails ("Connect anything"). */
+.sc-rails { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rl-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rl-panel h4 { margin: 6px 0 0; }
+.rl-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 10px; }
+.rl-form label, .rl-connections label, .rl-panel > label, .modal > label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.rl-copy { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin: 6px 0; }
+.rl-copy .small { grid-column: 1 / -1; }
+.rl-copy code, .rl-table code, .rl-tools code, .rl-panel p code { overflow-wrap: anywhere; word-break: break-all; }
+.rl-copy code { background: var(--sc-soft, #F4F6F8); padding: 6px 8px; border-radius: 6px; font-size: 12px; }
+.rl-test { border: 1px solid var(--sc-line, #E3E7EC); border-radius: 10px; padding: 8px 12px; }
+.rl-test summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.rl-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 10px; }
+.rl-steps ol { margin: 4px 0; padding-left: 18px; }
+.rl-table { width: 100%; border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+.rl-table th, .rl-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--sc-line, #E3E7EC);
+  vertical-align: top; }
+.rl-table tr.rl-bad td { color: #9B2C2C; }
+.rl-bad-text { color: #9B2C2C; }
+.rl-connections { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--sc-line, #E3E7EC);
+  border-radius: 10px; padding: 10px 12px; }
+.rl-tools { margin: 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
+.rl-preview { border: 1px solid var(--sc-line, #E3E7EC); border-radius: 10px; padding: 10px 12px;
+  background: var(--sc-soft, #F4F6F8); }
+.rl-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; margin: 6px 0 0; }
+.rl-value { font-size: 18px; font-weight: 700; color: var(--navy, #0A3A65); }
+@media (max-width: 640px) {
+  /* A phone stacks each delivery: when, what was done, what was received. */
+  .rl-table, .rl-table tbody, .rl-table tr, .rl-table td { display: block; width: 100%; }
+  .rl-table thead { display: none; }
+  .rl-table tr { border-bottom: 1px solid var(--sc-line, #E3E7EC); padding: 6px 0; }
+  .rl-table td { border: 0; padding: 1px 0; }
+}

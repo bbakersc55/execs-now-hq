@@ -351,6 +351,10 @@ export interface TileManage {
   /** Part 6: its Besty measure. */
   onBesty?: () => void;
   onReviews?: () => void;
+  /** P13: the connector rails, under "Connect anything", after the named
+   *  connectors; and the request for a connector not built yet. */
+  onRail?: (kind: "webhook" | "mcp" | "api") => void;
+  onRequestConnector?: () => void;
   /** P8: feed codes a Command Center recommends, shown first in its order. */
   recommended?: string[];
 }
@@ -544,10 +548,26 @@ function feedButtons(t: Tile, manage: TileManage) {
   const rank = (code: string) => (order.includes(code) ? order.indexOf(code) : order.length + 1);
   const shown = all.filter((f) => f.show).sort((a, b) => rank(a.code) - rank(b.code));
   const first = shown.filter((f) => order.includes(f.code));
+  const rails: { kind: "webhook" | "mcp" | "api"; label: string }[] = [
+    { kind: "webhook", label: "Webhook" }, { kind: "mcp", label: "Any MCP server" },
+    { kind: "api", label: "Any API" }];
+  const onRail = manage.onRail;
   return (
     <>
       {first.length > 0 && <span className="sc-muted small">Recommended:</span>}
       {shown.map((f) => f.el)}
+      {onRail && plain && (
+        <span className="sc-rails" role="group" aria-label={`Connect anything to ${t.name}`}>
+          <span className="sc-muted small">Connect anything:</span>
+          {rails.map((r) => (
+            <button key={r.kind} type="button" className="ghost small"
+              aria-label={`${r.label} for ${t.name}`} onClick={() => onRail(r.kind)}>
+              {t.feed?.kind === r.kind ? `${r.label} (on)` : r.label}</button>))}
+          {manage.onRequestConnector && (
+            <button type="button" className="link small" onClick={manage.onRequestConnector}>
+              Request a connector</button>)}
+        </span>
+      )}
     </>
   );
 }

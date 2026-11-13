@@ -683,12 +683,15 @@ def app_notices_for(user, company=None) -> list:
 def stop_other_feeds(kpi, keep: str):
     """A KPI has one feed: setting one stops the others, their readings kept.
     `keep` is the `Kpi.Feed` value being set."""
-    from .models import KpiAppFeed, KpiBestyFeed, KpiHubSpotFeed, KpiReviewsFeed, KpiTrackFeed
+    from .models import (KpiApiFeed, KpiAppFeed, KpiBestyFeed, KpiHubSpotFeed, KpiMcpFeed,
+                         KpiReviewsFeed, KpiTrackFeed, KpiWebhookFeed)
 
     now = timezone.now()
     for kind, model in ((Kpi.Feed.SHEET, KpiFeed), (Kpi.Feed.TRACK, KpiTrackFeed),
                         (Kpi.Feed.APP, KpiAppFeed), (Kpi.Feed.HUBSPOT, KpiHubSpotFeed),
-                        (Kpi.Feed.BESTY, KpiBestyFeed), (Kpi.Feed.REVIEWS, KpiReviewsFeed)):
+                        (Kpi.Feed.BESTY, KpiBestyFeed), (Kpi.Feed.REVIEWS, KpiReviewsFeed),
+                        (Kpi.Feed.WEBHOOK, KpiWebhookFeed), (Kpi.Feed.MCP, KpiMcpFeed),
+                        (Kpi.Feed.API, KpiApiFeed)):
         if kind != keep:
             model.objects.filter(kpi=kpi, active=True).update(active=False, updated_at=now)
 

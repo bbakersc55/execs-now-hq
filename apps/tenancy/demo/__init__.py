@@ -194,6 +194,11 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .reviews import connect as google_reviews
 
         google_reviews(world)
+        # P13: one KPI on each connector rail at Pied Piper, read from
+        # stand-ins by the rails' own code; the demo connects to nothing.
+        from .rails import connect as rails_seed
+
+        rails_seed(world)
         # E-signature: one complete, one waiting; before the rules, so the
         # seed's own signing moves nobody.
         from .documents import documents

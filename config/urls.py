@@ -14,6 +14,7 @@ from apps.finance.bankfeeds import views as bank_views
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
 from apps.crm import views_unsubscribe as crm_unsubscribe
+from apps.scorecard import views_rails as scorecard_rails
 from config import spa
 
 urlpatterns = [
@@ -98,6 +99,10 @@ urlpatterns = [
     path("healthz", spa.healthz, name="healthz"),
     # Bank feeds: Plaid's webhook, verified by its signature (docs/p6_bank_feeds.md).
     path("webhooks/plaid", bank_views.plaid_webhook, name="plaid-webhook"),
+    # P13: the connector rails' addresses. The token is the key; no session.
+    path("webhooks/kpi/<str:token>/", scorecard_rails.kpi_webhook, name="kpi-webhook"),
+    path("webhooks/company/<str:token>/", scorecard_rails.company_webhook,
+         name="company-webhook"),
     # Browser notifications' service worker, at the root so it serves every page.
     path("sw.js", spa.service_worker, name="service-worker"),
     # P4 part 1: the token proof, laptop and sandbox only (404 elsewhere).

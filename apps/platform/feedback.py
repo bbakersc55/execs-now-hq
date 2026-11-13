@@ -22,7 +22,7 @@ class FeedbackInvalid(ValueError):
 
 
 def submit(request, *, doing: str, happened: str, expected: str, page_url: str,
-           screenshot=None) -> Feedback:
+           screenshot=None, kind: str = "feedback") -> Feedback:
     from apps.crm.services import email_layout
     from apps.tenancy import storage
 
@@ -49,9 +49,18 @@ def submit(request, *, doing: str, happened: str, expected: str, page_url: str,
         tenant=request.tenant, practice_name=brand.display_name or request.tenant.name,
         submitted_by=request.user, role=request.membership.role, doing=doing,
         happened=happened, expected=expected, page_url=(page_url or "")[:500],
-        screenshot=stored)
+        screenshot=stored, kind=kind)
     _notify(feedback)
     return feedback
+
+
+# How each kind's three fields are labelled (P13 added the connector request).
+LABELS = {
+    "feedback": {"title": "Feedback", "doing": "Doing", "happened": "What happened",
+                 "expected": "Expected"},
+    "connector": {"title": "Connector request", "doing": "System",
+                  "happened": "Numbers wanted", "expected": "Client"},
+}
 
 
 def _notify(feedback) -> None:
@@ -64,14 +73,15 @@ def _notify(feedback) -> None:
     if owner is None:
         return
     try:
+        labels = LABELS.get(feedback.kind, LABELS["feedback"])
         mail._send(to=owner.email, producer=OutboxMessage.Producer.FEEDBACK_NOTICE,
-                   subject=f"Feedback from {feedback.practice_name}",
+                   subject=f"{labels['title']} from {feedback.practice_name}",
                    paragraphs=[
                        f"{feedback.practice_name} ({role_label(feedback.role)}), on "
                        f"{feedback.page_url or 'an unknown page'}:",
-                       f"Doing: {feedback.doing}",
-                       f"What happened: {feedback.happened}",
-                       f"Expected: {feedback.expected}",
+                       f"{labels['doing']}: {feedback.doing}",
+                       f"{labels['happened']}: {feedback.happened}",
+                       f"{labels['expected']}: {feedback.expected}",
                        "Screenshot attached in the Practices area." if feedback.screenshot_id
                        else "No screenshot.",
                    ])
@@ -93,7 +103,7 @@ def platform_get(pk):
 
 
 def _row(f: Feedback, platform: bool = False) -> dict:
-    row = {"id": str(f.pk), "doing": f.doing, "happened": f.happened,
+    row = {"id": str(f.pk), "kind": f.kind, "doing": f.doing, "happened": f.happened,
            "expected": f.expected, "page_url": f.page_url, "status": f.status,
            "has_screenshot": f.screenshot_id is not None,
            "created_at": f.created_at.isoformat()}

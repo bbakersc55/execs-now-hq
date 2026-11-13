@@ -155,6 +155,11 @@ ACTIONS: tuple[Action, ...] = (
            fixed_why="Runs in the app on the practice's key, so its proposals land in the "
                      "plan's tray. AI apps propose items with propose_plan_items.",
            center="any"),
+    # P13: "Any MCP server": Claude maps a number to a tool, once, previewed.
+    Action("rail_mcp_map", "Map a number to an MCP server's tool (scorecard feed)",
+           "Scorecard", ("rail_mcp_map",), STANDARD, "user", False,
+           fixed_why="Runs in the app on the practice's key, so its proposal is previewed "
+                     "live before anything is saved; the nightly read uses no AI."),
     # P12: the tool builder, with any Command Center on.
     Action("tool_builder", "New tool: propose a worksheet (tool builder)", "Tools",
            ("tool_builder",), DEEP, "user", False,

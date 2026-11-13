@@ -45,8 +45,12 @@ def read_feeds(tenant_id: str) -> dict:
         besty_done = feeds.run_due_besty(tenant.pk, today)
         # Google reviews: each location read once a day, then its KPIs.
         reviews_done = feeds.run_due_reviews(tenant.pk, today)
+        # P13: each MCP and API rail feed once a day. No AI.
+        from apps.scorecard import rails
+
+        rails_done = rails.run_due(tenant.pk, today)
         # A period that has closed keeps its last "so far" as its reading.
         final = feeds.finalise(tenant.pk, today)
         return {"sheets": sheets_done, "track": track_done, "app": app_done,
                 "hubspot": hubspot_done, "besty": besty_done, "reviews": reviews_done,
-                "finalised": final}
+                "rails": rails_done, "finalised": final}

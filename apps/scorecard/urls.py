@@ -1,7 +1,7 @@
 from django.urls import path
 
 from apps.scorecard import (views, views_app, views_besty, views_bonus, views_feeds, views_hubspot,
-                            views_library, views_reviews, views_track)
+                            views_library, views_rails, views_reviews, views_track)
 
 urlpatterns = [
     path("scorecard/", views.BoardView.as_view(), name="scorecard"),
@@ -92,4 +92,33 @@ urlpatterns = [
          name="scorecard-bonus-plan-close"),
     path("scorecard/bonus/plans/<str:pk>/reopen/", views_bonus.PlanReopenView.as_view(),
          name="scorecard-bonus-plan-reopen"),
+    # P13: the connector rails.
+    path("scorecard/rails/webhook/", views_rails.WebhookFeedView.as_view(),
+         name="scorecard-rails-webhook"),
+    path("scorecard/rails/webhook/rotate/", views_rails.WebhookRotateView.as_view(),
+         name="scorecard-rails-webhook-rotate"),
+    path("scorecard/rails/company-webhook/", views_rails.CompanyWebhookView.as_view(),
+         name="scorecard-rails-company-webhook"),
+    path("scorecard/rails/mcp/", views_rails.McpConnectionsView.as_view(),
+         name="scorecard-rails-mcp"),
+    path("scorecard/rails/mcp/<str:pk>/", views_rails.McpConnectionView.as_view(),
+         name="scorecard-rails-mcp-one"),
+    path("scorecard/rails/mcp/<str:pk>/test/", views_rails.McpConnectionView.as_view(),
+         name="scorecard-rails-mcp-test"),
+    path("scorecard/rails/mcp-feed/", views_rails.McpFeedView.as_view(),
+         name="scorecard-rails-mcp-feed"),
+    path("scorecard/rails/mcp-feed/preview/", views_rails.McpPreviewView.as_view(),
+         name="scorecard-rails-mcp-preview"),
+    path("scorecard/rails/mcp-feed/propose/", views_rails.McpProposeView.as_view(),
+         name="scorecard-rails-mcp-propose"),
+    path("scorecard/rails/api/", views_rails.ApiConnectionsView.as_view(),
+         name="scorecard-rails-api"),
+    path("scorecard/rails/api/<str:pk>/", views_rails.ApiConnectionView.as_view(),
+         name="scorecard-rails-api-one"),
+    path("scorecard/rails/api-feed/", views_rails.ApiFeedView.as_view(),
+         name="scorecard-rails-api-feed"),
+    path("scorecard/rails/api-feed/preview/", views_rails.ApiPreviewView.as_view(),
+         name="scorecard-rails-api-preview"),
+    path("scorecard/rails/request/", views_rails.ConnectorRequestView.as_view(),
+         name="scorecard-rails-request"),
 ]

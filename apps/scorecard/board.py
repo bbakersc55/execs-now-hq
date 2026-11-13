@@ -275,6 +275,19 @@ def feed_of(kpi, reader):
                         reviews_source_text, source_text, track_source_text)
 
     told = reader is not None and (reader.sets_up or kpi.reading_owner_id == reader.user_id)
+    # P13: the connector rails.
+    for attr, kind, words in (("webhook_feed", "webhook", "From a webhook"),
+                              ("mcp_feed", "mcp", "From an MCP server"),
+                              ("api_feed", "api", "From an API")):
+        try:
+            rail = getattr(kpi, attr)
+        except ObjectDoesNotExist:
+            rail = None
+        if rail is not None and rail.active:
+            where = f" ({rail.connection.name})" if kind != "webhook" else ""
+            return {"kind": kind, "text": f"{words}{where}, "
+                    + ("as each post arrives" if kind == "webhook" else "read once a day"),
+                    "error": rail.last_error if told else ""}
     try:
         reviews_feed = kpi.reviews_feed
     except ObjectDoesNotExist:
@@ -553,7 +566,8 @@ def visible_pages(reader, scorecard):
     kpis = list(Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True)
                 .select_related("page", "page__team", "audience_team", "reading_owner",
                                 "sheet_feed", "track_feed", "app_feed", "hubspot_feed",
-                                "besty_feed", "reviews_feed",
+                                "besty_feed", "reviews_feed", "webhook_feed",
+                                "mcp_feed__connection", "api_feed__connection",
                                 "source_a__page__team", "source_a__audience_team",
                                 "source_b__page__team", "source_b__audience_team"))
     by_page = defaultdict(list)
