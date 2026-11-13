@@ -609,11 +609,14 @@ def _groups(owed, w=practice_words.DEFAULT):
     return [sections[k] for k in section_order]
 
 
-def digest_text(narrative, sections, waiting=None, scorecard=None, plan=None) -> str:
+def digest_text(narrative, sections, waiting=None, scorecard=None, plan=None,
+                sops=None) -> str:
     """The text/plain part, from the same sections as the HTML."""
     parts = [narrative.strip()] if narrative else []
     if plan:
         parts.append("\n".join([plan["heading"]] + [f"  - {line}" for line in plan["lines"]]))
+    if sops:
+        parts.append("\n".join([sops["heading"]] + [f"  - {line}" for line in sops["lines"]]))
     for section in sections:
         if section["goal"]:
             heading = f"Toward: {section['goal']}"
@@ -687,13 +690,19 @@ def render(digest, owed, *, narrative="", scorecard_lines=(), scorecard=None):
     # last digest this person was sent.
     plan_lines = plan_digest.lines_for(digest)
     plan = {"heading": plan_digest.HEADING, "lines": plan_lines} if plan_lines else None
+    # P10: SOPs published or updated since the last digest this person was
+    # sent, if they are asked to read them.
+    from apps.sops import services as sop_services
+
+    sop_lines = sop_services.digest_lines(digest)
+    sops = {"heading": sop_services.DIGEST_HEADING, "lines": sop_lines} if sop_lines else None
     parts = [{"title": title, "lines": scorecard[key]} for title, key in SCORECARD_PARTS
              if scorecard and scorecard[key]]
     html = render_to_string("email/digest_content.html", email_layout.template_context(
         digest.tenant, narrative=narrative, sections=sections, words=w, waiting=waiting,
-        plan=plan,
+        plan=plan, sops=sops,
         scorecard={"heading": scorecard["heading"], "parts": parts} if scorecard else None))
-    return digest_text(narrative, sections, waiting, scorecard, plan), html
+    return digest_text(narrative, sections, waiting, scorecard, plan, sops), html
 
 
 # -------------------------------------------------------------- generation

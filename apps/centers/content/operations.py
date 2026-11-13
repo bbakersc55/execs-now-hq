@@ -383,5 +383,33 @@ FEEDS = ["sheet", "track", "besty", "hubspot", "reviews", "bank"]
 FEED_NAMES = {"sheet": "Google Sheets", "track": "Track", "besty": "Besty",
               "hubspot": "HubSpot", "reviews": "Google reviews", "bank": "Bank feeds"}
 
+#: P10: the Notebook pack's prompt sets (`apps.sops.pack`), pasted into the
+#: owner's own Gemini Notebook after the pack's files are uploaded. The
+#: practice edits its own copy (`sops.PackPrompts`).
+NOTEBOOK_PROMPTS = [
+    {"title": "Find the handoffs and bottlenecks",
+     "prompt": "Across these sources, list every point where work passes from one person or "
+               "team to another. For each, say what is handed over, what goes wrong there, "
+               "and which source says so. Then name the three handoffs that slow the work "
+               "most, and why."},
+    {"title": "Steps that depend on one person",
+     "prompt": "List the steps in these SOPs and notes that only one named person can do "
+               "today. For each, say who, what happens when they are away, and what would let "
+               "a second person do it."},
+    {"title": "An onboarding sequence from these SOPs",
+     "prompt": "Draft a first-30-days onboarding sequence for a new team member from these "
+               "SOPs: what to read on which day, what to shadow, what to do with help and "
+               "what to do alone, and how we know they are ready. Name the SOP behind each "
+               "step."},
+    {"title": "What is missing or contradictory",
+     "prompt": "Compare these sources with each other. List anything one says that another "
+               "contradicts, any step an SOP leaves out that the meeting summaries or plans "
+               "assume, and any process the plans rely on that has no SOP. Quote the sources."},
+    {"title": "A training overview",
+     "prompt": "Write a one-page training overview of how this company runs its operations, "
+               "for a new manager: the main processes, who owns each, the numbers that show "
+               "they are working, and the three things most often done wrong."},
+]
+
 #: The module's AI actions (`apps.tenancy.ai_actions`, `center="operations"`).
 AI_ACTIONS = ["ops_sop_from_note", "ops_map_rows_from_meeting", "ops_weekly_note"]

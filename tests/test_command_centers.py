@@ -459,6 +459,10 @@ def test_the_modules_ai_actions_show_only_when_on_and_run_in_the_ai_app(seeded_t
     turn_on(api, ff)
     rows = keys()
     for key in operations.AI_ACTIONS:
+        if key == "ops_sop_from_note":
+            # P10: it runs in the app now (an SOP brainstorm), and may move.
+            assert rows[key]["runs_in"] == "app" and rows[key]["fixed"] is False
+            continue
         assert rows[key]["runs_in"] == "ai_app" and rows[key]["fixed"] is True
     assert {rows[k]["tier"] for k in operations.AI_ACTIONS} == {"standard", "deep"}
     assert rows["ops_map_rows_from_meeting"]["tier"] == "deep"

@@ -43,7 +43,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework.response import Response
 
-from apps.accounts.ratelimit import RateLimit, too_many_shared
+from apps.accounts.ratelimit import RateLimit, client_ip, shared_count, too_many_shared
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import AuditEvent, Role
 
@@ -52,7 +52,15 @@ from .models import (ApiConnection, CompanyWebhook, Kpi, KpiApiFeed, KpiMcpFeed,
                      KpiWebhookFeed, McpConnection, WebhookDelivery)
 from .views import Base, _reader, _refuse_setup, _today, _uuid_or_404
 
+#: Posts to one real address. Counted only once the address is found, so an
+#: address that doesn't exist never gets a counter of its own.
 WEBHOOK_RATE = RateLimit(limit=60, window_seconds=60, prefix="kpi_webhook")
+#: Every webhook post from one sender, to any address.
+SENDER_RATE = RateLimit(limit=120, window_seconds=60, prefix="kpi_webhook_sender")
+#: Posts from one sender to addresses that don't exist. Past it, everything
+#: from that sender is refused until the minute is out.
+MISS_RATE = RateLimit(limit=10, window_seconds=60, prefix="kpi_webhook_miss")
+_WEBHOOK_PREFIXES = (WEBHOOK_RATE.prefix, SENDER_RATE.prefix, MISS_RATE.prefix)
 OWNER_ONLY = "Only the practice owner connects another system."
 
 
@@ -116,16 +124,39 @@ def _hook_answer(status, ok, what):
     return JsonResponse({"ok": ok, "what": what}, status=status)
 
 
+TOO_MANY = "Too many posts this minute; wait and post again."
+TOO_MANY_MISSES = "Too many posts to addresses that don't exist; wait a minute."
+
+
+def _admitted(request, find, missing: str):
+    """(the address's row, None) or (None, a refusal). The sender is counted
+    first, on every post; a post to an address that doesn't exist counts
+    against the sender, never against the made-up address; a real address is
+    counted on its own."""
+    sender = client_ip(request) or "unknown"
+    if too_many_shared(SENDER_RATE, sender, prune=_WEBHOOK_PREFIXES):
+        return None, _hook_answer(429, False, TOO_MANY)
+    if shared_count(MISS_RATE, sender) >= MISS_RATE.limit:
+        return None, _hook_answer(429, False, TOO_MANY_MISSES)
+    found = find()
+    if found is None:
+        if too_many_shared(MISS_RATE, sender):
+            return None, _hook_answer(429, False, TOO_MANY_MISSES)
+        return None, _hook_answer(404, False, missing)
+    if too_many_shared(WEBHOOK_RATE, found.secret_hash):
+        return None, _hook_answer(429, False, TOO_MANY)
+    return found, None
+
+
 @csrf_exempt
 @require_POST
 def kpi_webhook(request, token):
-    if too_many_shared(WEBHOOK_RATE, rails.hash_of(token)):
-        return _hook_answer(429, False, "Too many posts this minute; wait and post again.")
-    feed = KpiWebhookFeed.all_objects.filter(
+    feed, refused = _admitted(request, lambda: KpiWebhookFeed.all_objects.filter(
         secret_hash=rails.hash_of(token), active=True, kpi__archived_at__isnull=True).select_related(
-        "kpi", "kpi__tenant", "kpi__scorecard", "kpi__scorecard__company").first()
-    if feed is None:
-        return _hook_answer(404, False, "No KPI takes posts at this address.")
+        "kpi", "kpi__tenant", "kpi__scorecard", "kpi__scorecard__company").first(),
+        "No KPI takes posts at this address.")
+    if refused:
+        return refused
     with tenant_context(feed.tenant_id):            # no session: the token says whose
         return _kpi_delivery(request, feed)
 
@@ -149,12 +180,14 @@ def _kpi_delivery(request, feed):
 @csrf_exempt
 @require_POST
 def company_webhook(request, token):
-    if too_many_shared(WEBHOOK_RATE, rails.hash_of(token)):
-        return _hook_answer(429, False, "Too many posts this minute; wait and post again.")
-    hook = CompanyWebhook.all_objects.filter(secret_hash=rails.hash_of(token)) \
-        .select_related("company").first()
-    if hook is None or hook.company.deleted_at is not None:
-        return _hook_answer(404, False, "No company takes posts at this address.")
+    def find():
+        hook = CompanyWebhook.all_objects.filter(secret_hash=rails.hash_of(token)) \
+            .select_related("company").first()
+        return None if hook is None or hook.company.deleted_at is not None else hook
+
+    hook, refused = _admitted(request, find, "No company takes posts at this address.")
+    if refused:
+        return refused
     with tenant_context(hook.tenant_id):            # no session: the token says whose
         return _company_delivery(request, hook)
 

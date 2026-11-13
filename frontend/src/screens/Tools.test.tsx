@@ -86,6 +86,34 @@ describe("tools (P12)", () => {
     expect(await screen.findByText(/marked "From a tool"/)).toBeInTheDocument();
   });
 
+  it("Start an SOP brainstorm opens a real brainstorm with the run as its source (P10)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "GET /api/tool-runs/r1/": aRun(),
+      "POST /api/tool-runs/r1/sop-brainstorm/": () => ({ status: 201,
+        body: { brainstorm: "b9", title: "SOP from Order to shipment" } }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    await user.click(await screen.findByRole("button", { name: "Start an SOP brainstorm" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url.endsWith("/sop-brainstorm/"))).toBe(true));
+    // It leaves the run for /sop-brainstorms/b9, which this test's router doesn't draw.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Start an SOP brainstorm" })).toBeNull());
+  });
+
+  it("Import steps from an SOP lists the studio's SOPs (P10)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "GET /api/tool-runs/r1/": aRun({ choices: { ...aRun().choices!,
+      sop_sources: [{ id: "sop:s1", label: "SOP: Receiving an order" }, { id: "note:n1", label: "SOP draft: Picking" }] } }),
+      "POST /api/tool-runs/r1/import-sop/": () => ({ body: { imported: 3, run: aRun() } }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    await user.click(await screen.findByRole("button", { name: "Import steps from an SOP" }));
+    const dialog = screen.getByRole("dialog", { name: "Import steps from an SOP" });
+    await user.selectOptions(within(dialog).getByLabelText("SOP"), "sop:s1");
+    await user.click(within(dialog).getByRole("button", { name: "Add its steps" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url.endsWith("/import-sop/"))?.body)
+      .toEqual({ source: "sop:s1" }));
+  });
+
   it("the client owner reads a shared run, with nothing to change", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/tool-runs/r1/": aRun({ may_edit: false,
       choices: undefined, shared_with_client: true }) }));

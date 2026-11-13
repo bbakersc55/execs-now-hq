@@ -2192,3 +2192,139 @@ class KpiApiFeedFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
     connection = factory.SubFactory(ApiConnectionFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+# --- P10: the SOP studio ----------------------------------------------------------
+
+class SopFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.Sop"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    title = factory.Sequence(lambda n: f"SOP {n}")
+    steps = factory.LazyFunction(lambda: [{"text": "Do the first thing", "role": "",
+                                           "warning": "", "images": []}])
+
+
+class SopKpiFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopKpi"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class SopAudienceTeamFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopAudienceTeam"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    team = factory.SubFactory(ClientTeamFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class SopAudiencePersonFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopAudiencePerson"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    membership = factory.SubFactory(MembershipFactory, tenant=factory.SelfAttribute("..tenant"),
+                                    role=Role.ECC,
+                                    client_company=factory.SelfAttribute("..sop.company"))
+
+
+class SopVersionFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopVersion"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    number = factory.Sequence(lambda n: n + 1)
+    snapshot = factory.LazyFunction(dict)
+    published_at = factory.LazyFunction(timezone.now)
+
+
+class SopAckFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopAck"
+
+    tenant = factory.SubFactory(TenantFactory)
+    version = factory.SubFactory(SopVersionFactory, tenant=factory.SelfAttribute("..tenant"))
+    sop = factory.SelfAttribute("version.sop")
+    membership = factory.SubFactory(MembershipFactory, tenant=factory.SelfAttribute("..tenant"),
+                                    role=Role.ECC,
+                                    client_company=factory.SelfAttribute("..version.sop.company"))
+    user = factory.SelfAttribute("membership.user")
+    acknowledged_at = factory.LazyFunction(timezone.now)
+
+
+class SopAttachmentFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopAttachment"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    file = factory.SubFactory(StoredFileFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "image"
+    name = "bin.png"
+
+
+class SopCommentFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopComment"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    author = factory.SubFactory(UserFactory)
+    text = "We scan the tote, not the bin."
+
+
+class BrainstormFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.Brainstorm"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    title = factory.Sequence(lambda n: f"Process {n}")
+
+
+class BrainstormSourceFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.BrainstormSource"
+
+    tenant = factory.SubFactory(TenantFactory)
+    brainstorm = factory.SubFactory(BrainstormFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "pasted"
+    title = "Pasted text"
+    text = "We pick from paper lists."
+
+
+class BrainstormMessageFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.BrainstormMessage"
+
+    tenant = factory.SubFactory(TenantFactory)
+    brainstorm = factory.SubFactory(BrainstormFactory, tenant=factory.SelfAttribute("..tenant"))
+    role = "user"
+    text = "Help me write the picking SOP."
+
+
+class BrainstormProposalFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.BrainstormProposal"
+
+    tenant = factory.SubFactory(TenantFactory)
+    brainstorm = factory.SubFactory(BrainstormFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "map"
+    payload = factory.LazyFunction(lambda: {"map": "flowchart TD\n a[Start] --> b[Done]"})
+
+
+class PackPromptsFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.PackPrompts"
+
+    tenant = factory.SubFactory(TenantFactory)
+    prompts = factory.LazyFunction(lambda: [{"title": "Ours", "prompt": "Our own prompt."}])

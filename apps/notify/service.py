@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 
 #: Which kinds each side of the app can receive.
 STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT,
-               Kind.BANK]
-CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION]
+               Kind.BANK, Kind.SOP]
+CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.SOP]
 #: How long a push service keeps a notification for a browser that is off.
 TTL_SECONDS = 24 * 3600
 TIMEOUT_SECONDS = 5

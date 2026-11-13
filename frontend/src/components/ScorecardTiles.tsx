@@ -3,6 +3,7 @@ import { ReactElement, ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../lib/api";
+import { SopsForKpi } from "./SopsForKpi";
 import {
   CADENCE_LABEL, CADENCE_NOUN, KpiDef, PersonRow, Point, ROLLUP_WORDS, ReadingHistory,
   STATUS_LABEL, Status, Tile, fmt, fmtChange, ofTarget, targetText,
@@ -391,6 +392,8 @@ function Back({ t, manage, task }: { t: Tile; manage?: TileManage; task?: TileTa
           ? "not read yet" : fmt(t, t.target_live.value)}, live from {t.target_live.text}.</div>}
         {t.feed && <div className="sc-back-feed">{t.feed.text}.
           {t.feed.error && <div className="sc-field-error"><strong>Last read failed:</strong> {t.feed.error}</div>}</div>}
+        {/* P10: the SOPs meant to move this number. */}
+        <SopsForKpi kpiId={t.id} />
       </div>
       <table className="sc-back-table">
         <thead><tr><th>Period</th><th className="money">Reading</th><th>Status</th></tr></thead>

@@ -287,6 +287,30 @@ def build() -> MCPServer:
         the definition it was made with. run_id comes from list_tool_runs."""
         return await run("get_tool_run", T.get_tool_run, run_id=run_id)
 
+    @server.tool(annotations=READ)
+    async def list_sops(company_id: str = "", query: str = "") -> dict:
+        """Standard operating procedures (SOPs) you can see: id, title, company, status
+        (draft, published), version and category. Filter by company_id or a title query."""
+        return await run("list_sops", T.list_sops, company_id=company_id, query=query)
+
+    @server.tool(annotations=READ)
+    async def read_sop(sop_id: str) -> dict:
+        """One SOP as text: purpose, when it applies, roles, ordered steps (with each
+        step's role and warning) and its process map. sop_id comes from list_sops."""
+        return await run("read_sop", T.read_sop, sop_id=sop_id)
+
+    @server.tool(annotations=DRAFT)
+    async def draft_sop(company_id: str, title: str, purpose: str = "",
+                        applies_when: str = "", roles: list[dict[str, Any]] | None = None,
+                        steps: list[dict[str, Any]] | None = None,
+                        category: str = "") -> dict:
+        """Draft an SOP for a company. It is saved as a Draft marked as made by an AI app;
+        nobody is asked to read it until a person publishes it. roles: [{name, does}];
+        steps: [{text, role, warning}] in order, one action each."""
+        return await run("draft_sop", T.draft_sop, company_id=company_id, title=title,
+                         purpose=purpose, applies_when=applies_when, roles=roles,
+                         steps=steps, category=category)
+
     @server.tool(annotations=DRAFT)
     async def propose_plan_items(company_id: str, horizon: str,
                                  items: list[dict[str, Any]]) -> dict:

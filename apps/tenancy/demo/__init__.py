@@ -221,6 +221,11 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .tools import tools as tool_seed
 
         tool_seed(world)
+        # P10: three SOPs at Acme (published and 7 of 12 read; version 2 asking
+        # again; a draft with a saved brainstorm), and ten more Acme people.
+        from .sops import sops as sop_seed
+
+        sop_seed(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the

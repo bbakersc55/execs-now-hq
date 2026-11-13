@@ -51,8 +51,15 @@ Code: `apps/scorecard/rails.py` (the rails), `apps/scorecard/safe_http.py`
     webhook tab shows it.
   - Only KPIs whose feed is an active webhook take posts there.
   - The address is made, and rotated, from the same tab, and shown once.
-- **Rate limit:** 60 posts a minute per address. After that the answer is 429
-  in words.
+- **Rate limits** (all answered 429 in words, counted in the database):
+  - **per sender** (the address the proxy saw, `TRUSTED_PROXY_HOPS`): 120
+    posts a minute across every webhook address;
+  - **per sender, to addresses that don't exist:** 10 a minute. Past that,
+    everything from that sender is refused until the minute is out, its real
+    addresses included. A made-up address never gets a counter of its own, so
+    trying random addresses can't grow the counter table (added 2026-11-13);
+  - **per real address:** 60 posts a minute.
+  - Each new minute deletes the finished minutes' counters of all three.
 - **The last 20 deliveries** are listed, per KPI and for the company's
   address. Each shows when it came, what was done ("Week of Nov 2: saved, now
   14.", or the refusal), and what was received.
@@ -198,8 +205,9 @@ It lands in the platform owner's **Feedback**:
    - It is registered as the AI action `rail_mcp_map`, fixed in the app.
 7. **Connections are the practice owner's alone**, to add and to remove;
    associates see them and pick one. Feeds are the owner's and associates'.
-8. **The rate limit** is 60 a minute per address, kept in the database
-   (`too_many_shared`), so it holds across web workers.
+8. **The rate limits** are 120 a minute per sender, 10 a minute per sender
+   to addresses that don't exist, and 60 a minute per real address, kept in
+   the database (`too_many_shared`), so they hold across web workers.
 9. **The MCP token is sent as `Bearer`**; any other scheme is given as
    headers.
 10. **The rails are on every scorecard**, the practice's own included,

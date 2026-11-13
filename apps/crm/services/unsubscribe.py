@@ -59,6 +59,8 @@ BY_PRODUCER = {
     P.INTRODUCTION: CORRESPONDENCE,
     # The practice owner answering one person who asked on the website.
     P.WEBSITE_REPLY: CORRESPONDENCE,
+    # The practice asking one person to read an SOP of their company.
+    P.SOP_REMINDER: CORRESPONDENCE,
     P.CAMPAIGN: MARKETING,
     P.DIGEST: UPDATES,
     P.CLIENT_ACTIVITY: UPDATES,

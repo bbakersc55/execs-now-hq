@@ -284,7 +284,7 @@ export function ToolRunScreen({ me }: { me: Me }) {
           <button className="small" onClick={() => setPanel("reading")}>Send a result to a KPI</button>
           {!run.company.is_practice && <button className="small" onClick={() => setPanel("propose")}>Propose to the plan</button>}
           <button className="small" onClick={() => act.mutateAsync({ path: "sop-brainstorm" }).then((r) =>
-            navigate(`/notes/${String(r.note)}`)).catch(failed)}>Start an SOP brainstorm</button>
+            navigate(`/sop-brainstorms/${String(r.brainstorm)}`)).catch(failed)}>Start an SOP brainstorm</button>
           {actions.includes("import_sop") && <button className="small" onClick={() => setPanel("import")}>Import steps from an SOP</button>}
           {actions.includes("calendar") && <button className="small" onClick={() => setPanel("calendar")}>Calendar events</button>}
           {actions.includes("calendar") && <a className="btn small" href={file("agenda")}>Agenda document</a>}
@@ -471,7 +471,7 @@ function StaffTools() {
       {dup.isError && <Banner kind="bad">{(dup.error as Error).message}</Banner>}
       <div className="tl-shelf">
         {d.tools.map((t) => (
-          <div key={t.ref} className="tl-tool-card">
+          <div key={t.ref} className={`tl-tool-card${t.shipped ? "" : " tl-ours"}`}>
             <strong>{t.name}</strong>
             <p className="small muted">{t.description}</p>
             <div className="row tight">

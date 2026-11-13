@@ -436,6 +436,9 @@ class SecretKind(models.TextChoices):
     MICROSOFT_REFRESH = "microsoft_refresh", "Microsoft 365 refresh token"
     #: A user's own calendar connection (2026-10-27), apart from mail's.
     CALENDAR_REFRESH = "calendar_refresh", "Calendar refresh token"
+    #: P10: the practice's Gemini key, used only to read video and audio in
+    #: the SOP studio (`apps.sops.media`).
+    GEMINI_API_KEY = "gemini_api_key", "Gemini API key (media)"
 
 
 class TenantSecret(TenantScopedModel):

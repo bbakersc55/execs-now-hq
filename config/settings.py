@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "apps.centers",
     "apps.plans",
     "apps.tools",
+    "apps.sops",
 ]
 
 MIDDLEWARE = [

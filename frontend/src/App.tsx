@@ -5,11 +5,13 @@ import {
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
   Receipt, Landmark, Users, Gauge, X, FileSignature, Compass, CalendarRange,
-  ListChecks, Wrench } from "lucide-react";
+  ListChecks, Wrench, BookOpen } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 import { PlanScreen, PlansScreen, ThisWeekScreen } from "./screens/Plan";
 import { ToolEditorScreen, ToolRunScreen, ToolsScreen } from "./screens/Tools";
+import { SopScreen, SopsScreen } from "./screens/Sops";
+import { SopBrainstormScreen } from "./screens/SopBrainstorm";
 import { Landing } from "./components/Landing";
 
 import { ActingBanner } from "./components/ActAs";
@@ -155,7 +157,7 @@ const PLATFORM_NAV: NavItem[] = [
   { to: "/feedback", label: "Feedback", icon: Inbox },
 ];
 
-const NAV: NavItem[] = [
+export const NAV: NavItem[] = [
   // Matrix 4.18 — Module 1 has no client-facing surface, so every CRM entry is
   // scoped to tenant staff. Without this, an FCC saw the whole sidebar.
   { to: "/dashboard", label: "Dashboard", roles: TENANT, group: "Today", icon: LayoutGrid },
@@ -170,6 +172,9 @@ const NAV: NavItem[] = [
     when: (me) => !!me.has_plan },
   // P12: the worksheet tools, with any Command Center on.
   { to: "/tools", label: "Tools", roles: ["FF", "CF", "VA"], icon: Wrench,
+    when: (me) => !!me.has_plan },
+  // P10: the SOP studio, with any Command Center on.
+  { to: "/sops", label: "SOPs", roles: ["FF", "CF", "VA"], icon: BookOpen,
     when: (me) => !!me.has_plan },
   { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" , icon: ContactIcon },
   { to: "/pipeline", label: "Pipeline", roles: TENANT , icon: Workflow },
@@ -209,6 +214,9 @@ const NAV: NavItem[] = [
     when: (me) => !!me.has_plan },
   { to: "/plan", label: "Plan", roles: CLIENT, icon: CalendarRange,
     when: (me) => !!me.has_plan },
+  // P10: the SOPs published to this person.
+  { to: "/sops", label: "SOPs", roles: CLIENT, icon: BookOpen,
+    when: (me) => !!me.has_sops },
   // P12: worksheets the practice has shared with the client owner or a leader.
   { to: "/tools", label: "Shared with you", roles: CLIENT, icon: Wrench,
     when: (me) => !!me.has_tool_runs },
@@ -459,6 +467,9 @@ export function App() {
             <Route path="/tools" element={<ToolsScreen me={me} />} />
             <Route path="/tools/:ref/edit" element={<ToolEditorScreen />} />
             <Route path="/tool-runs/:id" element={<ToolRunScreen me={me} />} />
+            <Route path="/sops" element={<SopsScreen me={me} />} />
+            <Route path="/sops/:id" element={<SopScreen me={me} />} />
+            <Route path="/sop-brainstorms/:id" element={<SopBrainstormScreen />} />
             <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
             {/* ...and the portal's own. */}
             <Route path="/scorecard" element={me.role === "FF" || me.role === "CF" || me.role === "VA"

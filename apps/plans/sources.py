@@ -2,8 +2,9 @@
 sources"):
 
 - the company's **strategy sessions**, each with its accepted map rows;
-- its **SOPs**: documents made from an SOP template, and unlocked notes an
-  AI app saved as an SOP draft;
+- its **SOPs**: the SOP studio's (P10; the published version, or the
+  working copy of a draft), then documents made from an SOP template and
+  unlocked notes an AI app saved as an SOP draft;
 - its **approved meeting proposals**: the summary and the approved action
   items and deliverables;
 - its **scorecard**, the KPIs behind or off track first;
@@ -49,6 +50,23 @@ def _sop_documents(company):
         .select_related("template").order_by("-created_at")[:20]
 
 
+def _studio_sops(company):
+    from apps.sops.models import Sop
+
+    return Sop.objects.filter(company=company).exclude(status=Sop.Status.ARCHIVED) \
+        .order_by("title")[:30]
+
+
+def _studio_text(sop) -> str:
+    from apps.sops.brainstorm import _sop_text
+    from apps.sops.services import latest, snapshot
+
+    version = latest(sop) if sop.version else None
+    record = version.snapshot if version is not None else snapshot(sop)
+    head = f"SOP, version {version.number}" if version else "SOP, a draft"
+    return f"{head}\n{_sop_text(record)}"
+
+
 def _sop_notes(company):
     from apps.notes.models import Note
 
@@ -79,15 +97,19 @@ def menu(access) -> list[dict]:
     """The sources on offer, newest first within each kind."""
     company = access.company
     out = []
+    studio = [{"type": "sop", "id": f"sop:{s.pk}", "label": f"SOP: {s.title}",
+               "detail": f"Version {s.version}" if s.version else "Draft"}
+              for s in _studio_sops(company)]
     if company.is_practice:
         out.append({"type": "scorecard", "id": "scorecard", "label": "The practice's scorecard",
                     "detail": "KPIs behind or off track first"})
-        return out
+        return out + studio
     for s in _sessions(company):
         rows = s.map_rows.filter(state="accepted").count()
         out.append({"type": "session", "id": str(s.pk),
                     "label": f"Strategy session, {_when(s.started_at or s.created_at)}",
                     "detail": f"{rows} map {'row' if rows == 1 else 'rows'}"})
+    out += studio
     for d in _sop_documents(company):
         out.append({"type": "sop", "id": f"doc:{d.pk}", "label": f"SOP: {d.title}",
                     "detail": d.get_state_display()})
@@ -196,6 +218,10 @@ def gather(access, chosen: list, pasted: str = "") -> list[tuple[str, str, str]]
             raise SourceRefused("A chosen source isn't one of this company's.")
         if kind == "session":
             text = _session_text(StrategySession.all_objects.get(pk=ident, company=company))
+        elif kind == "sop" and ident.startswith("sop:"):
+            from apps.sops.models import Sop
+
+            text = _studio_text(Sop.objects.get(pk=ident[4:], company=company))
         elif kind == "sop" and ident.startswith("doc:"):
             text = _document_text(Document.all_objects.get(pk=ident[4:], company=company))
         elif kind == "sop":

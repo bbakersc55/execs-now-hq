@@ -64,6 +64,11 @@ AUDIT = {
     "ai_app.connected": ("ai_app", "connected {app}"),
     "ai_app.revoked": ("ai_app", "disconnected {app}"),
     "ai_app.tool": ("ai_app", "used {tool} through {app}"),
+    # P10: the SOP studio. `{name}` is the SOP's title.
+    "sops.published": ("work", "published the SOP “{name}” for {target}"),
+    "sops.reminded": ("work", "drafted reminders to read the SOP “{name}” at {target}"),
+    "sops.archived": ("work", "archived the SOP “{name}” at {target}"),
+    "sops.pack_built": ("work", "built a Notebook pack for {target}"),
     "stage.changed": ("pipeline", "moved {target} to a new stage"),
     "contact.merged": ("pipeline", "merged {target}"),
     "contact.deleted": ("pipeline", "deleted {target}"),
@@ -498,6 +503,16 @@ def _audit_entries(scope, since, until, actor):
             text = phrasing.format(target=target or "a company",
                                    name=str(a.payload.get("name") or ""),
                                    period=str(a.payload.get("period") or ""), **forms)
+        elif a.verb.startswith("sops."):
+            text = phrasing.format(target=target or "a company",
+                                   name=str(a.payload.get("title") or ""))
+            if a.verb == "sops.published":
+                text += f", version {a.payload.get('number')}" + (
+                    " (a minor change)" if a.payload.get("minor") else "")
+            if a.verb == "sops.reminded":
+                text += f" ({a.payload.get('count', 0)} waiting for approval)"
+            if a.verb == "sops.pack_built":
+                text += f" ({len(a.payload.get('files') or [])} files)"
         else:
             text = phrasing.format(target=target or "a record", **forms)
         if a.verb == "goal.added_by_client" and a.payload.get("title"):

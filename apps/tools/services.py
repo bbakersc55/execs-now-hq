@@ -8,7 +8,7 @@ a run hands to the rest of the app.
 - **Available** while the practice has any Command Center on.
 - **Hand-offs from a run:** tasks from its flagged rows; a computed value to a
   KPI as a reading "From a tool"; an item proposed to the company's plan; an
-  SOP brainstorm note with the run as its source.
+  SOP brainstorm with the run as its first source (P10).
 """
 
 from __future__ import annotations
@@ -365,17 +365,15 @@ def propose_to_plan(run, *, actor, horizon, title, done_means="", today):
 
 
 def sop_brainstorm(run, *, actor):
-    """A note to brainstorm the SOP in, with the run as its source: there is
-    no SOP studio yet, so it is a note on the company."""
-    from apps.notes.models import Note
+    """P10: an SOP brainstorm for the run's company, with the run as its
+    first source (it was a note while there was no SOP studio)."""
+    from apps.sops import brainstorm
 
-    note = Note.all_objects.create(
-        tenant_id=run.tenant_id, company=None if run.company.is_practice else run.company,
-        title=f"SOP brainstorm: {run.name}"[:255], created_by=actor,
-        body="Purpose:\n\nRoles:\n\nSteps:\n\nMeasures:\n\nReview date:\n\n"
-             "— Source —\n" + summary_text(run))
-    _audit(run.tenant_id, actor, "tools.sop_brainstorm", "tool_run", run.pk, note=str(note.pk))
-    return note
+    found = brainstorm.start(run.company, actor=actor, title=f"SOP from {run.name}")
+    brainstorm.add_tool_run(found, run, actor=actor)
+    _audit(run.tenant_id, actor, "tools.sop_brainstorm", "tool_run", run.pk,
+           brainstorm=str(found.pk))
+    return found
 
 
 # ------------------------------------------------------------------ import from an SOP
@@ -384,11 +382,17 @@ _STEP = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(.*\S)\s*$")
 
 
 def sop_sources(company) -> list[dict]:
+    """The company's SOPs from the studio first (P10), then the older kinds: a
+    document made from the SOP template, and a note saved as an SOP draft."""
     from apps.plans.sources import _sop_documents, _sop_notes
+    from apps.sops.models import Sop
 
+    studio = [{"id": f"sop:{s.pk}", "label": f"SOP: {s.title}"} for s in Sop.objects.filter(
+        company=company).exclude(status=Sop.Status.ARCHIVED).order_by("title")]
     if company.is_practice:
-        return []
-    return [{"id": f"doc:{d.pk}", "label": f"SOP: {d.title}"} for d in _sop_documents(company)] \
+        return studio
+    return studio \
+        + [{"id": f"doc:{d.pk}", "label": f"SOP: {d.title}"} for d in _sop_documents(company)] \
         + [{"id": f"note:{n.pk}", "label": n.title or "SOP draft"} for n in _sop_notes(company)]
 
 
@@ -397,6 +401,12 @@ def _sop_text(company, source) -> str:
     from apps.notes.models import Note
 
     source = str(source or "")
+    if source.startswith("sop:") and _is_uuid(source[4:]):
+        from apps.sops.models import Sop
+
+        sop = Sop.objects.filter(pk=source[4:], company=company).first()
+        if sop is not None:
+            return "\n".join(f"{i}. {step['text']}" for i, step in enumerate(sop.steps, start=1))
     if source.startswith("doc:") and _is_uuid(source[4:]):
         doc = Document.all_objects.filter(pk=source[4:], company=company,
                                           template__original__endswith="_sop").first()

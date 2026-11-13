@@ -811,10 +811,101 @@ def get_tool_run(p, run_id: str) -> dict:
             "text": summary_text(run, evaluation)}
 
 
+# ------------------------------------------------------------------ P10: SOPs
+
+def _sops_available(p):
+    from apps.sops.access import available
+
+    if not available(p.tenant.pk):
+        raise ToolRefused("SOPs are part of the Command Centers; this practice has none on.")
+
+
+def _sop_reached(p, sop_id):
+    """The SOP, as this person reaches it in the app: the practice's within
+    the companies it reaches; a client user's when published to them."""
+    from apps.sops.access import portal_reaches
+    from apps.sops.models import Sop
+
+    sop = Sop.objects.filter(pk=_uuid(sop_id, "sop_id")).select_related("company").first()
+    if sop is None:
+        raise ToolRefused("No SOP with that id that you can see.")
+    if p.role in ("FCC", "ECC"):
+        if not portal_reaches(sop, p.membership):
+            raise ToolRefused("No SOP with that id that you can see.")
+    elif not sop.company.is_practice and not _companies(p).filter(pk=sop.company_id).exists():
+        raise ToolRefused("No SOP with that id that you can see.")
+    p.touch("sop", sop.pk)
+    return sop
+
+
+def list_sops(p, company_id: str = "", query: str = "") -> dict:
+    """SOPs you can see (P10): the practice's across its companies, drafts
+    included; a client user's, only those published to them."""
+    from apps.sops.access import portal_reaches
+    from apps.sops.models import Sop
+
+    _sops_available(p)
+    rows = Sop.objects.exclude(status=Sop.Status.ARCHIVED).select_related("company") \
+        .order_by("company__name", "title")
+    if company_id:
+        rows = rows.filter(company=_company(p, company_id))
+    if query:
+        rows = rows.filter(title__icontains=query[:100])
+    if p.role in ("FCC", "ECC"):
+        found = [s for s in rows.filter(status=Sop.Status.PUBLISHED)
+                 if portal_reaches(s, p.membership)]
+    else:
+        reach = _companies(p).values("pk")
+        found = list(rows.filter(company_id__in=reach) | rows.filter(company__is_practice=True))
+    found = found[:100]
+    p.touch("sop", *[s.pk for s in found])
+    return {"sops": [{"id": str(s.pk), "title": s.title, "company": s.company.name,
+                      "status": s.status, "version": s.version, "category": s.category,
+                      "from_ai_app": s.from_ai_app} for s in found]}
+
+
+def read_sop(p, sop_id: str) -> dict:
+    """One SOP as text (P10): for the practice, the working copy, with the
+    latest version's number; for a client user, the version published to them."""
+    from apps.sops.brainstorm import _sop_text
+    from apps.sops.services import latest, snapshot
+
+    _sops_available(p)
+    sop = _sop_reached(p, sop_id)
+    version = latest(sop) if sop.version else None
+    record = version.snapshot if p.role in ("FCC", "ECC") else snapshot(sop)
+    return {"id": str(sop.pk), "title": record["title"], "company": sop.company.name,
+            "status": sop.status, "version": sop.version,
+            "change_note": version.change_note if version else "", "text": _sop_text(record)}
+
+
+def draft_sop(p, company_id: str, title: str, purpose: str = "", applies_when: str = "",
+              roles: list | None = None, steps: list | None = None,
+              category: str = "") -> dict:
+    """Draft an SOP for a company (P10). It lands as a Draft marked as made by
+    an AI app; a person at the practice edits and publishes it."""
+    from apps.sops import services
+
+    _sops_available(p)
+    if p.role not in ("FF", "CF", "VA"):
+        raise ToolRefused("The practice drafts SOPs.")
+    company = _company(p, company_id)
+    try:
+        sop = services.create(company, actor=p.user, title=title, from_ai_app=True, data={
+            "purpose": purpose, "applies_when": applies_when, "roles": roles or [],
+            "steps": steps or [], "category": category})
+    except services.SopRefused as exc:
+        raise ToolRefused(str(exc)) from None
+    p.touch("sop", sop.pk)
+    return {"drafted": str(sop.pk), "title": sop.title, "steps": len(sop.steps),
+            "note": "Saved as a Draft, marked as made by an AI app. Nobody reads it until a "
+                    "person at the practice publishes it."}
+
+
 READ_TOOLS = (practice_summary, list_companies, company_overview, search_contacts, get_contact,
               list_pipelines, list_tasks, list_goals, list_notes, scorecard_readings,
               pending_meeting_proposals, sending_queue, digest_drafts, invoices_summary,
               documents, list_strategy_sessions, strategy_session, company_plan,
-              list_tool_runs, get_tool_run)
+              list_tool_runs, get_tool_run, list_sops, read_sop)
 WRITE_TOOLS = (create_task, add_note, draft_email, propose_map_rows, enter_kpi_reading,
-               create_digest_draft, propose_plan_items)
+               create_digest_draft, propose_plan_items, draft_sop)

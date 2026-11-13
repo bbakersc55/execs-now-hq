@@ -1339,6 +1339,9 @@ class OutboxMessage(TenantScopedModel):
         # The marketing site's "Request demo access" form (2026-11-09): the
         # practice owner's reply to whoever asked, waiting for approval.
         WEBSITE_REPLY = "website_reply", "Website reply"
+        # P10: "Remind" on an SOP: one draft to each person who hasn't read
+        # it yet, waiting for approval.
+        SOP_REMINDER = "sop_reminder", "SOP reminder"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.

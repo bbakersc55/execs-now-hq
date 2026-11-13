@@ -116,18 +116,20 @@ class ModelTiers(APIView):
         from apps.aiconnect.models import ModelTier
 
         rows = {r.code: r for r in ModelTier.objects.all()}
-        return Response([_tier(rows.get(code), code) for code in ai_actions.TIERS])
+        return Response([_tier(rows.get(code), code)
+                         for code in (*ai_actions.TIERS, ai_actions.MEDIA)])
 
     def patch(self, request):
         from apps.aiconnect.models import ModelTier
 
         code = request.data.get("code")
-        if code not in ai_actions.TIERS:
-            return Response({"detail": "The tier is fast, standard or deep."}, status=400)
+        if code not in (*ai_actions.TIERS, ai_actions.MEDIA):
+            return Response({"detail": "The tier is fast, standard, deep or media."}, status=400)
         model = str(request.data.get("model") or "").strip()
         if not model or len(model) > 80 or " " in model:
-            return Response({"detail": "The model is an id such as claude-sonnet-5-5."},
-                            status=400)
+            return Response({"detail": "The model is an id such as claude-sonnet-5-5"
+                                       + (" or gemini-2.5-flash." if code == ai_actions.MEDIA
+                                          else ".")}, status=400)
         try:
             per_in = Decimal(str(request.data.get("input_usd_per_mtok")))
             per_out = Decimal(str(request.data.get("output_usd_per_mtok")))
@@ -144,7 +146,7 @@ class ModelTiers(APIView):
 
 def _tier(row, code) -> dict:
     fallback = ai_actions.tier_row(code)
-    return {"code": code, "label": code.title(),
+    return {"code": code, "label": "Media (Gemini)" if code == ai_actions.MEDIA else code.title(),
             "model": row.model if row else fallback.model,
             "input_usd_per_mtok": str(row.input_usd_per_mtok if row else
                                       fallback.input_usd_per_mtok),

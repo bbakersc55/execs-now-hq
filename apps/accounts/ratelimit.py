@@ -50,28 +50,49 @@ _UPSERT = """
 """
 
 
-def too_many_shared(rule: RateLimit, key: str | None) -> bool:
+def _window(rule: RateLimit) -> datetime:
+    start = int(timezone.now().timestamp()) // rule.window_seconds * rule.window_seconds
+    return datetime.fromtimestamp(start, tz=dt_timezone.utc)
+
+
+def _digest(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()[:32]
+
+
+def too_many_shared(rule: RateLimit, key: str | None, *,
+                    prune: tuple[str, ...] = ()) -> bool:
     """Count this request against `rule` in the database and say whether it is
     over. One statement, so two workers counting at once both land: Postgres
-    serialises the upsert on the window's row."""
+    serialises the upsert on the window's row.
+
+    When the count opens a new window, the finished windows of this rule, and
+    of the rules named in `prune` (same window length), are deleted."""
     if not key:
         return False
-    digest = hashlib.sha256(key.encode()).hexdigest()[:32]
-    now = timezone.now()
-    start = int(now.timestamp()) // rule.window_seconds * rule.window_seconds
-    window_start = datetime.fromtimestamp(start, tz=dt_timezone.utc)
+    window_start = _window(rule)
     with connection.cursor() as cursor:
-        cursor.execute(_UPSERT, [uuid.uuid4(), rule.prefix, digest, window_start])
+        cursor.execute(_UPSERT, [uuid.uuid4(), rule.prefix, _digest(key), window_start])
         count = cursor.fetchone()[0]
     if count == 1:
         # A new window: the old ones of this rule are history.
         from apps.accounts.models import RateCount
 
         RateCount.objects.filter(
-            prefix=rule.prefix,
+            prefix__in=(rule.prefix, *prune),
             window_start__lt=window_start - timedelta(seconds=rule.window_seconds),
         ).delete()
     return count > rule.limit
+
+
+def shared_count(rule: RateLimit, key: str | None) -> int:
+    """This window's count for `key`, without counting a request."""
+    if not key:
+        return 0
+    from apps.accounts.models import RateCount
+
+    row = RateCount.objects.filter(prefix=rule.prefix, key_digest=_digest(key),
+                                   window_start=_window(rule)).values_list("count", flat=True)
+    return next(iter(row), 0)
 
 
 def client_ip(request) -> str | None:

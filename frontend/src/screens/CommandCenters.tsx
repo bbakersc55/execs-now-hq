@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ToolsShelfCard } from "./Tools";
+import { SopsShelfCard } from "./Sops";
 
 import { Modal, PageHead } from "../components/shell";
 import { PlaybookEditor } from "../components/Playbooks";
@@ -158,6 +159,8 @@ export function CommandCenterPage({ me }: { me: Me }) {
       {open.isError && <Banner kind="bad">{(open.error as Error).message}</Banner>}
       {!shelves ? <Empty>Coming soon.</Empty> : (
         <>
+          {/* P10: every SOP by client, first on the page. */}
+          {c.on && <SopsShelfCard />}
           <Card title="Session templates">
             <p className="small muted" style={{ marginTop: 0 }}>The strategy session in plain
               words, ready to run, copied into your templates to edit.</p>

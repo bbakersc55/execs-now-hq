@@ -11,6 +11,7 @@ import { AddCompany } from "./AddCompany";
 import { CardOnFile, Company, Contact, Me, api } from "../lib/api";
 import { StartPlaybookCard } from "../components/Playbooks";
 import { CompanyToolsCard } from "./Tools";
+import { CompanySopsCard } from "./Sops";
 import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
@@ -156,7 +157,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       {c.is_client_company && (
         <p className="small"><Link to={`/companies/${c.id}/scorecard`}>{w.Scorecard} for this client</Link>
           {/* P11: the plan, while a Command Center is on. */}
-          {me.has_plan && <> · <Link to={`/companies/${c.id}/plan`}>Plan for this client</Link></>}</p>
+          {me.has_plan && <> · <Link to={`/companies/${c.id}/plan`}>Plan for this client</Link></>}
+          {/* P10: the SOPs card, further down. */}
+          {me.has_plan && ["FF", "CF", "VA"].includes(me.role ?? "") && <> · <a href="#sops">SOPs</a></>}</p>
       )}
 
       {/* As wide together as the Teams card below them (Bryan, 2026-10-15). */}
@@ -204,6 +207,9 @@ export function CompanyDetail({ me }: { me: Me }) {
 
       {/* P8: a playbook started here makes a dated goal, projects and tasks. */}
       <StartPlaybookCard me={me} company={c} people={theirs} />
+      {/* P10: the company's SOPs, a brainstorm, and the Notebook pack. */}
+      {c.is_client_company && me.has_plan && ["FF", "CF", "VA"].includes(me.role ?? "") && (
+        <CompanySopsCard me={me} companyId={c.id} isClient={c.is_client_company} />)}
       {/* P12: the company's tool runs, while a Command Center is on. */}
       {c.is_client_company && me.has_plan && ["FF", "CF", "VA"].includes(me.role ?? "") && (
         <CompanyToolsCard companyId={c.id} />)}

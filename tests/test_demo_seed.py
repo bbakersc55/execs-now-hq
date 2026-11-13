@@ -476,6 +476,31 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert (api_feed.kpi.name, api_feed.value_path) == ("Monthly recurring revenue", "data.mrr")
         assert api_feed.last_success_at and ApiConnection.objects.count() == 1
         assert KpiReading.objects.filter(kpi=api_feed.kpi, source="api").count() >= 13
+        # P10, the SOP studio: three at Acme, read by the rules, with no AI spent.
+        from apps.sops import services as sop_services
+        from apps.sops.models import Brainstorm, BrainstormProposal, Sop
+
+        acme_sops = {s.title: s for s in Sop.objects.filter(company__name="Acme Fasteners")}
+        changeover = acme_sops["Header line changeover"]
+        assert (changeover.status, changeover.version) == ("published", 1)
+        assert changeover.process_map and sop_services.map_svg(changeover.process_map)
+        reads = sop_services.reads(changeover)
+        assert (reads["read"], reads["asked"]) == (7, 12)
+        assert sum(r["late"] for r in reads["readers"]) == 1
+        receiving = acme_sops["Receiving a steel delivery"]
+        assert (receiving.version, receiving.ask_number) == (2, 2)
+        again = sop_services.reads(receiving)
+        assert again["read"] == 3 and "Marvin Martian" in {
+            r["name"] for r in again["outstanding"]}
+        quote = acme_sops["Quoting a custom fastener job"]
+        assert quote.status == "draft"
+        storm = Brainstorm.objects.get(sop=quote)
+        assert storm.sources.count() == 2 and storm.messages.count() == 4
+        waiting = storm.proposals.get(state=BrainstormProposal.State.PROPOSED)
+        assert waiting.kind == "draft" and not waiting.ai_call_id
+        from apps.tenancy.models import AiCall
+
+        assert not AiCall.objects.filter(purpose__startswith="sop_").exists()
         # Bank feeds: the sample connection, two accounts fed, today's lines
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount

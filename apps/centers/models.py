@@ -122,6 +122,10 @@ class LibraryRecord(TenantScopedModel):
         #: then accepted or discarded.
         PLAN_ITEM_ACCEPTED = "plan_item_accepted", "An accepted plan item"
         PLAN_ITEM_REJECTED = "plan_item_rejected", "A discarded plan item"
+        #: P10: what Claude proposed in an SOP brainstorm (the SOP, its map,
+        #: a checklist, measures), accepted or discarded by a person.
+        SOP_AI_ACCEPTED = "sop_ai_accepted", "An accepted SOP proposal"
+        SOP_AI_REJECTED = "sop_ai_rejected", "A discarded SOP proposal"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     source_type = models.CharField(max_length=40)

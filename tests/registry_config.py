@@ -460,3 +460,24 @@ register(PlaybookRun, factories.PlaybookRunFactory, endpoints=("/api/playbooks/?
 register(LibraryRecord, factories.LibraryRecordFactory, api_exposed=False)
 register(KpiLibraryEntry, factories.KpiLibraryEntryFactory,
          endpoints=("/api/scorecard/library/",))
+# P10: the SOP studio. Read only through /api/sops/, which reaches a company
+# through the plans engine's rule and a client user through the SOP's
+# audience (tests/test_sops.py).
+from apps.sops.models import (  # noqa: E402
+    Brainstorm, BrainstormMessage, BrainstormProposal, BrainstormSource, PackPrompts, Sop, SopAck,
+    SopAttachment, SopAudiencePerson, SopAudienceTeam, SopComment, SopKpi, SopVersion,
+)
+
+register(Sop, factories.SopFactory, api_exposed=False)
+register(SopKpi, factories.SopKpiFactory, api_exposed=False)
+register(SopAudienceTeam, factories.SopAudienceTeamFactory, api_exposed=False)
+register(SopAudiencePerson, factories.SopAudiencePersonFactory, api_exposed=False)
+register(SopVersion, factories.SopVersionFactory, api_exposed=False)
+register(SopAck, factories.SopAckFactory, api_exposed=False)
+register(SopAttachment, factories.SopAttachmentFactory, api_exposed=False)
+register(SopComment, factories.SopCommentFactory, api_exposed=False)
+register(Brainstorm, factories.BrainstormFactory, api_exposed=False)
+register(BrainstormSource, factories.BrainstormSourceFactory, api_exposed=False)
+register(BrainstormMessage, factories.BrainstormMessageFactory, api_exposed=False)
+register(BrainstormProposal, factories.BrainstormProposalFactory, api_exposed=False)
+register(PackPrompts, factories.PackPromptsFactory, api_exposed=False)

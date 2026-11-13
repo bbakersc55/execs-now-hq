@@ -264,7 +264,8 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
                        target_type: str = "", target_id=None, trigger: str = "auto",
                        max_tokens: int = 16000, tools=None, effort: str | None = None,
-                       document: bytes | None = None):
+                       document: bytes | None = None, messages: list | None = None,
+                       tier: str | None = None):
     """As `complete`, and also hands back the `AiCall` row it wrote.
 
     Module 4 needs it: a drafted map row records **which run produced it**, so a
@@ -283,6 +284,12 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     `document` is a PDF, sent with the request for the model to read: a bank
     statement (`apps/finance/statement_pdf.py`), and nothing else so far. It
     goes before the text, as the API asks, and is not kept by this module.
+
+    `messages` (P10) is a whole conversation, user and assistant turns, whose
+    content may hold images: an SOP brainstorm. It replaces `user_text` as
+    what is sent; `user_text` is still what the input hash is made of.
+    `tier` (P10) runs this one call on that tier rather than the practice's
+    choice for its action: a brainstorm switched to Deep.
     """
     import anthropic
 
@@ -320,7 +327,8 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
     # from the platform's tier table.
     from apps.tenancy import ai_actions
 
-    resolved = ai_actions.model_for(tenant.pk, purpose)
+    resolved = ai_actions.tier_row(tier) if tier in ai_actions.TIERS \
+        else ai_actions.model_for(tenant.pk, purpose)
     call = AiCall(
         tenant=tenant, purpose=purpose, target_type=target_type, target_id=target_id,
         model=resolved.model, trigger=trigger,
@@ -359,7 +367,7 @@ def complete_with_call(*, tenant, purpose: str, system: str, user_text: str,
             model=resolved.model,
             max_tokens=max_tokens,
             system=system,
-            messages=[{"role": "user", "content": content}],
+            messages=messages or [{"role": "user", "content": content}],
             **fallback,
             **({"tools": tools} if tools else {}),
             **({"output_config": {"effort": effort}} if effort else {}),

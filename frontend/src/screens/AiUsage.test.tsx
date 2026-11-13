@@ -114,3 +114,42 @@ describe("the daily limit on automatic AI (owner, 2026-09-29)", () => {
       .toBeInTheDocument();
   });
 });
+
+/** P10: the media key (Gemini), used only to read video and audio. */
+describe("the media key", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  const STATUS = { set: false, last4: "", verified_at: null, model: "gemini-2.5-flash",
+    input_usd_per_mtok: "1.00", output_usd_per_mtok: "2.50",
+    about_per_minute: { audio: "0.03", video: "0.04" },
+    limits: { audio: { minutes: 60, mb: 50 }, video: { minutes: 15, mb: 100 } },
+    refused: "No key.", notice: "Video and audio files are sent to Google to be read, under the practice's own agreement with Google. Nothing else is." };
+
+  it("is off until a key is entered, then tested and saved, tested again, and removed", async () => {
+    const user = userEvent.setup();
+    const fetchMock = show(aBudget(), {
+      "GET /api/ai-media-key/": STATUS,
+      "POST /api/ai-media-key/test/": { ...STATUS, set: true, last4: "WXYZ", detail: "Connected: Gemini 2.5 Flash answers." },
+      "POST /api/ai-media-key/": (body: unknown) => ({ body: { ...STATUS, set: true, last4: "WXYZ",
+        detail: `Connected: Gemini 2.5 Flash answers.${(body as { key: string }).key ? "" : "!"}` } }),
+      "DELETE /api/ai-media-key/": STATUS,
+    });
+    expect(await screen.findByText("Off until a key is entered.")).toBeInTheDocument();
+    expect(screen.getByText(/Used only to read video and audio in the SOP/)).toBeInTheDocument();
+    expect(screen.getByText(/sent to Google to be read/)).toBeInTheDocument();
+    expect(screen.getByText(/About \$0\.03 a minute of\s+audio/)).toBeInTheDocument();
+    const input = screen.getByLabelText("New Gemini API key");
+    expect(input).toHaveAttribute("type", "password");
+    await user.type(input, "AIzaSyTestKeyThatIsLongEnough");
+    await user.click(screen.getByRole("button", { name: "Test and save" }));
+    expect(await screen.findByText("Connected: Gemini 2.5 Flash answers.")).toBeInTheDocument();
+    expect(screen.getByText("…WXYZ")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.url === "/api/ai-media-key/" && c.method === "POST")?.body)
+      .toEqual({ key: "AIzaSyTestKeyThatIsLongEnough" }));
+    await user.click(screen.getByRole("button", { name: "Test" }));
+    await waitFor(() => expect(fetchMock.calls.some((c) => c.url === "/api/ai-media-key/test/")).toBe(true));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText(/The media key is removed/)).toBeInTheDocument();
+    expect(screen.getByText("Off until a key is entered.")).toBeInTheDocument();
+  });
+});

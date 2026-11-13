@@ -24,6 +24,8 @@ class Kind(models.TextChoices):
     MENTION = "mention", "Someone mentions you in a comment"
     DOCUMENT = "document", "A document you sent for signature"
     BANK = "bank", "A bank connection that needs you"
+    #: P10: an SOP read after its read-by day, or a change suggested.
+    SOP = "sop", "An SOP read late, or a change suggested"
 
 
 class Notice(TenantScopedModel):

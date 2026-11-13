@@ -669,6 +669,8 @@ class TaskUpdate(TenantScopedModel):
         PLAYBOOK = "playbook", "A playbook"
         #: P12: made from a tool run's flagged rows.
         TOOL = "tool", "A tool"
+        #: P10: made from an SOP brainstorm's checklist.
+        SOP = "sop", "An SOP checklist"
 
     task = models.ForeignKey(Task, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="updates")

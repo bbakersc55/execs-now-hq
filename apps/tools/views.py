@@ -287,8 +287,9 @@ class RunActionView(Base):
                 return Response({"proposed": str(item.pk), "horizon": item.horizon},
                                 status=201)
             if action == "sop-brainstorm":
-                note = services.sop_brainstorm(run, actor=request.user)
-                return Response({"note": str(note.pk), "title": note.title}, status=201)
+                found = services.sop_brainstorm(run, actor=request.user)
+                return Response({"brainstorm": str(found.pk), "title": found.title},
+                                status=201)
             if action == "import-sop":
                 count = services.import_steps(run, request.data.get("source"),
                                               actor=request.user)

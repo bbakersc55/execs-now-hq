@@ -126,6 +126,9 @@ class ModelTier(UUIDModel):
         FAST = "fast", "Fast"
         STANDARD = "standard", "Standard"
         DEEP = "deep", "Deep"
+        #: P10: Gemini, used only to read video and audio in the SOP studio
+        #: on the practice's own media key. Not a tier any AI action runs on.
+        MEDIA = "media", "Media (Gemini)"
 
     code = models.CharField(max_length=12, choices=Code.choices, unique=True)
     model = models.CharField(max_length=80)

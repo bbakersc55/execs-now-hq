@@ -178,6 +178,86 @@ def test_the_rate_limit(hook, monkeypatch):
     assert codes == [200, 200, 200, 429, 429]
 
 
+def _counters(prefix):
+    from apps.accounts.models import RateCount
+
+    return RateCount.objects.filter(prefix=prefix)
+
+
+def test_a_sender_trying_made_up_addresses_is_cut_off(hook, monkeypatch):
+    """Posts to addresses that don't exist count against the sender, never
+    against the made-up address; past the limit the sender is refused
+    everywhere, its real address included, while another sender isn't."""
+    from apps.accounts.ratelimit import RateLimit
+    from apps.scorecard import views_rails
+
+    monkeypatch.setattr(views_rails, "MISS_RATE", RateLimit(3, 60, "kpi_webhook_miss"))
+    sc, them = hook, {"REMOTE_ADDR": "203.0.113.9"}
+    codes = [Client().post(f"/webhooks/kpi/kh_madeup{i}/", {"value": "1"}, **them).status_code
+             for i in range(8)]
+    codes.append(Client().post(f"/webhooks/company/ch_madeup/", {"value": "1"}, **them).status_code)
+    assert codes == [404, 404, 404] + [429] * 6
+    cut = Client().post(sc["url"], {"value": "1"}, **them)
+    assert cut.status_code == 429 and "don't exist" in cut.json()["what"]
+    # The counter table holds one row for the sender's misses, none per address.
+    assert not _counters("kpi_webhook").exists()
+    assert _counters("kpi_webhook_miss").count() == 1
+    assert _counters("kpi_webhook_miss").get().count == 3
+    # Someone else posting to the real address is unaffected.
+    assert Client().post(sc["url"], {"value": "1"}, REMOTE_ADDR="198.51.100.4").status_code == 200
+
+
+def test_one_sender_is_limited_across_every_address(hook, monkeypatch):
+    from apps.accounts.ratelimit import RateLimit
+    from apps.scorecard import views_rails
+
+    monkeypatch.setattr(views_rails, "SENDER_RATE", RateLimit(4, 60, "kpi_webhook_sender"))
+    sc = hook
+    r = post(ff(sc), f"{R}company-webhook/", {"company": str(sc["company"].pk)})
+    company = f"/webhooks/company/{r.json()['token']}/"
+    them = {"REMOTE_ADDR": "203.0.113.10"}
+    codes = []
+    for i in range(3):
+        codes.append(Client().post(sc["url"], {"value": "1"}, **them).status_code)
+        codes.append(Client().post(company, json.dumps({"kpi": "for_everyone", "value": 2}),
+                                   content_type="application/json", **them).status_code)
+    assert codes == [200, 200, 200, 200, 429, 429]
+    assert Client().post(sc["url"], {"value": "1"}, REMOTE_ADDR="198.51.100.5").status_code == 200
+
+
+def test_the_sender_is_the_address_the_proxy_saw(hook, monkeypatch, settings):
+    """Behind Railway's one proxy, X-Forwarded-For's last entry is the sender;
+    a sender can't dodge the limit by writing its own entries in front."""
+    from apps.accounts.ratelimit import RateLimit
+    from apps.scorecard import views_rails
+
+    settings.TRUSTED_PROXY_HOPS = 1
+    monkeypatch.setattr(views_rails, "MISS_RATE", RateLimit(2, 60, "kpi_webhook_miss"))
+    codes = [Client().post(f"/webhooks/kpi/kh_x{i}/", {"value": "1"},
+                           HTTP_X_FORWARDED_FOR=f"10.0.0.{i}, 203.0.113.20").status_code
+             for i in range(4)]
+    assert codes == [404, 404, 429, 429]
+
+
+def test_old_counters_are_cleared(hook):
+    """A new minute deletes the finished minutes' counters of every webhook
+    limit, the old per-address ones included."""
+    from datetime import timedelta as td
+
+    from apps.accounts.models import RateCount
+
+    sc, old = hook, timezone.now() - td(minutes=5)
+    for prefix in ("kpi_webhook", "kpi_webhook_sender", "kpi_webhook_miss"):
+        for i in range(3):
+            RateCount.objects.create(prefix=prefix, key_digest=f"{prefix[:20]}{i}",
+                                     window_start=old, count=7)
+    RateCount.objects.create(prefix="site_lead", key_digest="kept", window_start=old, count=1)
+    assert Client().post(sc["url"], {"value": "1"}, REMOTE_ADDR="198.51.100.6").status_code == 200
+    left = set(RateCount.objects.values_list("prefix", "window_start"))
+    assert all(start > old for prefix, start in left if prefix.startswith("kpi_webhook"))
+    assert ("site_lead", old) in left
+
+
 def test_the_last_twenty_deliveries_are_kept(hook):
     sc = hook
     for i in range(23):

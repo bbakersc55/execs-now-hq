@@ -287,8 +287,10 @@ export function ModelTiersCard() {
   return (
     <Card title="AI model tiers">
       <p className="small muted" style={{ marginTop: 0 }}>
-        Every practice's AI actions run on one of these three. Change a model id or price here when
-        Anthropic releases a new one; no code change is needed. Prices are USD per million tokens.
+        Every practice's AI actions run on one of the three Claude tiers; the media reader (Gemini)
+        reads video and audio in the SOP studio on a practice's own media key. Change a model id or
+        price here when a new one is released; no code change is needed. Prices are USD per million
+        tokens.
       </p>
       {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
       <div className="table-scroll">

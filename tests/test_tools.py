@@ -287,9 +287,14 @@ def test_a_run_proposes_to_the_plan_and_starts_an_sop_brainstorm(on):
     item = PlanItem.all_objects.get(pk=r.json()["proposed"])
     assert (item.state, item.source) == ("proposed", "tool")
     assert item.drew_on == [f"Bottleneck finder: {run['name']}"]
-    note = post(client(sc, "ff"), f"{RUNS}{run['id']}/sop-brainstorm/").json()
-    body = Note.all_objects.get(pk=note["note"]).body
-    assert "Steps:" in body and "Price it" in body and "The constraint: Price it" in body
+    # P10: a real SOP brainstorm, with the run as its first source.
+    from apps.sops.models import BrainstormSource
+
+    made = post(client(sc, "ff"), f"{RUNS}{run['id']}/sop-brainstorm/").json()
+    source = BrainstormSource.all_objects.get(brainstorm_id=made["brainstorm"])
+    assert source.kind == "tool_run" and str(source.source_id) == run["id"]
+    assert "Price it" in source.text and "The constraint: Price it" in source.text
+    assert not Note.all_objects.filter(title__startswith="SOP brainstorm").exists()
 
 
 def test_steps_come_in_from_an_sop(on):

@@ -24,7 +24,7 @@ export function LinkChips({ note }: { note: NoteStub | NoteFull }) {
     : <span className="small muted">Not linked to anything</span>;
 }
 
-export function NoteDetail(_: { me: Me }) {
+export function NoteDetail({ me }: { me: Me }) {
   const { id } = useParams();
   const from = (useLocation().state as { notesFrom?: string } | null)?.notesFrom ?? "";
   const qc = useQueryClient();
@@ -59,7 +59,7 @@ export function NoteDetail(_: { me: Me }) {
           <div className="note-main"><LockedNote note={n} onUnlocked={refresh} /></div>
           <aside className="note-side"><About note={n} /></aside>
         </div>
-      ) : <OpenNote note={n} onChange={refresh} />}
+      ) : <OpenNote note={n} onChange={refresh} me={me} />}
     </div>
   );
 }
@@ -143,7 +143,7 @@ function LockedNote({ note, onUnlocked }: { note: NoteStub; onUnlocked: (n: Note
   );
 }
 
-function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => void }) {
+function OpenNote({ note, onChange, me }: { note: NoteFull; onChange: (n?: Note) => void; me?: Me }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(note.title_is_auto ? "" : note.title);
@@ -175,6 +175,14 @@ function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => 
     }).then(() => setEditing(false)).catch(() => undefined);
   }
 
+  // P10: an SOP brainstorm with this note as its first source.
+  const sopBrainstorm = useMutation({
+    mutationFn: () => api.post<{ id: string }>("/api/sops/brainstorms/", { note: note.id }),
+    onSuccess: (b) => navigate(`/sop-brainstorms/${b.id}`),
+    onError: (e: Error) => setError(e.message),
+  });
+  const draftsSops = !!me?.has_plan && !note.is_locked;
+
   async function remove() {
     await api.del(`/api/notes/${note.id}/`);
     onChange();
@@ -196,6 +204,12 @@ function OpenNote({ note, onChange }: { note: NoteFull; onChange: (n?: Note) => 
       <Card title="Note" actions={
         <div className="row">
           {!editing && <button className="ghost small" onClick={() => setEditing(true)}>Edit</button>}
+          {draftsSops && (
+            <DoInYourAi action="ops_sop_from_note"
+              record={`the note "${note.title || "untitled"}" (note id ${note.id})`}>
+              <button className="ghost small" disabled={sopBrainstorm.isPending}
+                onClick={() => sopBrainstorm.mutate()}>Draft an SOP from this</button>
+            </DoInYourAi>)}
           {!note.is_locked && <button className="ghost small" onClick={() => setPinDialog(true)}>Set a PIN</button>}
           {note.is_locked && <>
             <button className="ghost small" onClick={() => act.mutate({ path: "lock/" })}>Lock now</button>

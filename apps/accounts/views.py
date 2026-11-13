@@ -298,6 +298,9 @@ def me(request):
         "has_plan": bool(membership and _centers_on(membership.tenant_id)),
         # P12: a tool run shared with this client owner or senior leader.
         "has_tool_runs": bool(membership and _tool_runs(request)),
+        # P10: an SOP published to this client user (or, for the client
+        # owner, any published SOP of their company).
+        "has_sops": bool(membership and _portal_sops(request)),
         "horizons": (_horizons(membership.tenant) if membership else None),
         # P8: feeds those Command Centers recommend, first in the feed picker.
         "recommended_feeds": (_recommended_feeds(membership.tenant_id)
@@ -725,6 +728,19 @@ def _horizons(tenant):
     from apps.tenancy import words
 
     return words.horizons_of(tenant)
+
+
+def _portal_sops(request) -> bool:
+    from apps.sops.access import available, portal_reaches
+    from apps.sops.models import Sop
+    from apps.tenancy.models import CLIENT_ROLES
+
+    membership = getattr(request, "membership", None)
+    if membership is None or membership.role not in CLIENT_ROLES \
+            or not available(membership.tenant_id):
+        return False
+    return any(portal_reaches(s, membership) for s in Sop.objects.filter(
+        company_id=membership.client_company_id, status=Sop.Status.PUBLISHED)[:200])
 
 
 def _tool_runs(request) -> bool:

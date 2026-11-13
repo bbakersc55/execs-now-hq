@@ -30,6 +30,12 @@ FALLBACK_MODELS = {
     STANDARD: ("claude-sonnet-5-5", Decimal("2.00"), Decimal("10.00"), True),
     DEEP: ("claude-opus-5-5", Decimal("4.00"), Decimal("20.00"), True),
 }
+#: P10: the media reader (Gemini), used only for video and audio in the SOP
+#: studio on the practice's own media key. In the platform's table beside the
+#: tiers, but no AI action runs on it. The input price is audio's (video's is
+#: lower), so the price shown first errs high.
+MEDIA = "media"
+MEDIA_FALLBACK = ("gemini-2.5-flash", Decimal("1.00"), Decimal("2.50"), False)
 
 
 @dataclass(frozen=True)
@@ -135,13 +141,15 @@ ACTIONS: tuple[Action, ...] = (
     # P8: the Operations Command Center's. Each lands where it waits for a
     # person: the SOP as a note marked as the AI app's, the rows in the
     # session's tray, the weekly note as a digest awaiting approval.
+    # P10: in the app, "Draft an SOP from this" on a note opens an SOP
+    # brainstorm with the note as its first source.
     Action("ops_sop_from_note", "Draft an SOP from a note", "Notes", ("ops_sop_from_note",),
            STANDARD, "user", True,
            "Using Execs NOW HQ, read the note {record} (list_notes) and draft a standard "
-           "operating procedure from it with five parts: purpose, roles, steps, measures and "
-           "review date. Show me the draft; if I say so, save it with add_note on the same "
-           "company, titled \"SOP draft: \" and the procedure's name.",
-           fixed_why=AI_APP_ONLY, center="operations", in_app=False),
+           "operating procedure from it: title, purpose, when it applies, roles and ordered "
+           "steps. Show me the draft; if I say so, save it with draft_sop on the same "
+           "company, where it waits as a Draft marked as made by an AI app.",
+           center="operations"),
     Action("ops_map_rows_from_meeting", "Map rows from a meeting proposal", "Meetings",
            ("ops_map_rows_from_meeting",), DEEP, "user", True,
            "Using Execs NOW HQ, read the meeting proposal {record} "
@@ -160,6 +168,14 @@ ACTIONS: tuple[Action, ...] = (
            "Scorecard", ("rail_mcp_map",), STANDARD, "user", False,
            fixed_why="Runs in the app on the practice's key, so its proposal is previewed "
                      "live before anything is saved; the nightly read uses no AI."),
+    # P10: the SOP studio's brainstorm, with any Command Center on: talking,
+    # and drafting the SOP, its map, a checklist and its measures from it.
+    Action("sop_brainstorm", "SOP brainstorm (talk, draft, map, checklist, measures)", "SOPs",
+           ("sop_brainstorm", "sop_draft", "sop_map", "sop_checklist", "sop_measures"),
+           STANDARD, "user", False,
+           fixed_why="Runs in the app on the practice's key, so what Claude proposes waits "
+                     "in the brainstorm for a person. AI apps draft an SOP with draft_sop.",
+           center="any"),
     # P12: the tool builder, with any Command Center on.
     Action("tool_builder", "New tool: propose a worksheet (tool builder)", "Tools",
            ("tool_builder",), DEEP, "user", False,
@@ -198,7 +214,7 @@ def tier_row(code: str) -> Resolved:
     if row is not None:
         return Resolved(code, row.model, row.input_usd_per_mtok, row.output_usd_per_mtok,
                         row.server_fallback)
-    model, per_in, per_out, fallback = FALLBACK_MODELS[code]
+    model, per_in, per_out, fallback = MEDIA_FALLBACK if code == MEDIA else FALLBACK_MODELS[code]
     return Resolved(code, model, per_in, per_out, fallback)
 
 

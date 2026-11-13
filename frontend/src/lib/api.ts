@@ -125,6 +125,8 @@ export interface Me {
   has_plan?: boolean;
   /** P12: a tool run shared with this client owner or senior leader. */
   has_tool_runs?: boolean;
+  /** P10: an SOP published to this client user (the client owner: any of theirs). */
+  has_sops?: boolean;
   /** P11: the plan's five horizon names, the practice's own. */
   horizons?: Record<"picture" | "year" | "quarter" | "month" | "week", string> | null;
   /** P8: KPI feeds those Command Centers recommend, shown first. */

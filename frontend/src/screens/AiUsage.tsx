@@ -7,6 +7,7 @@ import { ExternalLink } from "lucide-react";
 import { AiActionsCard, AiAppsCard } from "../components/AiApps";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { AiBudget, AiGuard, aiPausedMessage, api } from "../lib/api";
+import { MediaStatus } from "../lib/sops";
 
 interface Call {
   id: string; purpose: string; model: string; input_tokens: number;
@@ -50,6 +51,8 @@ export function AiUsage() {
       <Credits />
 
       <AnthropicKey />
+
+      <MediaKey />
 
       <Card title="Total">
         <p style={{ fontSize: "1.6rem", margin: 0 }}>
@@ -242,9 +245,66 @@ function AnthropicKey() {
   );
 }
 
+/**
+ * P10: the media key (Gemini), used only to read video and audio in the SOP
+ * studio. Off until entered; tested before it is saved; never shown again.
+ */
+function MediaKey() {
+  const qc = useQueryClient();
+  const [key, setKey] = useState("");
+  const [said, setSaid] = useState("");
+  const status = useQuery<MediaStatus>({ queryKey: ["ai-media-key"],
+    queryFn: () => api.get<MediaStatus>("/api/ai-media-key/") });
+  const done = (s: MediaStatus) => {
+    setKey(""); setSaid(s.detail ?? "");
+    qc.setQueryData(["ai-media-key"], s);
+  };
+  const save = useMutation({
+    mutationFn: () => api.post<MediaStatus>("/api/ai-media-key/", { key }), onSuccess: done });
+  const test = useMutation({
+    mutationFn: () => api.post<MediaStatus>("/api/ai-media-key/test/"), onSuccess: done });
+  const remove = useMutation({
+    mutationFn: () => api.del<MediaStatus>("/api/ai-media-key/"),
+    onSuccess: (s) => { setSaid("The media key is removed. Video and audio are off."); qc.setQueryData(["ai-media-key"], s); },
+  });
+  const s = status.data;
+  const failed = save.error ?? test.error;
+  return (
+    <Card title="Media key (Gemini)">
+      <p className="small" style={{ marginTop: 0 }}>Used only to read video and audio in the SOP
+        studio: a recording becomes a transcript and its steps, as a source in a brainstorm.</p>
+      {s && <p className="small muted">{s.notice}</p>}
+      {s && (s.set ? (
+        <p>In use: <span className="mono">…{s.last4}</span>{" "}
+          <span className="muted small">checked {when(s.verified_at)} · model {s.model}</span></p>
+      ) : <Banner kind="info">Off until a key is entered.</Banner>)}
+      {s && <p className="small muted">About ${Number(s.about_per_minute.audio).toFixed(2)} a minute of
+        audio and ${Number(s.about_per_minute.video).toFixed(2)} a minute of video, shown before each
+        file is sent. Audio up to {s.limits.audio.minutes} minutes and {s.limits.audio.mb} MB; video up
+        to {s.limits.video.minutes} minutes and {s.limits.video.mb} MB.</p>}
+      {said && <Banner kind="ok">{said}</Banner>}
+      {failed && <Banner kind="bad">{(failed as Error).message}</Banner>}
+      {remove.isError && <Banner kind="bad">{(remove.error as Error).message}</Banner>}
+      <form className="row" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <input aria-label="New Gemini API key" type="password" autoComplete="off"
+          placeholder="Gemini API key" value={key} onChange={(e) => setKey(e.target.value)} />
+        <button className="primary" type="submit" disabled={!key.trim() || save.isPending}>
+          {save.isPending ? "Testing…" : s?.set ? "Test and replace" : "Test and save"}</button>
+        {s?.set && <button type="button" disabled={test.isPending} onClick={() => test.mutate()}>
+          {test.isPending ? "Testing…" : "Test"}</button>}
+        {s?.set && <button type="button" className="ghost" disabled={remove.isPending}
+          onClick={() => remove.mutate()}>Remove</button>}
+      </form>
+    </Card>
+  );
+}
+
 const PURPOSES: Record<string, string> = {
   meeting_parse: "Reading meeting notes", meeting_owner_classify: "Classifying owners",
   digest_prose: "Digest prose", note_summary: "Note summary", referral_touch: "Referral touch",
+  sop_brainstorm: "SOP brainstorm", sop_draft: "SOP brainstorm: the draft",
+  sop_map: "SOP brainstorm: the process map", sop_checklist: "SOP brainstorm: a checklist",
+  sop_measures: "SOP brainstorm: measures", sop_media: "Reading video or audio (Gemini)",
 };
 
 /**
