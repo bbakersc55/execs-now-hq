@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-12 UTC**, after Release 40. **The next session starts at
-"2026-11-12, late: where things stand" just below**; then
+2026-11-13 UTC**, after Release 41. **The next session starts at
+"2026-11-13: Release 41, the SkyRun bonus" just below**; then
+"2026-11-12, late: where things stand"; then
 "2026-11-12: Release 40, Command Centers"; then
 "2026-11-10: Release 39, AI apps over MCP"; then
 "2026-11-10: Release 38, the Website leads pipeline"; then
@@ -28,6 +29,27 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
+## 2026-11-13: Release 41, the SkyRun bonus
+
+- **Release 41 is live:** `main` at `4065f35`. One additive migration,
+  `scorecard 0015`, applied by the runbook sequence:
+  - backup `execsnowhq_prod_20261113_021843`;
+  - pushed 02:20:05;
+  - applied 02:23:10–15;
+  - web serving about 3.5 minutes after the push.
+
+  Worker and `mcp` are up too. Recorded in the runbook ("Observed at
+  Release 41").
+- **It carried:**
+  - the SkyRun bonus: per-unit pay, teams on a plan, and "Total reviews (all
+    time)" (detail in the next section);
+  - P9 and this handoff's state.
+- **On release:** nothing to set in Railway.
+- **For SkyRun's plan:** the reviews KPI it pays on should read the open
+  month ("Also read the current period as it goes"), so the month's count
+  shows while it runs. A Sum KPI has that off by default.
+- **Not yet exercised in production:** a per-unit plan or a team plan.
+
 ## 2026-11-12, late: where things stand
 
 - **Release 40 is live.** The detail is in the next section.
@@ -45,15 +67,17 @@ they don't, and what changed since 9/30.
      the connector rails;
   3. **People, with the HRIS** (P9, below);
   4. **Technology**.
-- **The SkyRun bonus is built on `dev`, not released** (spec as built:
+- **The SkyRun bonus is built, and released at Release 41** (spec as built:
   `docs/p6_m5_kpi_scorecard.md`, "Per-unit pay and teams on a plan").
   - Bonus plans gain **per-unit pay**: a fixed amount per unit of a company
     KPI's reading for the period, either to each person in full or as one
     pool split evenly.
   - Their people can be **whole teams, people one by one, or both**.
   - The Google reviews feed gains **"Total reviews (all time)"**.
-  - Migration `scorecard 0015`, additive, applied on the laptop.
-  - The demo seeds Stark Tool & Die's "Five-star review bonus".
+  - Migration `scorecard 0015`, additive, applied on the laptop and, at
+    Release 41, in production.
+  - The demo seeds Stark Tool & Die's "Five-star review bonus" (reseeded
+    2026-11-13).
 - **P9, the People Command Center with an HRIS, was decided on November 12;
   it is not built.** Spec: `docs/p9_people_hris.md`.
   - The record and who sees it, offer letters through the app's e-signature,

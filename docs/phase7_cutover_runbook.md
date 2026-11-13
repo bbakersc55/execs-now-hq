@@ -866,6 +866,18 @@ serving: about 2 min 35 s.** Card payments are unchanged: `NMI_LIVE_CALLS`
 is true and `NMI_API_HOST` unset, so charges go to `secure.nmi.com` as
 before, and the new hold table is empty.
 
+**Observed at Release 41 (2026-11-13 UTC, one migration,
+`scorecard 0015_bonus_unit_rules_and_teams`, additive: per-unit pay and teams
+on bonus plans, the all-time reviews total, `4065f35`):** R1: the owner ran
+the backup by hand: `execsnowhq_prod_20261113_021843.sql.gz`, 15.3 MB, landed
+02:18:48. R2: `main` fast-forwarded `057400d..4065f35`, pushed 02:20:05. R3:
+worker `ec8bec71` `WAITING` 02:22:53, listing exactly `scorecard.0015`. R4:
+applied by me 02:23:10–15, `OK`. R5: `migrations current` 02:23:27, running
+02:23:30. R5b: no new scheduled job. R6a: `mcp` `cbc44c81` SUCCESS by itself,
+`/healthz` `ok`. R6: web `4f2a9118` SUCCESS by itself by 02:23:37; `/healthz`
+200. `enhq-site` not rebuilt (no change under `site/`). **Push to web serving:
+about 3 min 32 s.** Card payments stay paused by the platform owner's switch.
+
 ---
 
 ## Part A — the owner's steps, in order
