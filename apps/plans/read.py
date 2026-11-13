@@ -39,10 +39,13 @@ class Reading:
         ids = [i.pk for i in self.items]
         self.tasks = defaultdict(list)
         for link in PlanItemTask.all_objects.filter(item_id__in=ids).select_related(
-                "task", "task__owner", "task__client_owner_contact", "task__client_team",
-                "task__project"):
+                "task", "task__owner", "task__assignee", "task__client_owner_contact",
+                "task__client_team", "task__project"):
             if link.task.deleted_at is None:
                 self.tasks[link.item_id].append(link.task)
+        # Every live task, whoever may open it: This week counts a team's
+        # tasks and (with the company's switch on) lists teammates' (P11).
+        self.every_task = {key: list(tasks) for key, tasks in self.tasks.items()}
         if access.scope is not None:
             # A client sees a sprint's task only where Work would show it them.
             from apps.crm.models import Task
@@ -97,6 +100,20 @@ class Reading:
                 "team": task.client_team.name if task.client_team_id else "",
                 "team_id": str(task.client_team_id) if task.client_team_id else None,
                 "project": task.project.title if task.project_id else ""}
+
+    def teammate_row(self, task) -> dict:
+        """A teammate's sprint task in This week: title, who has it, status.
+        Read only and without an id: the Tasks area still shows a team member
+        only their own tasks, so there is nothing to open."""
+        from apps.crm.models import Task
+
+        who = _name(task.assignee) if task.assignee_id else (
+            " ".join(filter(None, (task.client_owner_contact.first_name,
+                                   task.client_owner_contact.last_name)))
+            if task.client_owner_contact_id else _name(task.owner))
+        return {"title": task.title, "owner": who, "status": task.status,
+                "status_label": Task.Status(task.status).label if task.status else "",
+                "done": task.status == Task.Status.DONE, "read_only": True}
 
     def item(self, item) -> dict:
         parent = item.parent if item.parent_id else None
@@ -210,6 +227,7 @@ def plan(access: PlanAccess, today, asked: dict | None = None) -> dict:
     return {"company": {"id": str(company.pk), "name": company.name,
                         "is_practice": company.is_practice,
                         "fiscal_year_start": P.fiscal_start(company),
+                        "sprint_team_tasks": bool(company.sprint_team_tasks),
                         "week_start": P.week_start(company)},
             "today": today.isoformat(), "access": access.describe(), "horizons": columns,
             "choices": choices(access) if access.edits or access.describe()["may_add"] else None}
@@ -267,7 +285,13 @@ def choices(access) -> dict:
 
 def week(access: PlanAccess, today) -> dict:
     """What a team member opens on Monday: the sprint goal, their own tasks,
-    their team's tasks, and what the week serves."""
+    their team's tasks, and what the week serves.
+
+    P11, 2026-11-13: for each team the person is on, a line ("Team: 7 of 12
+    done") counted over the sprint's tasks on that team, and, while the
+    company's "Team members see teammates' sprint tasks" is on, those
+    teammates' tasks too (title, owner, status; read only). Only this week's
+    sprint, only the person's own teams; the Tasks area's rule is unchanged."""
     company = access.company
     start = P.start_of(Horizon.WEEK, today, company)
     sprint = _items_qs(company).filter(horizon=Horizon.WEEK, period_start=start,
@@ -276,7 +300,8 @@ def week(access: PlanAccess, today) -> dict:
     out = {"company": {"id": str(company.pk), "name": company.name},
            "name": names[Horizon.WEEK], "period_start": start.isoformat(),
            "period_label": P.label(Horizon.WEEK, start), "sprint": None, "mine": [],
-           "team": [], "others": [], "serves": [], "access": access.describe()}
+           "team": [], "others": [], "serves": [], "access": access.describe(),
+           "team_lines": [], "teammates": bool(company.sprint_team_tasks)}
     if sprint is None or not access.sees_item(sprint):
         return out
     reading = Reading(access, [sprint], today)
@@ -286,20 +311,46 @@ def week(access: PlanAccess, today) -> dict:
     contact_id = getattr(access.membership, "contact_id", None)
     user_id = access.request.user.pk
     tasks = reading.tasks.get(sprint.pk, [])
-    for task in tasks:
-        line = reading.task_row(task)
+    shown = {t.pk for t in tasks}
+    default_team = access.scope.default_team_id if access.scope is not None else None
+
+    def team_of(task):
         # As Work reads it: a task in a project is on its project's team, and
         # one with no team is the company's default team's.
-        team_id = task.client_team_id or (task.project.client_team_id if task.project_id
-                                          else None) or (access.scope.default_team_id
-                                                         if access.scope is not None else None)
-        if (contact_id and task.client_owner_contact_id == contact_id) \
-                or task.owner_id == user_id or task.assignee_id == user_id:
+        return task.client_team_id or (task.project.client_team_id if task.project_id
+                                       else None) or default_team
+
+    def is_mine(task):
+        return bool((contact_id and task.client_owner_contact_id == contact_id)
+                    or task.owner_id == user_id or task.assignee_id == user_id)
+
+    for task in tasks:
+        line = reading.task_row(task)
+        team_id = team_of(task)
+        if is_mine(task):
             out["mine"].append(line)
         elif team_id is not None and team_id in access.team_ids:
             out["team"].append(line)
         elif access.sees_all or not access.is_client:
             out["others"].append(line)
+    if access.is_client and access.team_ids:
+        every = reading.every_task.get(sprint.pk, [])
+        from apps.work.models import ClientTeam
+
+        team_names = dict(ClientTeam.all_objects.filter(pk__in=access.team_ids)
+                          .values_list("pk", "name"))
+        for team_id in sorted(access.team_ids, key=lambda t: team_names.get(t, "").lower()):
+            on_team = [t for t in every if team_of(t) == team_id]
+            if not on_team:
+                continue
+            out["team_lines"].append({
+                "team": team_names.get(team_id, ""),
+                "done": sum(t.status == "done" for t in on_team),
+                "total": len(on_team)})
+            if company.sprint_team_tasks:
+                # A teammate's task Work wouldn't show this person: read only.
+                out["team"] += [reading.teammate_row(t) for t in on_team
+                                if t.pk not in shown and not is_mine(t)]
     # What the week serves, up the chain as far as the person may see.
     chain, seen, node = [], set(), sprint.parent
     while node is not None and node.pk not in seen:

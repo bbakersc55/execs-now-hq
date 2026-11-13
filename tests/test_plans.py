@@ -209,8 +209,13 @@ def test_this_week_is_the_sprint_mine_my_teams_and_what_it_serves(cascade):
     week = r.json()
     assert week["sprint"]["title"] == "Pick every order right the first time"
     assert [t["title"] for t in week["mine"]] == ["Count the bins"]
-    # A member's team list holds only what Work shows them: their own tasks.
-    assert week["team"] == [] and week["others"] == []
+    # P11, 2026-11-13: their team's line, and their teammates' sprint tasks,
+    # read only; never another team's.
+    assert week["team_lines"] == [{"team": "Operations", "done": 1, "total": 2}]
+    assert week["team"] == [{"title": "Retrain the night shift",
+                             "owner": cascade["practice"]["ff"].user.full_name,
+                             "status": "done", "status_label": "Done", "done": True,
+                             "read_only": True}] and week["others"] == []
     manager = get(cascade, "manager", f"{PLANS}mine/week/").json()
     assert manager["mine"] == []
     assert {t["title"] for t in manager["team"]} == {"Count the bins",
@@ -219,6 +224,55 @@ def test_this_week_is_the_sprint_mine_my_teams_and_what_it_serves(cascade):
     assert [s["title"] for s in week["serves"]] == ["Ops: fix the picking errors"]
     owner = get(cascade, "owner", f"{PLANS}mine/week/").json()
     assert [s["horizon"] for s in owner["serves"]] == ["month", "quarter", "year"]
+
+
+def test_teammates_sprint_tasks_follow_the_switch_and_work_keeps_its_rule(cascade):
+    from apps.crm.models import Task
+
+    sc = cascade
+    retrain = next(t for t in sc["tasks"] if t.title == "Retrain the night shift")
+    Task.all_objects.filter(pk=retrain.pk).update(assignee=sc["who"]["colleague"].user)
+    week = get(sc, "member", f"{PLANS}mine/week/").json()
+    assert [(t["title"], t["owner"]) for t in week["team"]] == [
+        ("Retrain the night shift", "Cole Colleague")]
+    assert "id" not in week["team"][0]
+    # The colleague sees the member's task the same way.
+    theirs = get(sc, "colleague", f"{PLANS}mine/week/").json()
+    assert [t["title"] for t in theirs["mine"]] == ["Retrain the night shift"]
+    assert [(t["title"], t["owner"]) for t in theirs["team"]] == [("Count the bins", "Mia Member")]
+    # Sales sees Sales: its own line and nothing of Operations.
+    sales = get(sc, "sales_member", f"{PLANS}mine/week/").json()
+    assert sales["team_lines"] == [{"team": "Sales", "done": 0, "total": 1}]
+    assert "Count the bins" not in json.dumps(sales)
+    # The Tasks area keeps its rule: a member opens only their own tasks.
+    assert get(sc, "member", f"/api/tasks/{retrain.pk}/").status_code == 404
+    listed = get(sc, "member", "/api/tasks/").json()
+    rows = listed.get("results", listed) if isinstance(listed, dict) else listed
+    assert "Retrain the night shift" not in json.dumps(rows)
+    # Off, per client: own tasks and the team line only.
+    assert patch(client(sc, "owner"), f"{PLANS}{sc['company'].pk}/",
+                 {"sprint_team_tasks": False}).status_code == 403
+    r = patch(client(sc, "ff"), f"{PLANS}{sc['company'].pk}/", {"sprint_team_tasks": False})
+    assert r.status_code == 200 and r.json()["company"]["sprint_team_tasks"] is False
+    off = get(sc, "member", f"{PLANS}mine/week/").json()
+    assert [t["title"] for t in off["mine"]] == ["Count the bins"]
+    assert off["team"] == [] and off["teammates"] is False
+    assert off["team_lines"] == [{"team": "Operations", "done": 1, "total": 2}]
+    assert patch(client(sc, "ff"), f"{PLANS}practice/", {"sprint_team_tasks": False}) \
+        .status_code == 400
+
+
+def test_only_this_weeks_sprint_shows_teammates_tasks(cascade):
+    sc = cascade
+    last = add(sc, horizon="week", title="Last week's sprint",
+               period_start=(today() - timedelta(days=7)).isoformat()).json()
+    older = task(sc, "Label last week's bins", team="ops", assignee=sc["who"]["colleague"])
+    from apps.plans.models import PlanItemTask
+
+    with tenant_context(sc["tenant"].pk):
+        PlanItemTask.objects.create(tenant=sc["tenant"], item_id=last["id"], task=older)
+    week = get(sc, "member", f"{PLANS}mine/week/").json()
+    assert "Label last week's bins" not in json.dumps(week)
 
 
 # ------------------------------------------------------------------ client-side adding

@@ -501,6 +501,20 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         from apps.tenancy.models import AiCall
 
         assert not AiCall.objects.filter(purpose__startswith="sop_").exists()
+        # P11, 2026-11-13: Marvin's This week has his team's line and his
+        # teammates' sprint tasks, read only.
+        from types import SimpleNamespace
+
+        from apps.plans import read as plan_read
+        from apps.plans.access import PlanAccess
+        from apps.tenancy.models import Membership
+
+        marvin = Membership.objects.select_related("user").get(user__full_name="Marvin Martian")
+        week = plan_read.week(PlanAccess(SimpleNamespace(membership=marvin, user=marvin.user),
+                                         marvin.client_company), timezone.localdate())
+        assert week["team_lines"] and week["team_lines"][0]["total"] > 0
+        teammates = {t["owner"] for t in week["team"] if t.get("read_only")}
+        assert {"Elmer Fudd", "Porky Pig"} <= teammates
         # Bank feeds: the sample connection, two accounts fed, today's lines
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount

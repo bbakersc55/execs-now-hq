@@ -91,8 +91,13 @@ class PlanView(Base):
             return Response({"detail": "The practice sets the plan's fiscal year."},
                             status=403)
         try:
-            services.set_fiscal_start(access.company, request.data.get("fiscal_year_start"),
-                                      actor=request.user)
+            if "fiscal_year_start" in request.data:
+                services.set_fiscal_start(access.company, request.data.get("fiscal_year_start"),
+                                          actor=request.user)
+            if "sprint_team_tasks" in request.data:
+                services.set_sprint_team_tasks(access.company,
+                                               request.data.get("sprint_team_tasks"),
+                                               actor=request.user)
         except services.PlanRefused as exc:
             return _refused(exc)
         return Response(read.plan(access, _today(access.company)))

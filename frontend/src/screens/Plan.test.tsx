@@ -214,6 +214,57 @@ describe("the plan (P11)", () => {
       .toHaveTextContent("Fix the top two bottlenecks");
   });
 
+  it("This week for a team member: the team line and teammates' tasks, read only", async () => {
+    const week: WeekPayload = { company: { id: "c1", name: "Acme Fasteners" },
+      name: "This week's sprint", period_start: "2026-11-09", period_label: "Week of November 9",
+      sprint: { id: "w1", title: "Every order picked right", done_means: "", status: "on_track",
+        status_label: "On track", owner: null, may_edit: false },
+      mine: [{ id: "t1", title: "Count the bins", status: "in_progress", status_label: "In progress",
+        done: false, due_date: null, owner: "", client_owner: "Marvin Martian", team: "",
+        team_id: null, project: "" }],
+      team: [{ title: "Run second shift's changeover", owner: "Elmer Fudd", status: "done",
+        status_label: "Done", done: true, read_only: true }],
+      team_lines: [{ team: "Everyone", done: 7, total: 12 }], teammates: true,
+      others: [], serves: [], done: 1, total: 1, access: STAFF_ACCESS };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/plans/mine/week/": week }));
+    renderRoute(<ThisWeekScreen />, { path: "/plan/week", route: "/plan/week" });
+    const team = await screen.findByRole("region", { name: "Your team's tasks" });
+    expect(team).toHaveTextContent("Team: 7 of 12 done");
+    expect(team).toHaveTextContent("Run second shift's changeover · Done · Elmer Fudd");
+    // Read only: nothing in it to open.
+    expect(within(team).queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("This week with the switch off: the team line, and a word on why no tasks", async () => {
+    const week: WeekPayload = { company: { id: "c1", name: "Acme Fasteners" },
+      name: "This week's sprint", period_start: "2026-11-09", period_label: "Week of November 9",
+      sprint: { id: "w1", title: "Every order picked right", done_means: "", status: "on_track",
+        status_label: "On track", owner: null, may_edit: false },
+      mine: [], team: [], team_lines: [{ team: "Everyone", done: 3, total: 9 }], teammates: false,
+      others: [], serves: [], done: 0, total: 0, access: STAFF_ACCESS };
+    vi.stubGlobal("fetch", mockApi({ "GET /api/plans/mine/week/": week }));
+    renderRoute(<ThisWeekScreen />, { path: "/plan/week", route: "/plan/week" });
+    const team = await screen.findByRole("region", { name: "Your team's tasks" });
+    expect(team).toHaveTextContent("Team: 3 of 9 done");
+    expect(team).toHaveTextContent("Your teammates' tasks aren't shown here.");
+  });
+
+  it("the practice switches teammates' sprint tasks per client", async () => {
+    const user = userEvent.setup();
+    const plan = staffPlan();
+    const fetchMock = mockApi({ "GET /api/plans/c1/": plan,
+      "PATCH /api/plans/c1/": () => ({ status: 200, body: plan }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<PlanScreen me={aMe({ role: "FF" })} />, route);
+    const box = await screen.findByLabelText("Team members see teammates' sprint tasks");
+    expect(box).toBeChecked();
+    await user.click(box);
+    await waitFor(() => {
+      const call = fetchMock.calls.find((c) => c.method === "PATCH");
+      expect(call?.body).toEqual({ sprint_team_tasks: false });
+    });
+  });
+
   it("Settings → Wording names the five horizons, saved with the words", async () => {
     const user = userEvent.setup();
     const defaults = { goal: { singular: "goal", plural: "goals" },

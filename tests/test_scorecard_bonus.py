@@ -868,3 +868,100 @@ def test_a_refused_row_says_which_row_it_is(sc, part, rows, index):
     r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", form_body(sc, **over))
     assert r.status_code == 400
     assert (r.json()["field"], r.json()["row"]) == (part, index), r.content
+
+
+# ------------------------------------------------------------------ private everywhere (2026-11-13)
+
+def test_a_team_member_sees_no_one_elses_bonus_anywhere(sc, closed_month):
+    """A team member sees their own bonus and nobody else's amount, plan or
+    payout: not on any screen's payload, not in a task, a plan or a digest,
+    and not through the API or an AI app (MCP)."""
+    from types import SimpleNamespace
+
+    from apps.aiconnect import tools as T
+    from apps.centers.models import PracticeCenter
+    from apps.work import digests
+    from apps.work.models import Cadence
+
+    from .factories import ContactFactory
+
+    today = timezone.localdate()
+    PracticeCenter.all_objects.create(tenant=sc["tenant"], center="operations",
+                                      enabled_at=timezone.now())
+    with tenant_context(sc["tenant"].pk):
+        bonus.close(closed_month, sc["practice"]["ff"].user, today)
+        theirs = {r.membership_id: r for r in BonusResult.objects.filter(plan=closed_month)}
+    # A plan the member isn't on, with an amount and a name found nowhere else.
+    secret = make_plan(sc, month_start(today), people=("colleague", "manager"), amount=9137,
+                       name="Retention award for two")
+    member = sc["who"]["member"]
+    as_member = sc["api"].as_(member)
+    company = sc["company"].pk
+    pages = [f"{B}?company={company}", f"{B}?company={company}&view=team",
+             f"{B}?company={company}&view=all", f"/api/scorecard/?company={company}",
+             "/api/plans/mine/", "/api/plans/mine/week/", "/api/tasks/", "/api/goals/",
+             "/api/notices/", "/api/me", "/api/sops/", "/api/tool-runs/?company=mine"]
+    seen, codes = {}, {}
+    for path in pages:
+        r = as_member.get(path)
+        codes[path] = r.status_code
+        seen[path] = r.content.decode() if r.status_code == 200 else ""
+    # The sweep reads real pages, not refusals.
+    for path in (f"{B}?company={company}", f"/api/scorecard/?company={company}",
+                 "/api/plans/mine/", "/api/plans/mine/week/", "/api/tasks/", "/api/me"):
+        assert codes[path] == 200, (path, codes[path])
+    # Their own bonus is there; nobody else's row, plan or payout is.
+    mine = json.loads(seen[f"{B}?company={company}"])
+    assert mine["views"] == ["mine"] and mine["me"]["name"] == "Mia Member"
+    for view in ("team", "all"):
+        assert json.loads(seen[f"{B}?company={company}&view={view}"])["view"] is None
+    everything = "\n".join(seen.values())
+    assert "Retention award for two" not in everything and "9137" not in everything
+    bonus_payloads = seen[f"{B}?company={company}"] + seen[f"{B}?company={company}&view=team"] \
+        + seen[f"{B}?company={company}&view=all"]
+    for who in ("colleague", "manager", "sales_member"):
+        row = theirs[sc["who"][who].pk]
+        assert sc["who"][who].user.full_name not in bonus_payloads
+        assert f'"earned": {float(row.earned)}' not in bonus_payloads or \
+            float(row.earned) == float(theirs[member.pk].earned)
+    # The plan they aren't on, the editor of the one they are, the payroll: 404.
+    assert as_member.get(f"{B}plans/{secret.pk}/").status_code == 404
+    assert as_member.get(f"{B}plans/{closed_month.pk}/").status_code == 404
+    key = f"monthly:{closed_month.period_start.isoformat()}"
+    assert as_member.get(f"{B}payroll/?company={company}&period={key}").status_code == 404
+    assert as_member.get(f"{B}?company={company}&view=mine&plan={secret.pk}").status_code == 404
+    # An AI app connected by the member: no tool carries a bonus.
+    p = T.Principal(connection=SimpleNamespace(membership=member, user=member.user,
+                                               app_name="Claude"))
+    ran, refused = [], {}
+    with tenant_context(sc["tenant"].pk):
+        for tool in T.READ_TOOLS:
+            code = tool.__code__
+            params = code.co_varnames[1:code.co_argcount]
+            required = params[:len(params) - len(tool.__defaults__ or ())]
+            if set(required) - {"company_id"}:
+                continue                       # needs an id of something else
+            tries = [{"company_id": str(company)}] if "company_id" in params else []
+            if "company_id" not in required:
+                tries.append({})
+            for args in tries:
+                try:
+                    out = json.dumps(tool(p, **args), default=str)
+                except T.ToolRefused as exc:  # a refusal shows nothing
+                    refused[tool.__name__] = str(exc)
+                    continue
+                assert "Retention award" not in out and "Floor bonus" not in out, tool.__name__
+                assert "9137" not in out, tool.__name__
+                ran.append(tool.__name__)
+    assert {"scorecard_readings", "list_tasks", "list_goals", "list_sops"} <= set(ran), \
+        (ran, refused)
+    # The weekly digest drafted to them says nothing of bonuses.
+    with tenant_context(sc["tenant"].pk):
+        member.contact = ContactFactory(tenant=sc["tenant"], company=sc["company"])
+        member.save(update_fields=["contact"])
+        draft = SimpleNamespace(tenant=sc["tenant"], contact=member.contact,
+                                cadence=Cadence.WEEKLY, pk=None, created_at=timezone.now(),
+                                period_start=today - timedelta(days=7), period_end=today)
+        text, html = digests.render(draft, [])
+    for words in ("bonus", "Bonus", "Floor bonus", "Retention award", "9137"):
+        assert words not in text and words not in html

@@ -145,6 +145,16 @@ every plan route is 404 and the menus show nothing.
   - the sprint goal and tasks done of total;
   - the person's own tasks: theirs as client owner, or assigned to them;
   - their team's tasks;
+  - **(decided 2026-11-13)** for each team they are on, a team line,
+    "Team: 7 of 12 done", counted over this week's sprint tasks on that team;
+  - **(decided 2026-11-13)** their teammates' tasks in this week's sprint:
+    title, who has it, and status, read only, with nothing to open.
+    - Only the current sprint, and only for the teams the person is on.
+    - A per-client switch on the Plan page, **"Team members see teammates'
+      sprint tasks"** (on by default), turns this off. Off, a member sees
+      their own tasks and the team line only.
+    - The Tasks area keeps its rule: a team member opens only their own
+      tasks there.
   - what the week serves, as far up as they may see.
 - **Adding from the client side** follows Work's own levels.
   - Someone who may create tasks in Work may add to the month and week, and
@@ -178,6 +188,8 @@ every plan route is 404 and the menus show nothing.
   - `plan_close`: one per company, horizon and period, with each outcome and
     the summary.
 - **`crm 0058`:** `company.fiscal_year_start`, default 1.
+- **`crm 0060`** (2026-11-13): `company.sprint_team_tasks`, default on: the
+  per-client switch for teammates' sprint tasks in This week.
 - **`centers 0003`:** two library kinds (choices only, no SQL).
 - **Words:** the horizon names live in `tenant.work_words["horizons"]`, only
   where changed. No migration.
@@ -190,8 +202,9 @@ every plan route is 404 and the menus show nothing.
    to the first.
 3. **A member's This week shows their team's sprint tasks only where Work
    already shows them,** which for a member is their own (P7-5). Managers
-   and above see the team's. Say if members should see their teammates'
-   sprint tasks.
+   and above see the team's. *Superseded 2026-11-13 (Bryan):* members now
+   also see a team line and their teammates' sprint tasks, read only, unless
+   the client's switch is off (above). The Tasks area is unchanged.
 4. **Viewers see the month and the week** (read only), like members.
 5. **Client adding at the month and week = may create tasks in Work.**
    Clients don't close periods.

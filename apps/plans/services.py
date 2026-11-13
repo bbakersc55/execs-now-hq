@@ -415,6 +415,20 @@ def set_fiscal_start(company, month, *, actor):
     return company
 
 
+def set_sprint_team_tasks(company, on, *, actor):
+    """"Team members see teammates' sprint tasks", per client (on unless
+    turned off). The practice's own row has no portal, so no switch."""
+    if company.is_practice:
+        raise PlanRefused("The practice's own plan has no portal.", field="sprint_team_tasks")
+    if not isinstance(on, bool):
+        raise PlanRefused("It is on or off.", field="sprint_team_tasks")
+    if company.sprint_team_tasks != on:
+        type(company).all_objects.filter(pk=company.pk).update(sprint_team_tasks=on)
+        company.sprint_team_tasks = on
+        _audit(company, actor, "plan.team_tasks_switched", on=on)
+    return company
+
+
 # ------------------------------------------------------------------ closing a period
 
 CLOSABLE = (Horizon.WEEK, Horizon.MONTH, Horizon.QUARTER)

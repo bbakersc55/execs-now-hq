@@ -189,11 +189,10 @@ def test_audience_by_team_and_by_person(on):
     publish(sc, sop["id"], change_note="Sales does this now")
     assert get(sc, "sales_member", url).status_code == 200
     assert get(sc, "member", url).status_code == 404
-    with tenant_context(sc["tenant"].pk):
-        from apps.tenancy.models import Membership
-
-        me = client(sc, "sales_member").get("/api/auth/me/")
-    assert me.status_code in (200, 404)
+    # The portal's menu shows SOPs only to someone something is published to.
+    assert get(sc, "sales_member", "/api/me").json()["has_sops"] is True
+    assert get(sc, "member", "/api/me").json()["has_sops"] is False
+    assert get(sc, "owner", "/api/me").json()["has_sops"] is True
 
 
 def test_remind_drafts_into_the_sending_queue_once(published):

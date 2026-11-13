@@ -7,7 +7,8 @@ import { Banner, Empty, Pill } from "../components/ui";
 import { api, Me } from "../lib/api";
 import {
   about, CloseWalk, HorizonKey, MONTH_NAMES, PLAN_STATUSES, PlanChoices, PlanColumn, PlanItemRow,
-  PlanKpi, PlanPayload, PlansIndex, PlanStatus, PlanTask, SourcesPayload, WeekPayload,
+  PlanKpi, PlanPayload, PlansIndex, PlanStatus, PlanTask, SourcesPayload, TeammateTask,
+  WeekPayload,
 } from "../lib/plans";
 import { useWords } from "../lib/words";
 
@@ -99,6 +100,10 @@ function FiscalLine({ d, planKey: key }: { d: PlanPayload; planKey: string }) {
     mutationFn: (month: number) => api.patch(`/api/plans/${key}/`, { fiscal_year_start: month }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["plan", key] }),
   });
+  const teamTasks = useMutation({
+    mutationFn: (on: boolean) => api.patch(`/api/plans/${key}/`, { sprint_team_tasks: on }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["plan", key] }),
+  });
   const month = MONTH_NAMES[d.company.fiscal_year_start - 1];
   return (
     <span className="pl-fiscal">
@@ -112,6 +117,12 @@ function FiscalLine({ d, planKey: key }: { d: PlanPayload; planKey: string }) {
           </select>.</span>
       ) : <>The fiscal year starts in {month}.</>}
       {d.access.edits && <> · <Link to="/settings/branding#plan-horizons">Rename the horizons</Link></>}
+      {d.access.edits && !d.company.is_practice && (
+        <> · <label className="pl-inline-check">
+          <input type="checkbox" checked={d.company.sprint_team_tasks !== false}
+            onChange={(e) => teamTasks.mutate(e.target.checked)} />
+          {" "}Team members see teammates' sprint tasks</label></>
+      )}
     </span>
   );
 }
@@ -299,7 +310,16 @@ function ItemCard({ item, d, planKey: key, me, onBreakDown }: {
   );
 }
 
-function TaskLine({ t }: { t: PlanTask }) {
+function TaskLine({ t }: { t: PlanTask | TeammateTask }) {
+  if ("read_only" in t) {
+    // A teammate's task: title, who has it, status. Read only.
+    return (
+      <li className={t.done ? "pl-task done" : "pl-task"}>
+        <span aria-hidden="true">{t.done ? "✓" : "○"}</span> {t.title}
+        <span className="muted small"> · {t.status_label}{t.owner ? ` · ${t.owner}` : ""}</span>
+      </li>
+    );
+  }
   return (
     <li className={t.done ? "pl-task done" : "pl-task"}>
       <span aria-hidden="true">{t.done ? "✓" : "○"}</span> {t.title}
@@ -611,11 +631,17 @@ export function ThisWeekScreen() {
   if (q.isError) return <Banner kind="bad">{(q.error as Error).message}</Banner>;
   const d = q.data;
   if (!d) return <p>Loading…</p>;
-  const list = (title: string, tasks: PlanTask[], empty: string) => (
+  const list = (title: string, tasks: (PlanTask | TeammateTask)[], empty: string,
+    lines?: { team: string; done: number; total: number }[]) => (
     <section className="pl-week-list" aria-label={title}>
       <h3>{title}</h3>
+      {(lines ?? []).map((l) => (
+        <p key={l.team} className="pl-team-line">
+          {(lines ?? []).length > 1 ? `${l.team} · ` : ""}Team: {l.done} of {l.total} done
+        </p>
+      ))}
       {tasks.length === 0 ? <p className="small muted">{empty}</p>
-        : <ul>{tasks.map((t) => <TaskLine key={t.id} t={t} />)}</ul>}
+        : <ul>{tasks.map((t, i) => <TaskLine key={"id" in t ? t.id : `team-${i}`} t={t} />)}</ul>}
     </section>
   );
   return (
@@ -639,7 +665,9 @@ export function ThisWeekScreen() {
           )}
           <div className="pl-week-cols">
             {list(`Your ${w.tasks}`, d.mine, `None of the sprint's ${w.tasks} are yours.`)}
-            {list(`Your team's ${w.tasks}`, d.team, `Nothing else for your team this week.`)}
+            {list(`Your team's ${w.tasks}`, d.team, d.teammates === false
+              ? `Your teammates' ${w.tasks} aren't shown here.` : `Nothing else for your team this week.`,
+            d.team_lines)}
             {d.others.length > 0 && list(`Everyone else's ${w.tasks}`, d.others, "")}
           </div>
           <p className="small"><Link to="/plan">See the whole plan</Link></p>

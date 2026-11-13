@@ -64,6 +64,10 @@ class Company(TenantScopedModel):
                                   on_delete=models.SET_NULL, related_name="+")
     #: The month its fiscal year starts (P11): the plan's year and quarters
     #: follow it. January unless set.
+    #: P11 (2026-11-13): in the portal's This week, a team member also sees
+    #: their teammates' tasks in the current sprint (title, owner, status),
+    #: read only. Off: their own tasks and the team line only.
+    sprint_team_tasks = models.BooleanField(default=True, db_default=True)
     fiscal_year_start = models.PositiveSmallIntegerField(default=1, db_default=1)
 
     class Meta(TenantScopedModel.Meta):

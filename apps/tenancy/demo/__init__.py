@@ -226,6 +226,10 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .sops import sops as sop_seed
 
         sop_seed(world)
+        # P11, 2026-11-13: Marvin's teammates have part of this week's sprint.
+        from .plans import team_week
+
+        team_week(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the

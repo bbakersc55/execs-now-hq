@@ -186,6 +186,7 @@ def acme(world) -> dict:
         open_ones = {str(t.pk): "carried" for t in last_tasks if t.status != Task.Status.DONE}
         closed = services.close(company, "week", last, open_ones, actor=owner) \
             if last_tasks else None
+    world.acme_sprint = sprint
     return {"acme plan items": PlanItem.objects.filter(company=company).count(),
             "acme sprint tasks": len(this_tasks) + 1 + len(open_ones if last_tasks else {}),
             "acme last week": closed.summary if closed else ""}
@@ -227,3 +228,41 @@ def summit(world) -> dict:
 
 def plans(world) -> dict:
     return {**acme(world), **summit(world)}
+
+
+def team_week(world) -> dict:
+    """Two of this week's sprint tasks with Marvin's teammates on the floor,
+    once the SOP studio's seed has put them in the portal (P11, 2026-11-13):
+    his This week shows "Team: n of m done" and their tasks, read only."""
+    from apps.crm.models import Task
+    from apps.tenancy.models import Membership
+    from apps.work import services as work
+
+    from .clock import at, moment
+
+    company = world.companies[ACME]
+    sprint = getattr(world, "acme_sprint", None)
+    if sprint is None:
+        return {}
+    crew = {m.user.full_name: m for m in Membership.objects.filter(
+        client_company=company, role="ECC", revoked_at__isnull=True).select_related(
+        "user", "contact")}
+    week = sprint.period_start
+    made = []
+    for name, title, status, day in (
+            ("Elmer Fudd", "Run second shift's changeover to the new SOP", Task.Status.DONE, 1),
+            ("Porky Pig", "Check first pieces against the new wear gauge",
+             Task.Status.IN_PROGRESS, 3)):
+        member = crew.get(name)
+        if member is None:
+            continue
+        with at(moment(week, 9, 40)):
+            task = work.create_task(
+                tenant=world.tenant, actor=world.owner, role="FF", title=title,
+                client_company=company, owner=world.owner, assignee=member.user,
+                client_owner_contact=member.contact, due_date=week + timedelta(days=day))
+        if status != Task.Status.NOT_STARTED:
+            Task.objects.filter(pk=task.pk).update(status=status)
+        _link(sprint, tasks=[task])
+        made.append(title)
+    return {"acme teammates' sprint tasks": len(made)}

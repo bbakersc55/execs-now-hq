@@ -22,6 +22,12 @@ export interface PlanTask {
   team_id: string | null; project: string;
 }
 
+/** A teammate's sprint task in This week: read only, nothing to open. */
+export interface TeammateTask {
+  title: string; owner: string; status: string; status_label: string; done: boolean;
+  read_only: true;
+}
+
 export interface PlanKpi {
   id: string; name: string; value_text: string; target_text: string;
   status: "on_track" | "behind" | "off_track" | null; status_label: string; period: string;
@@ -69,7 +75,7 @@ export interface PlanChoices {
 
 export interface PlanPayload {
   company: { id: string; name: string; is_practice: boolean; fiscal_year_start: number;
-    week_start: string };
+    week_start: string; sprint_team_tasks?: boolean };
   today: string; access: PlanAccess; horizons: PlanColumn[]; choices: PlanChoices | null;
 }
 
@@ -78,7 +84,11 @@ export interface WeekPayload {
   period_label: string;
   sprint: { id: string; title: string; done_means: string; status: PlanStatus;
     status_label: string; owner: { id: string; name: string } | null; may_edit: boolean } | null;
-  mine: PlanTask[]; team: PlanTask[]; others: PlanTask[];
+  mine: PlanTask[]; team: (PlanTask | TeammateTask)[]; others: PlanTask[];
+  /** P11, 2026-11-13: each of the person's teams, the sprint's tasks on it. */
+  team_lines?: { team: string; done: number; total: number }[];
+  /** Whether this company shows teammates' sprint tasks. */
+  teammates?: boolean;
   serves: { id: string; title: string; horizon: HorizonKey; name: string;
     status_label: string }[];
   done?: number; total?: number; access: PlanAccess;
