@@ -62,7 +62,8 @@ export function PayLink() {
               card account is a test account, so no real money moves.</p>
           )}
           <NmiCardForm publicKey={data.public_key} amountCents={data.amount_due_cents}
-            payPath={path} onDone={finished} form={data.card_form} />
+            payPath={path} onDone={finished} form={data.card_form}
+            failurePath={`${path}/form-failed`} />
         </Card>
       ) : data.notice && !outcome ? <Banner kind="warn">{data.notice}</Banner> : null}
     </main>

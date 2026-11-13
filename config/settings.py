@@ -359,6 +359,17 @@ NMI_API_HOST = env("NMI_API_HOST", default="secure.nmi.com").strip().lower()
 if NMI_API_HOST not in ("secure.nmi.com", "secure.vaultixpay.com"):
     raise RuntimeError(f"NMI_API_HOST must be secure.nmi.com or secure.vaultixpay.com, "
                        f"not {NMI_API_HOST!r}.")
+# Laptop only (2026-11-13): a sandbox account's card form from Collect.js on
+# this host instead of NMI's Payment Component, so the real pages can be
+# proved with the form a live Vaultix account gets. Empty is the Payment
+# Component, as always. Refused anywhere but a localhost server.
+NMI_SANDBOX_CARD_FORM_HOST = env("NMI_SANDBOX_CARD_FORM_HOST", default="").strip().lower()
+if NMI_SANDBOX_CARD_FORM_HOST and NMI_SANDBOX_CARD_FORM_HOST not in (
+        "secure.nmi.com", "secure.vaultixpay.com"):
+    raise RuntimeError("NMI_SANDBOX_CARD_FORM_HOST must be empty, secure.nmi.com or "
+                       f"secure.vaultixpay.com, not {NMI_SANDBOX_CARD_FORM_HOST!r}.")
+if NMI_SANDBOX_CARD_FORM_HOST and not IS_LOCAL:
+    raise RuntimeError("NMI_SANDBOX_CARD_FORM_HOST is for proofs on the laptop only.")
 # Nothing reaches NMI unless this is true. Off, every charge, refund and
 # connection test goes to the stub gateway. The test suite never turns it on.
 NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)

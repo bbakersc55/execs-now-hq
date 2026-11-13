@@ -18,7 +18,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.ratelimit import client_ip
+from apps.accounts.ratelimit import RateLimit, client_ip, too_many
 from apps.billing import money, readback, services
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, NmiEvent,
@@ -634,6 +634,25 @@ def _uuid(value) -> bool:
     return True
 
 
+#: A card form that would not load, reported by a signed-in payer
+#: (2026-11-13): twenty reports an hour per person.
+_FORM_FAILED = RateLimit(limit=20, window_seconds=3600, prefix="card-form-failed")
+
+
+def _form_failed(request, **where):
+    """Record it, tell whoever can fix it, and answer the sentence to show."""
+    from apps.billing import form_failures
+
+    if too_many(_FORM_FAILED, str(request.user.pk)):
+        return Response({"detail": "Too many reports. Please wait a few minutes."},
+                        status=429)
+    data = request.data if isinstance(request.data, dict) else {}
+    message = form_failures.report(
+        request.tenant, form=data.get("form", ""), host=data.get("host", ""),
+        reason=data.get("reason", ""), actor=request.user, **where)
+    return Response({"message": message})
+
+
 class PortalInvoiceViewSet(viewsets.ViewSet):
     """Matrix 13.4a, the client columns: a client owner and a client team
     member see their own company's invoices, as sent. Never a draft, never one
@@ -711,6 +730,14 @@ class PortalInvoiceViewSet(viewsets.ViewSet):
         return Response({"status": attempt.status, "message": message,
                          "balance_cents": invoice.balance_cents,
                          "invoice_status": invoice.status})
+
+    @action(detail=True, methods=["post"], url_path="form-failed")
+    def form_failed(self, request, pk=None):
+        """The card form for this invoice would not load (2026-11-13)."""
+        invoice = self.invoices().filter(pk=pk).first()
+        if invoice is None:
+            raise Http404
+        return _form_failed(request, where="portal", invoice=invoice)
 
 
 class PaymentAccountView(viewsets.ViewSet):
@@ -808,6 +835,11 @@ class PortalAutopayView(viewsets.ViewSet):
 
         return self._do(lambda company: autopay.revoke(company, user=request.user))
 
+    @action(detail=False, methods=["post"], url_path="form-failed")
+    def form_failed(self, request):
+        """The card form for saving a card would not load (2026-11-13)."""
+        return _form_failed(request, where="autopay", company=self.company())
+
 
 class SubscriptionView(viewsets.ViewSet):
     """Settings → Billing, "Your subscription" (P4 part 5): the practice
@@ -845,6 +877,12 @@ class SubscriptionView(viewsets.ViewSet):
 
         return self._do(request, lambda: subscriptions.pay_now(request.tenant,
                                                                 user=request.user)[1])
+
+    @action(detail=False, methods=["post"], url_path="form-failed")
+    def form_failed(self, request):
+        """The subscription's card form would not load (2026-11-13): the
+        platform owner is told, since the form is the platform's."""
+        return _form_failed(request, where="subscription")
 
     @action(detail=True, methods=["get"])
     def pdf(self, request, pk=None):

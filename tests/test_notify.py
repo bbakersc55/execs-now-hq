@@ -93,7 +93,8 @@ def test_turning_it_on_makes_one_subscription_per_browser_with_every_kind(world,
     assert state["browsers"] == 1 and state["refusal"] == ""
     # The practice owner's own: a bank connection that needs them.
     assert {k["key"] for k in state["kinds"] if k["on"]} == {"notice", "client_message", "document",
-                                                             "reading", "mention", "bank", "sop"}
+                                                             "reading", "mention", "bank", "sop",
+                                                             "payments"}
     # The same browser again, even signed in as someone else: still one, now theirs.
     subscribe(api, who["ff"])
     subscribe(api, who["va"])

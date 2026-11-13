@@ -84,6 +84,31 @@ def pay_page(request, token: str):
                              "invoice_status": invoice.status})
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def pay_form_failed(request, token: str):
+    """The card form would not load on this pay page (2026-11-13): the
+    practice owner is told, and the payer gets the sentence to show. Counted
+    against the link and the address like a view."""
+    from apps.billing import form_failures
+
+    if _limited(request, token):
+        return JsonResponse(SLOW_DOWN, status=429)
+    invoice = pay_links.invoice_for(token)
+    if invoice is None:
+        return JsonResponse(NOT_FOUND, status=404)
+    try:
+        body = json.loads(request.body or "{}")
+    except ValueError:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    with tenant_context(invoice.tenant_id):
+        message = form_failures.report(
+            invoice.tenant, where=form_failures.LINK, form=body.get("form", ""),
+            host=body.get("host", ""), reason=body.get("reason", ""), invoice=invoice)
+    return JsonResponse({"message": message})
+
+
 @require_http_methods(["GET"])
 def pay_pdf(request, token: str):
     from apps.billing.views import pdf_response

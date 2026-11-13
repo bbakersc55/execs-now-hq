@@ -79,6 +79,7 @@ export function YourSubscription() {
       {adding && s.public_key && !s.paused && (
         <NmiCardForm publicKey={s.public_key} amountCents={0} payPath={ROOT + "card/"}
           buttonText="Save this card" onDone={() => undefined} form={s.card_form}
+          failurePath={ROOT + "form-failed/"}
           onToken={async (token) => {
             try {
               settle(await api.post<SubscriptionState>(ROOT + "card/",

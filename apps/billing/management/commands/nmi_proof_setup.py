@@ -190,6 +190,11 @@ class Command(BaseCommand):
         tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
         with tenant_context(tenant.pk):
             row = subscriptions.subscription_for(tenant)
+            # A different amount each run, as the invoices above have: NMI
+            # refuses the same card for the same amount again within its
+            # duplicate window, which stopped a second run (2026-11-13).
+            row.amount_override_cents = 2000 + timezone.now().microsecond % 3000
+            row.save(update_fields=["amount_override_cents", "updated_at"])
             day = row.first_charge_on
             before = subscriptions.run(tenant, today=day - timedelta(days=1))
             ran = subscriptions.run(tenant, today=day)

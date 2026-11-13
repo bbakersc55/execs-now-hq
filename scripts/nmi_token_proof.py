@@ -7,6 +7,24 @@
     .venv/bin/python scripts/nmi_token_proof.py --subscription  # practice subscription (part 5)
     .venv/bin/python scripts/nmi_token_proof.py --collect secure.nmi.com         # Collect.js
     .venv/bin/python scripts/nmi_token_proof.py --collect secure.vaultixpay.com  # its host
+    .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.nmi.com         # the real
+    .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.vaultixpay.com  # pay page
+
+**--link-collect HOST** (2026-11-13) is --link with the card form a live
+white-label account gets: the real pay page, built from this tree, loads
+Collect.js from HOST with the page's own configuration
+(`NMI_SANDBOX_CARD_FORM_HOST`, laptop only). On secure.nmi.com the sandbox
+key works there, so it goes all the way: NMI's test card typed into
+Collect.js's frames, a real token, a real sandbox sale, the Paid page, the
+receipt and the payment on the invoice. On secure.vaultixpay.com the sandbox
+key is unknown, so it shows how far the page gets: Collect.js loaded, the
+configuration accepted (no "too many fields"), what the host's token API
+answered, and that the page then tells the payer and the practice owner. It
+never types a card there. Every console message and page error is printed.
+
+**--form-host HOST** with --portal, --autopay or --subscription runs that
+proof with Collect.js from HOST in place of the Payment Component; the
+result says which form each card was typed into.
 
 **--collect HOST** (2026-11-10) is the gateway proof with Collect.js loaded
 from HOST (one of `gateway.API_HOSTS`) instead of NMI's Payment Component:
@@ -107,6 +125,22 @@ def start_server(env_extra=None):
     sys.exit("The server did not answer on /healthz.")
 
 
+#: Which card form each card was typed into (2026-11-13): True for Collect.js.
+FORMS_SEEN: list[bool] = []
+
+
+def build_frontend() -> None:
+    """This tree's frontend, built and collected into STATIC_ROOT as
+    production's build does: the server reads index.html from STATIC_ROOT
+    first, so a build left there earlier would otherwise be served."""
+    print("Building the frontend…", file=sys.stderr)
+    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
+                           capture_output=True, text=True)
+    if built.returncode != 0:
+        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    manage("collectstatic", "--noinput", "--clear")
+
+
 def fill_card(page, button=re.compile(r"^Pay$")):
     """Type the test card into NMI's frames, waiting for them to settle: the
     component re-renders its frames a few times while it loads."""
@@ -129,6 +163,8 @@ def fill_card(page, button=re.compile(r"^Pay$")):
         else:
             raise RuntimeError(f"NMI's {selector} field never appeared.")
     page.wait_for_timeout(1000)
+    FORMS_SEEN.append(page.evaluate(
+        "() => !!document.querySelector('script[src$=\"/token/Collect.js\"]')"))
     page.get_by_role("button", name=button).click(timeout=60000)
 
 
@@ -299,11 +335,7 @@ print(json.dumps({
 def autopay_proof() -> dict:
     from playwright.sync_api import sync_playwright
 
-    print("Building the frontend…", file=sys.stderr)
-    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
-                           capture_output=True, text=True)
-    if built.returncode != 0:
-        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    build_frontend()
     fresh_proof_db()
     setup = json.loads(manage("nmi_proof_setup", env_extra=PROOF_ENV).strip().splitlines()[-1])
     server = start_server(PROOF_ENV)
@@ -397,11 +429,7 @@ print(json.dumps({
 def subscription_proof() -> dict:
     from playwright.sync_api import sync_playwright
 
-    print("Building the frontend…", file=sys.stderr)
-    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
-                           capture_output=True, text=True)
-    if built.returncode != 0:
-        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    build_frontend()
     subprocess.run(["dropdb", "--if-exists", PROOF_DB], check=True)
     subprocess.run(["createdb", PROOF_DB], check=True)
     print("Migrating the proof database…", file=sys.stderr)
@@ -504,11 +532,7 @@ def fresh_proof_db() -> None:
 def portal(by_link=False) -> dict:
     from playwright.sync_api import sync_playwright
 
-    print("Building the frontend…", file=sys.stderr)
-    built = subprocess.run(["npm", "run", "build"], cwd=ROOT / "frontend",
-                           capture_output=True, text=True)
-    if built.returncode != 0:
-        sys.exit("The frontend build failed:\n" + built.stdout[-3000:] + built.stderr[-3000:])
+    build_frontend()
     fresh_proof_db()
     setup = json.loads(manage("nmi_proof_setup", *(["--contact"] if by_link else []),
                               env_extra=PROOF_ENV).strip().splitlines()[-1])
@@ -550,8 +574,200 @@ def portal(by_link=False) -> dict:
     return result
 
 
+def _watch(page) -> dict:
+    """Every console message, page error and request to a gateway host."""
+    seen = {"console": [], "page_errors": [], "gateway": []}
+    page.on("console", lambda m: seen["console"].append(f"{m.type}: {m.text[:300]}"))
+    page.on("pageerror", lambda e: seen["page_errors"].append(str(e)[:300]))
+    page.on("response", lambda r: seen["gateway"].append(
+        f"{r.status} {r.url.split('?')[0]}") if any(
+            h in r.url for h in ("secure.nmi.com", "secure.vaultixpay.com")) else None)
+    return seen
+
+
+def _form_facts(page) -> dict:
+    """What the page's card form is, as the browser has it."""
+    return page.evaluate("""() => {
+      const tag = document.querySelector('script[src$="/token/Collect.js"]');
+      const boxes = [...document.querySelectorAll('[id^="cj-"]')];
+      return {
+        script: tag ? tag.getAttribute('src') : null,
+        script_attributes: tag ? tag.getAttributeNames().sort() : [],
+        collectjs_defined: !!window.CollectJS,
+        payment_component: !!document.querySelector('nmi-pay-widget, nmi-payments'),
+        field_frames: boxes.map((b) => ({ box: b.id.replace(/-\\d+$/, ''),
+          frames: [...b.querySelectorAll('iframe')].map((f) => (f.getAttribute('src') || '')
+            .split('?')[0]) })),
+        pay_button_enabled: [...document.querySelectorAll('button')]
+          .some((b) => /^Pay \\$/.test(b.textContent) && !b.disabled),
+        alert: (document.querySelector('[role="alert"]') || {}).textContent || '',
+      };
+    }""")
+
+
+FAILURE_READ = """
+import json
+from apps.notify.models import Notice
+from apps.tenancy.models import AuditEvent
+print(json.dumps({
+  "notices": list(Notice.all_objects.filter(kind="payments").values_list("title", "text", "url")),
+  "audit": [e.payload for e in AuditEvent.all_objects.filter(verb="billing.card_form_failed")]}))
+"""
+
+
+MAIL_SMTP, MAIL_API = 1125, 8126
+
+
+def start_mailpit():
+    """The project's dev mail catcher (docs/05_dev_environment.md) on its
+    own ports for this run, so the receipt really goes out and can be read
+    back. None when mailpit is not installed."""
+    import shutil
+
+    found = shutil.which("mailpit")
+    if not found:
+        return None
+    proc = subprocess.Popen([found, "--smtp", f"127.0.0.1:{MAIL_SMTP}",
+                             "--listen", f"127.0.0.1:{MAIL_API}"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(40):
+        if proc.poll() is not None:
+            sys.exit(f"mailpit could not start: is something else on {MAIL_SMTP} or {MAIL_API}?")
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{MAIL_API}/api/v1/messages", timeout=2)
+            time.sleep(0.5)
+            if proc.poll() is None:          # it is this run's, not one shutting down
+                return proc
+        except Exception:
+            time.sleep(0.25)
+    proc.terminate()
+    return None
+
+
+def caught_mail() -> list:
+    with urllib.request.urlopen(f"http://127.0.0.1:{MAIL_API}/api/v1/messages",
+                                timeout=10) as answer:
+        data = json.loads(answer.read())
+    return [{"subject": m.get("Subject", ""),
+             "to": [t.get("Address", "") for t in m.get("To") or []]}
+            for m in data.get("messages", [])]
+
+
+def link_collect(host) -> dict:
+    """The real pay page with Collect.js from `host` (see the docstring)."""
+    from playwright.sync_api import sync_playwright
+
+    build_frontend()
+    fresh_proof_db()
+    env = {**PROOF_ENV, "NMI_SANDBOX_CARD_FORM_HOST": host}
+    setup = json.loads(manage("nmi_proof_setup", "--contact", env_extra=env)
+                       .strip().splitlines()[-1])
+    result = {"host": host}
+    server = start_server(env)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            page = browser.new_page()
+            seen = _watch(page)
+            page.goto(BASE + setup["pay_path"], wait_until="domcontentloaded", timeout=90000)
+            page.get_by_role("heading", name=f"Invoice {setup['number']}").wait_for(
+                timeout=90000)
+            if host == "secure.vaultixpay.com":
+                # No card is typed here: wait for the fields or for the page to
+                # give up on them (FIELDS_WITHIN, 20 s), whichever comes first.
+                for _ in range(60):
+                    facts = _form_facts(page)
+                    if facts["alert"] or facts["pay_button_enabled"]:
+                        break
+                    page.wait_for_timeout(500)
+                page.wait_for_timeout(2000)       # the report's answer
+                result["form"] = _form_facts(page)
+                result["seen"] = seen
+                page.close()
+                browser.close()
+            else:
+                page.locator("iframe[src*='inline.php']").first.wait_for(timeout=60000)
+                result["form_before_paying"] = _form_facts(page)
+                page.get_by_text("Test mode").first.wait_for(timeout=60000)
+                fill_card(page, button=re.compile(r"^Pay \$"))
+                page.get_by_role("status").filter(has_text="was paid on invoice").wait_for(
+                    timeout=120000)
+                result["paid_message"] = page.get_by_role("status").inner_text()
+                result["seen"] = seen
+                page.close()
+                result["after"] = link_after(browser, setup)
+                browser.close()
+        result["mail_caught"] = (caught_mail() if "EMAIL_PORT" in PROOF_ENV
+                                 else "mailpit is not installed")
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+
+    refused = [m for m in result["seen"]["console"] + result["seen"]["page_errors"]
+               if "too many fields" in m]
+    result["config_refused"] = refused
+    if host == "secure.vaultixpay.com":
+        result["reported"] = json.loads(manage("shell", "-c", FAILURE_READ, env_extra=env)
+                                        .strip().splitlines()[-1])
+        form = result["form"]
+        result["ok"] = (not refused and form["collectjs_defined"]
+                        and form["script"] == f"https://{host}/token/Collect.js"
+                        and form["script_attributes"] == sorted(
+                            ["src", "data-tokenization-key", "data-variant"]
+                            + (["async"] if "async" in form["script_attributes"] else []))
+                        and (form["pay_button_enabled"]
+                             or (bool(form["alert"]) and bool(result["reported"]["notices"]))))
+        return result
+    read = json.loads(manage("shell", "-c", READ_BACK, env_extra=env).strip().splitlines()[-1])
+    result.update(read)
+    before = result["form_before_paying"]
+    result["ok"] = (not refused and before["collectjs_defined"]
+                    and not before["payment_component"]
+                    and before["script"] == f"https://{host}/token/Collect.js"
+                    and all(f["frames"] for f in before["field_frames"])
+                    and read["attempt"]["status"] == "approved" and read["via"] == "link"
+                    and read["payment"] is not None and read["payment"]["method"] == "card"
+                    and read["invoice"]["status"] == "paid"
+                    and any(m[0] == "payment_receipt" and m[2] == "sent" for m in read["mail"])
+                    and any(m["subject"].startswith("Receipt: ")
+                            for m in result["mail_caught"] if isinstance(m, dict))
+                    and read["lookup"] is not None
+                    and read["lookup"]["nmi_transaction_id"]
+                    == read["attempt"]["nmi_transaction_id"]
+                    and result["after"].get("shows_paid")
+                    and not result["after"].get("card_form_shown"))
+    return result
+
+
 def main():
-    if "--collect" in sys.argv:
+    # Every mode's mail (invoices, receipts, notices) goes to a catcher of its
+    # own for the run (2026-11-13): with no SMTP server on the laptop a send
+    # failed, and a proof stopped or missed its receipt.
+    mailpit = start_mailpit()
+    if mailpit:
+        PROOF_ENV.update({"EMAIL_HOST": "127.0.0.1", "EMAIL_PORT": str(MAIL_SMTP)})
+    try:
+        run_mode()
+    finally:
+        if mailpit:
+            mailpit.terminate()
+            mailpit.wait(timeout=10)
+
+
+def run_mode():
+    if "--form-host" in sys.argv:
+        # --portal, --autopay or --subscription with Collect.js from this host
+        # in place of the Payment Component (2026-11-13).
+        host = sys.argv[sys.argv.index("--form-host") + 1]
+        if host not in ("secure.nmi.com", "secure.vaultixpay.com"):
+            sys.exit("--form-host takes secure.nmi.com or secure.vaultixpay.com")
+        PROOF_ENV["NMI_SANDBOX_CARD_FORM_HOST"] = host
+    if "--link-collect" in sys.argv:
+        host = sys.argv[sys.argv.index("--link-collect") + 1]
+        if host not in ("secure.nmi.com", "secure.vaultixpay.com"):
+            sys.exit("--link-collect takes secure.nmi.com or secure.vaultixpay.com")
+        result = link_collect(host)
+    elif "--collect" in sys.argv:
         host = sys.argv[sys.argv.index("--collect") + 1]
         # The gateway reads the pause switch from the database (2026-11-10).
         fresh_proof_db()
@@ -575,8 +791,13 @@ def main():
         finally:
             server.terminate()
             server.wait(timeout=10)
+    if FORMS_SEEN:
+        result["typed_into_collect_js"] = FORMS_SEEN
+    if "EMAIL_PORT" in PROOF_ENV and "mail_caught" not in result:
+        result["mail_caught"] = caught_mail()
     print(json.dumps(result, indent=2))
-    sys.exit(0 if result.get("ok") else 1)
+    if not result.get("ok"):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

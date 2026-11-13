@@ -62,6 +62,7 @@ export function ClientAutopay() {
       {adding && !data.paused && (
         <NmiCardForm publicKey={data.public_key} amountCents={0} payPath={ROOT + "card/"}
           buttonText="Save this card" onDone={() => undefined} form={data.card_form}
+          failurePath={ROOT + "form-failed/"}
           onToken={async (token) => {
             try {
               settle(await api.post<AutopayState>(ROOT + "card/", { payment_token: token }));

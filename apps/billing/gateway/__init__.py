@@ -59,8 +59,17 @@ def card_form(environment: str = "live") -> dict:
     `NMI_API_HOST`, NMI's Payment Component on NMI's own host, Collect.js
     from the host itself otherwise. Sandbox: the Payment Component always,
     since NMI's host tokenizes sandbox keys and Vaultix's knows none. Either
-    form hands the same one-time `payment_token` to the same v5 sale."""
+    form hands the same one-time `payment_token` to the same v5 sale.
+
+    On the laptop, `NMI_SANDBOX_CARD_FORM_HOST` gives a sandbox account
+    Collect.js from that host instead (2026-11-13), so the real pay pages are
+    proved with the form a live white-label account gets."""
+    from django.conf import settings
+
     if environment == "sandbox":
+        host = getattr(settings, "NMI_SANDBOX_CARD_FORM_HOST", "")
+        if host in API_HOSTS:
+            return {"kind": "collect", "script_url": f"https://{host}/token/Collect.js"}
         return {"kind": "component"}
     host = api_host("live")
     if host == COMPONENT_HOST:

@@ -26,6 +26,9 @@ class Kind(models.TextChoices):
     BANK = "bank", "A bank connection that needs you"
     #: P10: an SOP read after its read-by day, or a change suggested.
     SOP = "sop", "An SOP read late, or a change suggested"
+    #: 2026-11-13: a payer's card form that would not load (the practice
+    #: owner's, or the platform owner's for a subscription card).
+    PAYMENTS = "payments", "A card form that would not load"
 
 
 class Notice(TenantScopedModel):

@@ -86,6 +86,8 @@ urlpatterns = [
          name="precall-form"),
     path("api/pay/<str:token>", billing_pay.pay_page, name="pay-page"),
     path("api/pay/<str:token>/pdf", billing_pay.pay_pdf, name="pay-pdf"),
+    path("api/pay/<str:token>/form-failed", billing_pay.pay_form_failed,
+         name="pay-form-failed"),
     # E-signature: the signing page, by its one-use link (apps/esign/links.py).
     path("api/sign/<str:token>", esign_sign.sign_page, name="sign-page"),
     path("api/sign/<str:token>/pdf", esign_sign.sign_pdf, name="sign-pdf"),

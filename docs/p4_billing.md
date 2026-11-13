@@ -166,6 +166,43 @@ A sandbox account keeps the Payment Component whatever the host.
 - So the white-label path is proved up to the token. The token and the sale
   there are proved only with Vaultix's own keys, at the first live check.
 
+**2026-11-13: the live pay page failed, and why.** With
+`NMI_API_HOST=secure.vaultixpay.com` the pay page said "The card form could
+not be loaded" and the console "You provided too many fields. Unexpected
+fields for collectJs". Collect.js builds its configuration from **every**
+data attribute on its own script tag and refuses any it does not know
+(`acceptableProperties` in its `Config.js`); our loader had added a
+`data-collect-js` marker to find the tag again. The file is byte for byte the
+same on both hosts, so it failed on NMI's host too; the sandbox proof above
+had used its own page with a plain tag and never ran our loader. Now:
+- **The tag carries only `data-tokenization-key` and `data-variant`**
+  (`COLLECT_TAG_DATA`), found again by its address. The frontend tests' stand-in
+  Collect.js applies the real script's check, so any other attribute fails them.
+- **Collect.js is one per page.** The form opened last owns it; an earlier one
+  (a client paying while "Save a card" is open) says "Another card form is
+  open on this page" and takes it back when the later one closes.
+- **A form that can't load is never silent.** The script not fetched, a
+  refusal as it starts, `configure()` throwing, or no fields within 20
+  seconds: the payer reads that nothing was charged (or saved), that the
+  practice has been told, and, on an invoice, its "How to pay"; the browser
+  reports it (`…/form-failed`, on the pay link, the portal's Pay, auto-pay's
+  card and the subscription card), which writes an audit row and gives the
+  practice owner one Notice a day per place (kind "payments", the owner's
+  alone). A subscription card's failure goes to the platform owner, since
+  that form is the platform's. What the browser sends is only text: cut to
+  300 characters, anything key-shaped removed, rate-limited.
+- **Proved in headless Chrome** (`scripts/nmi_token_proof.py --link-collect
+  HOST`, the real pay page built from the tree, `NMI_SANDBOX_CARD_FORM_HOST`
+  giving the sandbox account Collect.js, laptop only): from `secure.nmi.com`,
+  a real token, a sandbox sale, the Paid page, the receipt and the payment on
+  the invoice; from `secure.vaultixpay.com`, the script loaded and the
+  configuration accepted, then its token API answered 404 for the sandbox key
+  (no fields), and the page told the payer and the owner. `--form-host HOST`
+  runs the portal, auto-pay and subscription proofs the same way.
+- **Still unproved until a live payment:** the live public key on Vaultix's
+  token API (`/token/api/create`), the fields drawn from Vaultix's
+  `inline.php`, a token, and the v5 sale with it.
+
 **Paused.** In production the stub never answers. With `NMI_LIVE_CALLS` off,
 every gateway call is refused (`CardPaymentsPaused`), and card payments are
 paused:

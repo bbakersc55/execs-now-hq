@@ -120,7 +120,8 @@ function PayPanel({ invoice, onDone, onCancel }: {
           )}
           <NmiCardForm publicKey={config.data.public_key} amountCents={config.data.amount_cents}
             payPath={`/api/portal-invoices/${invoice.id}/pay/`} onDone={onDone}
-            form={config.data.card_form} />
+            form={config.data.card_form}
+            failurePath={`/api/portal-invoices/${invoice.id}/form-failed/`} />
         </>
       )}
     </Modal>
