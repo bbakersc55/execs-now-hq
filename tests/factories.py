@@ -1663,6 +1663,26 @@ class BonusPersonFactory(TenantScopedFactory):
         client_company=factory.SelfAttribute("..plan.scorecard.company"))
 
 
+class BonusUnitRuleFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusUnitRule"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+    rate = decimal.Decimal("5.0000")
+
+
+class BonusTeamFactory(TenantScopedFactory):
+    class Meta:
+        model = "scorecard.BonusTeam"
+
+    tenant = factory.SubFactory(TenantFactory)
+    plan = factory.SubFactory(BonusPlanFactory, tenant=factory.SelfAttribute("..tenant"))
+    team = factory.SubFactory(ClientTeamFactory, tenant=factory.SelfAttribute("..tenant"),
+                              client_company=factory.SelfAttribute("..plan.scorecard.company"))
+
+
 class BonusResultFactory(TenantScopedFactory):
     class Meta:
         model = "scorecard.BonusResult"

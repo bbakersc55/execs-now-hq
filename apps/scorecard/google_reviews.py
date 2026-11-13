@@ -62,6 +62,8 @@ MEASURES = {
     "reviews_by_star": ("New reviews with a given number of stars", "count", True),
     "unanswered": ("Unanswered reviews at the period's end", "count", False),
     "median_days_to_reply": ("Median days to reply", "duration", False),
+    #: 2026-11-12: every review left by the period's last day.
+    "total_reviews": ("Total reviews (all time)", "count", False),
 }
 FITS = {"percent": {"percent"}, "count": {"count", "number"},
         "rating": {"rating", "number"}, "duration": {"duration", "number"}}
@@ -326,6 +328,10 @@ def check_fits(kpi, measure, star=None):
                 "duration": "Duration or Number"}[kind]
         raise ReviewsRefused(f"{label} fits a KPI of kind {need}; {kpi.name} is "
                              f"{kpi.get_kind_display()}.")
+    if measure == "total_reviews" and kpi.rollup != "last":
+        # A running total: weeks added up into a month would count it twice.
+        raise ReviewsRefused(f"{label} is a running total, so its KPI rolls up by Last; "
+                             f"{kpi.name} rolls up by {kpi.get_rollup_display()}.")
 
 
 def _day(moment, zone):
@@ -349,6 +355,10 @@ def value_for(measure, reviews, first: date, last: date, zone, *, star=None):
     if measure == "unanswered":
         return Decimal(sum(1 for r in reviews if _day(r.created_on_google, zone) <= last
                            and (r.reply_at is None or _day(r.reply_at, zone) > last)))
+    if measure == "total_reviews":
+        # Every stored review created by the last day. A review taken down on
+        # Google stays stored (the read never deletes), so it is still counted.
+        return Decimal(sum(1 for r in reviews if _day(r.created_on_google, zone) <= last))
     if measure == "median_days_to_reply":
         days = [(r.reply_at - r.created_on_google).total_seconds() / 86400 for r in reviews
                 if r.reply_at is not None and first <= _day(r.reply_at, zone) <= last]

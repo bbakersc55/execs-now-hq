@@ -69,8 +69,13 @@ the practice's own.
 | New reviews with a given number of stars | Count | Those with the chosen 1 to 5 stars |
 | Unanswered reviews at the period's end | Count | Reviews created by its last day and not replied to by then |
 | Median days to reply | Duration | Of the replies made in it, from review to reply (in the KPI's unit) |
+| Total reviews (all time) | Count | Every review created by its last day (added 2026-11-12) |
 
 A measure must fit the KPI's kind (as Track's do); a per-person KPI is refused.
+**Total reviews (all time)** is a running total, so it needs a KPI that rolls
+up by Last: weeks added up into a month would count every review again. It
+counts the stored reviews. The read never deletes one, so a review taken down
+on Google is still counted.
 
 ## The cards
 
@@ -85,9 +90,13 @@ Connecting is **refused** in the demo, and nothing there reads Google (the
 feed job skips reading in the demo). The seed connects **Stark Tool & Die,
 Long Island**: a year of reviews (about three a month, most replied to within
 four days, the latest not yet) read **through the real sync code** from a
-stand-in for Google, and a "Reputation" scorecard page with two KPIs worked
-out **through the real feed code**: Google rating (monthly, average) and New
-Google reviews (monthly).
+stand-in for Google, and a "Reputation" scorecard page with four KPIs worked
+out **through the real feed code**:
+- Google rating (monthly, average);
+- New Google reviews (monthly);
+- Five-star Google reviews (monthly, the open month read so far), which the
+  "Five-star review bonus" pays $5 each on (`docs/p6_m5_kpi_scorecard.md`);
+- Total Google reviews (monthly, Last; added 2026-11-12).
 
 ## Verification
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api } from "../lib/api";
 import {
   BONUS_VIEW_LABEL, BonusComponentRow, BonusEditorChoices, BonusPayload, BonusPlanDraft,
-  BonusPlanHead, BonusRow, BonusTier, BonusViewKey,
+  BonusPlanHead, BonusRow, BonusTier, BonusUnitRow, BonusViewKey,
 } from "../lib/scorecard";
 import { Modal } from "./shell";
 import { Banner } from "./ui";
@@ -72,6 +72,9 @@ function MyBonus({ d, companyName, onPlan }: {
   const me = d.me!;
   const earned = me.earned ?? 0;
   const full = me.amount ?? 0;
+  const units = me.units ?? [];
+  const hasComponents = me.components.length > 0;
+  const fromComponents = me.earned_components ?? earned;
   const noun = plan.period === "monthly" ? "month" : "quarter";
   const when = plan.closed ? "closed" : plan.ended ? "ended, waiting to close"
     : `${plan.days_left} day${plan.days_left === 1 ? "" : "s"} left`;
@@ -92,13 +95,21 @@ function MyBonus({ d, companyName, onPlan }: {
           <div className="bn-big-line">
             <div className="bn-big">{usd(earned)}</div>
             <div className="bn-big-sub">
-              {plan.closed ? "earned" : "earned so far"} of a {usd(full)} {me.prorated
-                ? `bonus (${me.days_on} of ${me.days} days on the plan)` : `full-${noun} bonus`}</div>
+              {hasComponents ? <>
+                {plan.closed ? "earned" : "earned so far"} of a {usd(full)} {me.prorated
+                  ? `bonus (${me.days_on} of ${me.days} days on the plan)` : `full-${noun} bonus`}
+                {units.length > 0 && ", plus per-unit pay"}
+              </> : <>
+                {plan.closed ? "earned" : "earned so far"} from per-unit pay this {noun}
+                {me.prorated && ` (${me.days_on} of ${me.days} days on the plan)`}
+              </>}</div>
           </div>
-          <div className="bn-bar" role="img"
-            aria-label={`${full ? Math.round((earned / full) * 100) : 0}% of the full bonus`}>
-            <div style={{ width: `${full ? Math.min(100, (earned / full) * 100) : 0}%` }} />
-          </div>
+          {hasComponents && (
+            <div className="bn-bar" role="img"
+              aria-label={`${full ? Math.round((fromComponents / full) * 100) : 0}% of the full bonus`}>
+              <div style={{ width: `${full ? Math.min(100, (fromComponents / full) * 100) : 0}%` }} />
+            </div>
+          )}
         </div>
         {me.next && (
           <div className="bn-moves">
@@ -116,6 +127,7 @@ function MyBonus({ d, companyName, onPlan }: {
       </section>
       <div className="bn-cards">
         {me.components.map((c) => <ComponentCard key={c.kpi} c={c} plan={plan} noun={noun} />)}
+        {units.map((u) => <UnitCard key={u.kpi} u={u} plan={plan} noun={noun} />)}
       </div>
       <div className="bn-cards">
         {(d.earlier ?? []).length > 0 && (
@@ -125,8 +137,8 @@ function MyBonus({ d, companyName, onPlan }: {
               {d.earlier!.map((e) => (
                 <div key={e.id} className="bn-earlier-row">
                   <span>{e.short}</span>
-                  <span className="bn-mini-bar"><span style={{
-                    width: `${e.full ? Math.min(100, (e.earned / e.full) * 100) : 0}%` }} /></span>
+                  {e.full ? <span className="bn-mini-bar"><span style={{
+                    width: `${Math.min(100, (e.earned / e.full) * 100)}%` }} /></span> : <span />}
                   <span className="bn-earlier-amt">{usd(e.earned)}</span>
                 </div>
               ))}
@@ -136,9 +148,18 @@ function MyBonus({ d, companyName, onPlan }: {
         )}
         <section aria-label="About this plan" className="bn-card">
           <div className="bn-card-name">About this plan</div>
-          <p className="bn-about">{plan.name}, set by {d.practice_name}. Achievement to date
-            compares your numbers so far with the target prorated to today, so mid-{noun} figures
-            are fair rather than frightening.</p>
+          <p className="bn-about">{plan.name}, set by {d.practice_name}.{hasComponents && <> Achievement
+            to date compares your numbers so far with the target prorated to today, so
+            mid-{noun} figures are fair rather than frightening.</>}</p>
+          {units.map((u) => (
+            <p key={u.kpi} className="bn-about">Per-unit pay counts {companyName}'s {u.name.toLowerCase()} for
+              the {noun}{u.rate_text ? `, ${u.rate_text} for each` : ""}, {u.split === "pool"
+                ? `as one pool split evenly among the ${u.people} ${u.people === 1 ? "person" : "people"} on the plan`
+                : "to everyone on the plan in full"}.</p>
+          ))}
+          {(me.via ?? []).length > 0 && (
+            <p className="bn-about">You're on it as part of {me.via!.join(" and ")}.</p>
+          )}
           <p className="bn-about">The app shows what the plan earns; it doesn't pay it. {companyName} pays
             bonuses through payroll after the {noun} closes.</p>
         </section>
@@ -185,6 +206,32 @@ function ComponentCard({ c, plan, noun }: { c: BonusComponentRow; plan: BonusPla
   );
 }
 
+/** Per-unit pay, as My bonus says it: "4 × $5 = $20". */
+function UnitCard({ u, plan, noun }: { u: BonusUnitRow; plan: BonusPlanHead; noun: string }) {
+  const open = !(plan.closed || plan.ended);
+  return (
+    <section aria-label={`${u.name} per unit`} className="bn-card">
+      <div className="bn-card-head">
+        <div className="bn-card-name">{u.name}</div>
+        <span className="bn-weight">{u.rate_text ? `${u.rate_text} each` : "Per unit"}</span>
+      </div>
+      <div className="bn-value-line">
+        <div className="bn-value">{u.units === null ? "—" : u.units_text}</div>
+        <div className="sc-muted">{u.units === null ? "No readings yet"
+          : `this ${noun}${open ? " so far" : ""}`}</div>
+      </div>
+      {u.text && <div className="bn-unit-sum">{u.text}</div>}
+      <div className="sc-muted bn-small">{u.split === "pool"
+        ? `One pool, split evenly among the ${u.people} ${u.people === 1 ? "person" : "people"} on the plan.`
+        : "Each person on the plan earns it in full."}</div>
+      {u.earned !== undefined && (
+        <div className="bn-earned"><span className="sc-muted">Earned {plan.closed ? "" : "so far"}</span>
+          <span className="bn-earned-amt">{usd(u.earned)}</span></div>
+      )}
+    </section>
+  );
+}
+
 function overall(r: BonusRow) {
   if (r.earned === undefined || !r.amount) {
     const shares = r.components.reduce((a, c) => a + (c.weight * c.share) / 100, 0);
@@ -212,7 +259,8 @@ function BonusTables({ d, view, companyId, onPeriod }: {
     amount: "", straight_line: false, cap_pct: 120,
     components: [{ kpi: "", weight: 50, target_value: null, tiers: DEFAULT_TIERS },
       { kpi: "", weight: 50, target_value: null, tiers: DEFAULT_TIERS }],
-    people: [] });
+    people: [], unit_split: "each", units: [], teams: [] });
+  const perUnit = (d.payroll ?? []).some((p) => p.per_unit);
   const edit = async (id: string) => {
     const plan = await api.get<BonusPlanDraft>(`/api/scorecard/bonus/plans/${id}/`);
     setEditing(plan);
@@ -245,7 +293,8 @@ function BonusTables({ d, view, companyId, onPeriod }: {
               <div className="sc-muted">{plan.period_label} · {plan.closed
                 ? `closed${plan.closed_by ? ` by ${plan.closed_by}` : ""}`
                 : plan.ended ? "ended, not closed yet" : `${plan.days_left} days left`}
-                {plan.totals ? ` · ${usd(plan.totals.earned)} earned of ${usd(plan.totals.full)} for ${plan.totals.people} ${plan.totals.people === 1 ? "person" : "people"}` : ""}</div>
+                {plan.totals ? ` · ${usd(plan.totals.earned)} earned${plan.totals.full
+                  ? ` of ${usd(plan.totals.full)}` : ""} for ${plan.totals.people} ${plan.totals.people === 1 ? "person" : "people"}` : ""}</div>
             </div>
             <div className="row tight">
               {d.may_build && !plan.closed && <button className="small" onClick={() => edit(plan.id)}>Edit</button>}
@@ -264,31 +313,7 @@ function BonusTables({ d, view, companyId, onPeriod }: {
               onConfirm={() => act.mutate({ path: `/api/scorecard/bonus/plans/${plan.id}/reopen/`, body: { confirm: true } })}
               busy={act.isPending} />
           )}
-          <div className="bn-table-box">
-            <table className="bn-table" aria-label={`${plan.name} people`}>
-              <thead><tr>
-                <th>Person</th>
-                {(rows[0]?.components ?? []).map((c) => <th key={c.kpi} className="money">{c.name} <span className="sc-muted">({c.weight}%)</span></th>)}
-                <th className="money">Overall</th>
-                {d.sees_amounts && <th className="money">Earned</th>}
-                {d.sees_amounts && <th className="money">Of</th>}
-              </tr></thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.membership}>
-                    <td>{r.name}{r.prorated && <span className="sc-muted"> · {r.days_on} of {r.days} days</span>}</td>
-                    {r.components.map((c) => (
-                      <td key={c.kpi} className={`money ${achClass(c.achievement)}`}>
-                        {c.achievement === null ? "—" : `${c.achievement}%`}</td>
-                    ))}
-                    <td className="money">{overall(r)}%</td>
-                    {d.sees_amounts && <td className="money"><strong>{usd(r.earned)}</strong></td>}
-                    {d.sees_amounts && <td className="money sc-muted">{usd(r.amount)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PlanTable plan={plan} rows={rows} seesAmounts={d.sees_amounts} />
         </section>
       ))}
       {view === "all" && (d.payroll ?? []).length > 0 && (
@@ -304,10 +329,12 @@ function BonusTables({ d, view, companyId, onPeriod }: {
           </div>
           <div className="bn-table-box">
             <table className="bn-table" aria-label="Payroll">
-              <thead><tr><th>Person</th><th>Plan</th><th>Period</th><th className="money">Amount earned</th></tr></thead>
+              <thead><tr><th>Person</th><th>Plan</th><th>Period</th>
+                {perUnit && <th>Per unit</th>}<th className="money">Amount earned</th></tr></thead>
               <tbody>
                 {d.payroll!.map((p, i) => (
                   <tr key={i}><td>{p.name}</td><td>{p.plan}</td><td>{p.period}</td>
+                    {perUnit && <td>{p.per_unit ?? ""}</td>}
                     <td className="money"><strong>{usd(p.earned)}</strong></td></tr>
                 ))}
               </tbody>
@@ -319,6 +346,47 @@ function BonusTables({ d, view, companyId, onPeriod }: {
         <PlanEditor draft={editing} choices={d.editor} companyId={companyId}
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />
       )}
+    </div>
+  );
+}
+
+function PlanTable({ plan, rows, seesAmounts }: {
+  plan: BonusPlanHead; rows: BonusRow[]; seesAmounts: boolean;
+}) {
+  const comps = rows[0]?.components ?? [];
+  const units = rows[0]?.units ?? [];
+  const weighted = comps.length > 0;
+  return (
+    <div className="bn-table-box">
+      <table className="bn-table" aria-label={`${plan.name} people`}>
+        <thead><tr>
+          <th>Person</th>
+          {comps.map((c) => <th key={c.kpi} className="money">{c.name} <span className="sc-muted">({c.weight}%)</span></th>)}
+          {units.map((u) => <th key={u.kpi} className="money">{u.name} <span className="sc-muted">({u.rate_text
+            ? `${u.rate_text} each` : "per unit"})</span></th>)}
+          {weighted && <th className="money">Overall</th>}
+          {seesAmounts && <th className="money">Earned</th>}
+          {seesAmounts && weighted && <th className="money">Of</th>}
+        </tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.membership}>
+              <td>{r.name}{r.prorated && <span className="sc-muted"> · {r.days_on} of {r.days} days</span>}
+                {(r.via ?? []).length > 0 && <span className="sc-muted"> · {r.via!.join(", ")}</span>}</td>
+              {r.components.map((c) => (
+                <td key={c.kpi} className={`money ${achClass(c.achievement)}`}>
+                  {c.achievement === null ? "—" : `${c.achievement}%`}</td>
+              ))}
+              {(r.units ?? []).map((u) => (
+                <td key={u.kpi} className="money">{u.units === null ? "—" : u.units_text}</td>
+              ))}
+              {weighted && <td className="money">{overall(r)}%</td>}
+              {seesAmounts && <td className="money"><strong>{usd(r.earned)}</strong></td>}
+              {seesAmounts && weighted && <td className="money sc-muted">{usd(r.amount)}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -350,11 +418,14 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
   draft: BonusPlanDraft; choices: BonusEditorChoices; companyId: string;
   onClose: () => void; onSaved: () => void;
 }) {
-  const [p, setP] = useState<BonusPlanDraft>(draft);
+  const [p, setP] = useState<BonusPlanDraft>({ ...draft, unit_split: draft.unit_split ?? "each",
+    units: draft.units ?? [], teams: draft.teams ?? [] });
   const save = useMutation({
     mutationFn: () => {
       const body = { ...p, company: companyId,
-        components: p.components.map((c) => ({ ...c, target_value: c.target_value === "" ? null : c.target_value })) };
+        components: p.components.map((c) => ({ ...c, target_value: c.target_value === "" ? null : c.target_value })),
+        units: p.units.map((u) => ({ kpi: u.kpi, rate: u.rate })),
+        teams: p.teams.map((t) => t.team) };
       return p.id ? api.patch(`/api/scorecard/bonus/plans/${p.id}/`, body)
         : api.post("/api/scorecard/bonus/plans/", body);
     },
@@ -364,7 +435,11 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
   const setComp = (i: number, patch: Partial<BonusPlanDraft["components"][number]>) =>
     set({ components: p.components.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
   const onPlan = new Set(p.people.map((x) => x.membership));
+  const onTeams = new Set(p.teams.map((t) => t.team));
   const total = p.components.reduce((a, c) => a + (Number(c.weight) || 0), 0);
+  const weighted = p.components.length > 0;
+  const setUnit = (i: number, patch: Partial<BonusPlanDraft["units"][number]>) =>
+    set({ units: p.units.map((u, j) => (j === i ? { ...u, ...patch } : u)) });
   return (
     <Modal label={p.id ? "Edit bonus plan" : "New bonus plan"} wide onClose={onClose}
       title={p.id ? `Edit ${p.name}` : "New bonus plan"}>
@@ -375,15 +450,15 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
           <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select></label>
         <label>Starting<input type="month" value={p.period_start.slice(0, 7)}
           onChange={(e) => set({ period_start: `${e.target.value}-01` })} /></label>
-        <label>Amount per person, full period<input inputMode="decimal" value={p.amount}
-          onChange={(e) => set({ amount: e.target.value })} /></label>
+        {weighted && <label>Amount per person, full period<input inputMode="decimal" value={p.amount}
+          onChange={(e) => set({ amount: e.target.value })} /></label>}
       </div>
       <fieldset className="bn-fieldset">
-        <legend>Components ({total}% of 100%)</legend>
-        <label className="check"><input type="checkbox" checked={p.straight_line}
+        <legend>{weighted ? `Components (${total}% of 100%)` : "Components (none: per-unit pay only)"}</legend>
+        {weighted && <label className="check"><input type="checkbox" checked={p.straight_line}
           onChange={(e) => set({ straight_line: e.target.checked })} /> A straight line instead of tiers
-          (the share is the achievement)</label>
-        {p.straight_line && <label>Capped at %<input inputMode="decimal" value={p.cap_pct}
+          (the share is the achievement)</label>}
+        {weighted && p.straight_line && <label>Capped at %<input inputMode="decimal" value={p.cap_pct}
           onChange={(e) => set({ cap_pct: Number(e.target.value) || 0 })} /></label>}
         {p.components.map((c, i) => (
           <div key={i} className="bn-comp-row">
@@ -410,13 +485,52 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
                   tiers: [...c.tiers, { from: (c.tiers[c.tiers.length - 1]?.from ?? 0) + 10, share: 100 }] })}>Add a tier</button>}
               </details>
             )}
-            {p.components.length > 2 && <button className="small ghost"
+            {(p.components.length > 2 || p.units.length > 0) && <button className="small ghost"
+              aria-label={`Remove component ${i + 1}`}
               onClick={() => set({ components: p.components.filter((_, j) => j !== i) })}>Remove</button>}
           </div>
         ))}
         {p.components.length < 5 && <button className="small" onClick={() => set({
           components: [...p.components, { kpi: "", weight: 0, target_value: null, tiers: DEFAULT_TIERS }] })}>
           Add a component</button>}
+      </fieldset>
+      <fieldset className="bn-fieldset">
+        <legend>Per-unit pay</legend>
+        <p className="sc-muted bn-small">A fixed amount for each unit of a company KPI's reading
+          for the period, such as $5 per five-star Google review. Beside the components, or on its own.</p>
+        {p.units.map((u, i) => (
+          <div key={i} className="bn-comp-row">
+            <label>KPI<select aria-label={`Per-unit ${i + 1} KPI`} value={u.kpi}
+              onChange={(e) => setUnit(i, { kpi: e.target.value })}>
+              <option value="">Choose a company KPI</option>
+              {(choices.unit_kpis ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+            </select></label>
+            <label>$ per unit<input aria-label={`Per-unit ${i + 1} rate`} inputMode="decimal" value={u.rate}
+              onChange={(e) => setUnit(i, { rate: e.target.value })} /></label>
+            <button className="small ghost" aria-label={`Remove per-unit ${i + 1}`}
+              onClick={() => set({ units: p.units.filter((_, j) => j !== i) })}>Remove</button>
+          </div>
+        ))}
+        {p.units.length < 3 && <button className="small" onClick={() => set({
+          units: [...p.units, { kpi: "", rate: "" }] })}>Add per-unit pay</button>}
+        {p.units.length > 0 && (
+          <div role="radiogroup" aria-label="How per-unit pay is shared" className="bn-split">
+            <label className="check"><input type="radio" name="bn-split" checked={p.unit_split === "each"}
+              onChange={() => set({ unit_split: "each" })} /> Each person on the plan earns the full amount</label>
+            <label className="check"><input type="radio" name="bn-split" checked={p.unit_split === "pool"}
+              onChange={() => set({ unit_split: "pool" })} /> One pool, split evenly among the people on the plan</label>
+          </div>
+        )}
+      </fieldset>
+      <fieldset className="bn-fieldset">
+        <legend>Teams on the plan</legend>
+        <p className="sc-muted bn-small">A team puts everyone on it on the plan, as it stands, until the
+          period closes. Only the people on a plan see it as their bonus.</p>
+        {(choices.teams ?? []).map((t) => (
+          <label key={t.id} className="check"><input type="checkbox" checked={onTeams.has(t.id)}
+            onChange={(e) => set({ teams: e.target.checked ? [...p.teams, { team: t.id }]
+              : p.teams.filter((x) => x.team !== t.id) })} /> {t.name} <span className="sc-muted">· {t.people} {t.people === 1 ? "person" : "people"}</span></label>
+        ))}
       </fieldset>
       <fieldset className="bn-fieldset">
         <legend>People on the plan</legend>

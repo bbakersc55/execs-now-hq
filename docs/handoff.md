@@ -2,7 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-12 UTC**, after Release 40. **The next session starts at
-"2026-11-12: Release 40, Command Centers" just below**; then
+"2026-11-12, late: where things stand" just below**; then
+"2026-11-12: Release 40, Command Centers"; then
 "2026-11-10: Release 39, AI apps over MCP"; then
 "2026-11-10: Release 38, the Website leads pipeline"; then
 "2026-11-09: Release 37, the marketing site"; then
@@ -26,6 +27,43 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-12, late: where things stand
+
+- **Release 40 is live.** The detail is in the next section.
+- **Card payments are paused.** The platform owner turned on "Pause card
+  payments" (`billing 0012`). It stays on until the processor confirms the
+  settings for its own host. This replaces Release 40's "card payments
+  carried on unchanged".
+- **The Operations Command Center is on for the Executives Now practice.**
+- **SkyRun's Google reviews feed is live**, so the 2026-11-05 note that the
+  reviews connection shows "not approved" in production is out of date.
+- **The build order:**
+  1. **the SkyRun bonus**, built on `dev` (below);
+  2. **the rest of the Operations Command Center:** the SOP studio, the plans
+     engine, the worksheet engine with four tools and the tool builder, and
+     the connector rails;
+  3. **People, with the HRIS** (P9, below);
+  4. **Technology**.
+- **The SkyRun bonus is built on `dev`, not released** (spec as built:
+  `docs/p6_m5_kpi_scorecard.md`, "Per-unit pay and teams on a plan").
+  - Bonus plans gain **per-unit pay**: a fixed amount per unit of a company
+    KPI's reading for the period, either to each person in full or as one
+    pool split evenly.
+  - Their people can be **whole teams, people one by one, or both**.
+  - The Google reviews feed gains **"Total reviews (all time)"**.
+  - Migration `scorecard 0015`, additive, applied on the laptop.
+  - The demo seeds Stark Tool & Die's "Five-star review bonus".
+- **P9, the People Command Center with an HRIS, was decided on November 12;
+  it is not built.** Spec: `docs/p9_people_hris.md`.
+  - The record and who sees it, offer letters through the app's e-signature,
+    what is never stored, onboarding and offboarding, security, the state
+    rules library, the six rated areas, pulse surveys and the price.
+  - It ends with four questions to settle before the build.
+- **Microsoft: the app registration is still open.** It needs a business
+  directory.
+- **Backlog:** the MCP contact search should also match discipline and
+  specialties.
 
 ## 2026-11-12: Release 40, Command Centers
 
@@ -2291,7 +2329,9 @@ unregistered model; the isolation family now includes the platform owner.
   Goal/Project/Task, and a multi-site service-business strategy template.
 - **Post-Beta modules**, in `CLAUDE.md`'s order: invoicing (P4 §2) → basic
   financials → e-signature → simple HRIS → connectors → product billing and
-  self-serve onboarding.
+  self-serve onboarding. The HRIS is now P9, the People Command Center
+  (`docs/p9_people_hris.md`, decided 2026-11-12), placed by the build order
+  in "2026-11-12, late: where things stand".
 
 ## Beta exit criteria (from the build plan)
 

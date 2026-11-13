@@ -296,3 +296,75 @@ The spec's "How it ties into the rest of the app", all but the meeting queue's p
 
 The notes' stated numbers ("scrap ran at 3.1% last week") become a proposed reading in the meeting queue, under "Numbers for the scorecard", for someone to confirm (`apps/meetings/measures.py`). Proposed only when nothing is guessed: the measure names exactly one live KPI (narrowed to the meeting's companies), never a per-person or computed one; the period is the KPI's own size, worked out from the meeting's date; the value is one the KPI takes. **The audience rules:** a reviewer who could not see the KPI on its scorecard is not shown the item; only someone who may enter the reading can confirm it, and confirming goes through the scorecard's own entry as them, with the value correctable and any earlier value kept in the reading's history. Migration `meetings 0010` (a new item kind; no-op). Tests: `tests/test_meeting_readings.py`. The demo's Acme Fasteners operations review proposes last week's scrap rate.
 
+
+## Per-unit pay and teams on a plan (built 2026-11-12, on `dev`)
+
+Two additions to bonus plans, asked for SkyRun's reviews bonus. Migration
+`scorecard 0015`, additive: `bonus_plan.unit_split`, and two new tables,
+`bonus_unit_rule` and `bonus_team`.
+
+**Per-unit pay.** A plan can pay a fixed amount for each unit of a KPI's
+reading for the period, such as $5 per five-star Google review, monthly.
+- It sits beside the two to five components, or takes their place. A plan
+  with per-unit pay and no components has no amount per person (stored as $0).
+- **Up to three rules per plan**, each a KPI and a rate (to $0.0001, so "2¢
+  per dollar of sales" works).
+- **The KPI is the company's own number:** not per person, not computed,
+  higher is better, and a Count, Number or Money KPI. A monthly plan can't
+  use a quarterly KPI (as with components).
+- **The units are the KPI's readings that start in the plan's period**,
+  rolled up by its own rule. The open period's "so far" reading counts while
+  the period runs, so a reviews KPI that pays should read the open period.
+- **The plan chooses how it is shared:**
+  - **each person earns the full amount** ("4 × $5 = $20");
+  - or **one pool, split evenly** among the people on the plan ("4 × $5 =
+    $20, split among 2: $10").
+  - Someone on part of the period earns their days' share either way. A pool
+    splits by days on the plan, which is evenly when everyone is on it all
+    period, and the line then says "by days on the plan". Each share is
+    rounded to the cent, so a pool of $10 for three pays $3.33 each.
+- **Where it shows:**
+  - **My bonus:** a card per rule with "N × $5 = total", how it is shared,
+    and what the person earned. With no components, the hero says "earned so
+    far from per-unit pay" and has no bar.
+  - **Team bonus and All bonuses:** a column per rule with the units.
+  - **The Payroll list** has a "Per unit" column on screen.
+  - **The spreadsheet** has a "Per unit" column on its Payroll sheet, and a
+    row per rule on "Readings and tiers".
+- **Assistants** see the units with no rate, total or dollars.
+- **The close** freezes it with the readings it came from. A company reading
+  corrected afterwards shows as one line, "Everyone on the plan", and waits
+  for the client owner's confirmation, as any correction does.
+
+**Participants by person, by team, or both.**
+- A plan names whole teams, people one by one, or both. At least one person
+  or team.
+- **A team counts the client team members on it, as it stands, while the
+  period is open.** Someone who joins the team is on the plan; someone who
+  leaves it is off.
+  - A client owner is on a plan only by being named (P7: their rows on a team
+    don't matter).
+  - An archived team counts nobody.
+  - A team's people are on it for the whole period at the plan's amount.
+    **To prorate someone, or give them their own amount, name them too.**
+    Someone named and on a team is on the plan once, by their own row.
+- **The close freezes who was on it.** Team changes afterwards move nothing,
+  and the reopen works the amounts out again for those same people.
+- **Visibility is unchanged** (decision 7). Only the people on a plan see it
+  on My bonus. A manager sees the rows of the people on the teams they manage,
+  and senior leadership and the client owner see every row.
+- **Copy forward** carries the teams (live ones), per-unit pay and the split.
+- **The table** shows a person who came by a team with the team's name.
+
+**Tests:** `tests/test_scorecard_bonus.py` (per-unit each, pool, pool by days,
+beside components, refusals, another company's KPI, assistants, the freeze and
+correction, the Payroll list and spreadsheet, copy forward; teams: everyone
+on it, own row only, a manager's view, the client owner by name only, named
+and on a team, following the team until the close, another company's or
+practice's team refused, the editor's choices);
+`frontend/src/components/ScorecardBonus.test.tsx` (My bonus per unit, the
+table and Payroll list, the editor's request).
+
+**The demo:** Stark Tool & Die's "Five-star review bonus" ($5 each, the
+Customer service team plus Happy Hogan by name; three months closed, this one
+open) on a new "Five-star Google reviews" KPI.

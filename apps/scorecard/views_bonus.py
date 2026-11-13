@@ -39,6 +39,7 @@ def _default_period(plans, today):
 
 def _editor_choices(scorecard):
     from apps.tenancy.models import CLIENT_ROLES, Membership
+    from apps.work import teams
 
     kpis = [{"id": str(k.pk), "name": k.name, "kind": k.kind, "direction": k.direction,
              "rollup": k.rollup, "cadence": k.cadence, "target": board.num(k.target_value),
@@ -51,7 +52,18 @@ def _editor_choices(scorecard):
                                                   role__in=CLIENT_ROLES,
                                                   revoked_at__isnull=True)
                .select_related("user").order_by("user__full_name", "user__email")]
-    return {"kpis": kpis, "members": members}
+    # Per-unit pay: one number for the company, where more is better.
+    unit_kpis = [{"id": str(k.pk), "name": k.name, "kind": k.kind, "cadence": k.cadence,
+                  "rollup": k.rollup}
+                 for k in Kpi.objects.filter(scorecard=scorecard, archived_at__isnull=True,
+                                             per_person=False, formula="", direction="higher",
+                                             kind__in=bonus.UNIT_KINDS)
+                 .order_by("page__position", "position", "created_at")]
+    live = list(teams.live_teams(scorecard.company).order_by("-is_default", "name"))
+    counted = bonus.team_counts(live)
+    team_rows = [{"id": str(t.pk), "name": t.name, "people": counted.get(t.pk, 0)}
+                 for t in live]
+    return {"kpis": kpis, "unit_kpis": unit_kpis, "members": members, "teams": team_rows}
 
 
 class BonusView(Base):
@@ -111,7 +123,8 @@ class BonusView(Base):
         if view == "all" and br.sees_amounts:
             closed = [g for g in groups if g["plan"]["closed"]]
             out["payroll"] = [{"name": r["name"], "plan": g["plan"]["name"],
-                               "period": g["plan"]["period_label"], "earned": r["earned"]}
+                               "period": g["plan"]["period_label"], "earned": r["earned"],
+                               "per_unit": bonus.per_unit_text(r)}
                               for g in closed for r in g["rows"]]
             out["payroll_open"] = [g["plan"]["name"] for g in groups if not g["plan"]["closed"]]
         return Response(out)

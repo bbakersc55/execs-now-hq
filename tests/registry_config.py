@@ -52,7 +52,7 @@ from apps.finance.models import (
     FinanceMonthClose, FinanceReconciliation, FinanceRule, FinanceSettings,
 )
 from apps.scorecard.models import (
-    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
+    BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, BonusTeam, BonusUnitRule, Kpi, KpiMonthTarget, KpiPerson, KpiReading, KpiFeed, KpiReadingChange, KpiReminder, KpiTrackFeed, Scorecard, TrackConnection,
     HubSpotConnection, KpiHubSpotFeed, KpiAppFeed, KpiFeedValue, BestyConnection, KpiBestyFeed,
     ScorecardPage,
 )
@@ -314,6 +314,9 @@ register(BonusComponent, factories.BonusComponentFactory, api_exposed=False)
 register(BonusPerson, factories.BonusPersonFactory, api_exposed=False)
 register(BonusResult, factories.BonusResultFactory, api_exposed=False)
 register(BonusReopen, factories.BonusReopenFactory, api_exposed=False)
+# 2026-11-12: per-unit pay and whole teams on a plan, read the same way.
+register(BonusUnitRule, factories.BonusUnitRuleFactory, api_exposed=False)
+register(BonusTeam, factories.BonusTeamFactory, api_exposed=False)
 
 # Stage rules, part 2: an idle rule's once-per-stay record, never served; and
 # the notices, served by /api/pipeline-notices/ to their recipient only

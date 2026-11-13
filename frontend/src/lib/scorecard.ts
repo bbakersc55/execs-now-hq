@@ -140,10 +140,25 @@ export interface BonusComponentRow {
   tracked: boolean; next?: { text: string; gain: number } | null;
 }
 
+/** Per-unit pay (2026-11-12): "4 × $5 = $20". An assistant's copy has the
+ * units and no dollars (no rate, total, earned or text). */
+export interface BonusUnitRow {
+  kpi: string; name: string; kind: KpiDef["kind"]; rollup: string;
+  units: number | null; units_text: string; split: BonusUnitSplit; people: number;
+  rate?: number; rate_text?: string; total?: number; earned?: number; text?: string;
+  readings: { period_start: string; label: string; value: number }[];
+}
+
+export type BonusUnitSplit = "each" | "pool";
+
 export interface BonusRow {
   membership: string; name: string; full_amount?: number; amount?: number;
   prorated: boolean; days_on: number; days: number; joined_on: string | null;
   left_on: string | null; earned?: number; components: BonusComponentRow[];
+  /** Absent on a period closed before per-unit pay and teams existed. */
+  units?: BonusUnitRow[]; earned_components?: number; earned_units?: number;
+  /** The teams that put this person on the plan, when they aren't named on it. */
+  via?: string[];
   next?: string | null;
 }
 
@@ -151,7 +166,7 @@ export interface BonusPlanHead {
   id: string; name: string; series: string; period: "monthly" | "quarterly";
   period_start: string; period_end: string; period_label: string; days_left: number;
   ended: boolean; closed: boolean; closed_at: string | null; closed_by: string;
-  straight_line: boolean; cap_pct: number; amount: number;
+  straight_line: boolean; cap_pct: number; amount: number; unit_split?: BonusUnitSplit;
   totals?: { people: number; earned: number; full: number } | null;
   corrections?: { membership: string; name: string; kpi: string; period: string;
     frozen: number | null; now: number | null }[];
@@ -161,7 +176,11 @@ export interface BonusPlanHead {
 export interface BonusEditorChoices {
   kpis: { id: string; name: string; kind: KpiDef["kind"]; direction: string; rollup: string;
     cadence: Cadence; target: number | null; people: string[] }[];
+  /** Company KPIs per-unit pay can count: one number, more is better. */
+  unit_kpis?: { id: string; name: string; kind: KpiDef["kind"]; cadence: Cadence;
+    rollup: string }[];
   members: { membership: string; name: string }[];
+  teams?: { id: string; name: string; people: number }[];
 }
 
 export interface BonusPayload {
@@ -177,7 +196,8 @@ export interface BonusPayload {
   // Team bonus and All bonuses
   periods?: { key: string; label: string }[]; period?: string | null;
   plans?: { plan: BonusPlanHead; rows: BonusRow[] }[];
-  payroll?: { name: string; plan: string; period: string; earned: number }[];
+  payroll?: { name: string; plan: string; period: string; earned: number;
+    per_unit?: string }[];
   payroll_open?: string[];
 }
 
@@ -188,6 +208,9 @@ export interface BonusPlanDraft {
     tiers: BonusTier[] }[];
   people: { membership: string; amount: string | null; joined_on: string | null;
     left_on: string | null }[];
+  unit_split: BonusUnitSplit;
+  units: { kpi: string; rate: string }[];
+  teams: { team: string }[];
 }
 
 export interface EntryField {

@@ -189,7 +189,8 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         comms.everything(world)
         scorecard(world)
         homeowner_contacts(world)    # a live target, from the sheet's own column
-        # Google reviews: Stark Tool & Die's location, and two KPIs from it.
+        # Google reviews: Stark Tool & Die's location, four KPIs from it, and
+        # the five-star review bonus on one of them.
         from .reviews import connect as google_reviews
 
         google_reviews(world)

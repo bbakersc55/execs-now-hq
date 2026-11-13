@@ -427,10 +427,32 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert GoogleReview.objects.filter(connection=location, reply_at__isnull=True).exists()
         assert location.average_rating and location.total_review_count >= 25
         fed = KpiReviewsFeed.objects.filter(active=True).select_related("kpi")
-        assert {f.kpi.name for f in fed} == {"Google rating", "New Google reviews"}
+        assert {f.kpi.name for f in fed} == {"Google rating", "New Google reviews",
+                                             "Five-star Google reviews",
+                                             "Total Google reviews"}
         assert all(f.last_success_at and not f.last_error for f in fed)
         assert all(KpiReading.objects.filter(kpi=f.kpi, source="reviews").count() >= 12
                    for f in fed)
+        total = next(f.kpi for f in fed if f.measure == "total_reviews")
+        latest = KpiReading.objects.filter(kpi=total).order_by("-period_start").first()
+        assert latest.value == GoogleReview.objects.filter(connection=location).count()
+        # The five-star review bonus: $5 a five-star review, the Customer
+        # service team and Happy Hogan by name; three months closed, this one open.
+        from apps.scorecard import bonus as bonus_plans
+        from apps.scorecard.models import BonusPlan
+
+        stark = BonusPlan.objects.filter(name="Five-star review bonus").order_by("period_start")
+        assert stark.count() == 4
+        assert [p.closed_at is not None for p in stark] == [True, True, True, False]
+        current = stark.last()
+        people = bonus_plans.plan_people([current])[current.pk]
+        assert len(people) == 3
+        loaded = bonus_plans.Loaded([current])
+        rows = bonus_plans.results(current, loaded, timezone.localdate(),
+                                   current.scorecard.week_start)
+        assert {r["name"] for r in rows} == {"Happy Hogan", "Dana Ortiz", "Kevin Walsh"}
+        assert all(" × $5 = $" in r["units"][0]["text"] for r in rows)
+        assert {tuple(r["via"]) for r in rows} == {(), ("Customer service",)}
         # Bank feeds: the sample connection, two accounts fed, today's lines
         # through the real sync code, two of them still pending at the bank.
         from apps.finance.models import BankConnection, BankFeedAccount

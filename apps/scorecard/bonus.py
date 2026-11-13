@@ -22,6 +22,18 @@ up to over those periods (summed KPIs) or their average (the others).
 **A person added mid-period** is prorated by days: their amount, and on a
 summed KPI their target, scale by the days they are on the plan.
 
+**Per-unit pay** (2026-11-12) sits beside the components, or takes their
+place: a fixed amount for each unit of a company KPI's reading for the period,
+"4 × $5 = $20" for four five-star Google reviews. The plan chooses whether
+each person earns that in full, or it is one pool split evenly among the
+people on the plan (by days on it, which is evenly when everyone is on it all
+period). A person on part of the period earns their days' share either way.
+
+**Who is on a plan**: people named one by one, whole teams, or both. A team
+counts the client users on it as it stands (a client owner is on a team only
+by being named, as P7 has it); someone named and on a team is on once, by
+their own row. The close freezes who was on it.
+
 **Who sees whose** (decision 7): a person sees their own; a manager their own
 and their team's; senior leadership and the client owner everyone's. Practice
 owners and associates see every plan of the companies they reach; assistants
@@ -48,12 +60,17 @@ from django.utils import timezone
 
 from . import periods as P
 from .board import Targets, name_of, num
-from .models import (BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult, Kpi,
-                     KpiMonthTarget, KpiPerson, KpiReading, default_tiers)
+from .models import (BonusComponent, BonusPerson, BonusPlan, BonusReopen, BonusResult,
+                     BonusTeam, BonusUnitRule, Kpi, KpiMonthTarget, KpiPerson, KpiReading,
+                     default_tiers)
 from .setup import SetupError, audit
 
 CENTS = Decimal("0.01")
 MOST_COMPONENTS, FEWEST_COMPONENTS = 5, 2
+MOST_UNIT_RULES = 3
+#: What per-unit pay counts: a number of things, or dollars ("2¢ a dollar").
+UNIT_KINDS = (Kpi.Kind.COUNT, Kpi.Kind.NUMBER, Kpi.Kind.MONEY)
+POOL = BonusPlan.UnitSplit.POOL
 #: An achievement past this is shown as this: a lower-is-better reading of
 #: zero would otherwise be infinite.
 ACHIEVEMENT_CEILING = Decimal("999")
@@ -118,6 +135,14 @@ def fmt(kpi, value) -> str:
 def dollars(value) -> str:
     value = money(value)
     return f"${value:,.0f}" if value == value.to_integral_value() else f"${value:,.2f}"
+
+
+def rate_text(value) -> str:
+    """A rate per unit: "$5", "$2.50", "$0.015"."""
+    value = Decimal(value)
+    if value == value.quantize(CENTS):
+        return dollars(value)
+    return f"${value.normalize():f}"
 
 
 def pct(value) -> int | None:
@@ -248,21 +273,81 @@ def _next_step(plan_like, kpi, row, amount, end):
                     f"earns {share_words}, another {dollars(gain)}.", "gain": float(gain)}
 
 
+def _team_members(plans) -> dict:
+    """The open plans' whole teams, as they stand: {plan id: {membership id:
+    (membership, [team names])}}. A team counts its client team members whose
+    access is live; the client owner is on a plan only by being named (P7:
+    their rows on a team do not matter). An archived team counts nobody."""
+    from apps.tenancy.models import Role
+    from apps.work.models import ClientTeamMember
+
+    out = defaultdict(dict)
+    open_ids = [p.pk for p in plans if not p.closed_at]
+    by_team = defaultdict(list)
+    for plan_id, team_id in BonusTeam.all_objects.filter(
+            plan_id__in=open_ids, team__archived_at__isnull=True).values_list("plan_id",
+                                                                               "team_id"):
+        by_team[team_id].append(plan_id)
+    if not by_team:
+        return out
+    for row in ClientTeamMember.all_objects.filter(
+            team_id__in=list(by_team), membership__role=Role.ECC,
+            membership__revoked_at__isnull=True).select_related("membership__user", "team"):
+        if row.membership.client_company_id != row.team.client_company_id:
+            continue
+        for plan_id in by_team[row.team_id]:
+            entry = out[plan_id].setdefault(row.membership_id, (row.membership, []))
+            entry[1].append(row.team.name)
+    return out
+
+
+def _stand_in(plan, membership) -> BonusPerson:
+    """Someone on a plan through a team (or frozen at the close) and not
+    named on it: on it all period, at the plan's amount. Never saved."""
+    return BonusPerson(tenant_id=plan.tenant_id, plan_id=plan.pk, membership=membership,
+                       amount=None, joined_on=None, left_on=None)
+
+
 class Loaded:
-    """Everything one or more plans need, read once."""
+    """Everything one or more plans need, read once. A plan's `people` are
+    everyone on it: those named, then, while it is open, its teams' people;
+    once closed, those its close froze."""
 
     def __init__(self, plans):
         plans = list(plans)
         self.plans = plans
         self.components = defaultdict(list)
+        self.units = defaultdict(list)
         self.people = defaultdict(list)
+        #: (plan id, membership id): the teams that put them on it.
+        self.via = {}
         ids = [p.pk for p in plans]
         for c in BonusComponent.all_objects.filter(plan_id__in=ids).select_related("kpi"):
             self.components[c.plan_id].append(c)
+        for rule in BonusUnitRule.all_objects.filter(plan_id__in=ids).select_related("kpi"):
+            self.units[rule.plan_id].append(rule)
+        named = defaultdict(set)
         for person in BonusPerson.all_objects.filter(plan_id__in=ids).select_related(
                 "membership__user"):
             self.people[person.plan_id].append(person)
+            named[person.plan_id].add(person.membership_id)
+        by_id = {p.pk: p for p in plans}
+        for plan_id, members in _team_members(plans).items():
+            for membership_id, (membership, teams) in sorted(
+                    members.items(), key=lambda kv: str(kv[0])):
+                if membership_id not in named[plan_id]:
+                    self.people[plan_id].append(_stand_in(by_id[plan_id], membership))
+                    self.via[(plan_id, membership_id)] = sorted(teams)
+        closed = [p.pk for p in plans if p.closed_at]
+        for r in BonusResult.all_objects.filter(plan_id__in=closed).select_related(
+                "membership__user"):
+            if r.membership_id not in named[r.plan_id]:
+                named[r.plan_id].add(r.membership_id)
+                self.people[r.plan_id].append(_stand_in(by_id[r.plan_id], r.membership))
+            self.via[(r.plan_id, r.membership_id)] = (r.detail or {}).get("via") or []
+        self._pool = {}
         kpi_ids = {c.kpi_id for cs in self.components.values() for c in cs}
+        unit_kpis = {r.kpi_id for rs in self.units.values() for r in rs}
         self.months = defaultdict(dict)
         for t in KpiMonthTarget.all_objects.filter(kpi_id__in=kpi_ids):
             self.months[t.kpi_id][t.month] = t.value
@@ -276,6 +361,72 @@ class Loaded:
         self.tracked = defaultdict(set)
         for kp in KpiPerson.all_objects.filter(kpi_id__in=kpi_ids):
             self.tracked[kp.kpi_id].add(kp.membership_id)
+        #: Per-unit pay counts the company's own reading of its KPI.
+        self.company_readings = defaultdict(dict)
+        if unit_kpis and first is not None:
+            for r in KpiReading.all_objects.filter(kpi_id__in=unit_kpis,
+                                                   membership__isnull=True,
+                                                   period_start__gte=first - timedelta(days=7)):
+                self.company_readings[r.kpi_id][r.period_start] = r.value
+
+    def pool(self, plan) -> dict:
+        """How a pooled plan splits: how many people, their days on it all
+        told, and whether everyone is on it all period."""
+        if plan.pk not in self._pool:
+            total = days_in(plan)
+            spans = [_on_days(plan, person) for person in self.people[plan.pk]]
+            self._pool[plan.pk] = {"people": len(spans), "days": sum(spans),
+                                   "even": all(d == total for d in spans)}
+        return self._pool[plan.pk]
+
+
+def _on_days(plan, person) -> int:
+    first, last = _person_span(plan, person)
+    return max(0, (last - first).days + 1)
+
+
+def _unit_text(kpi, count, rate, total, part, *, split, pool, prorated, on_days, days) -> str:
+    """ "4 × $5 = $20", and how the person's part comes from it."""
+    head = f"{fmt(kpi, count)} × {rate_text(rate)} = {dollars(total)}"
+    if split == POOL:
+        if pool["people"] <= 1:
+            return f"{head}, one pool: {dollars(part)}"
+        how = "" if pool["even"] else " by days on the plan"
+        return f"{head}, split among {pool['people']}{how}: {dollars(part)}"
+    if prorated:
+        return f"{head}, for {on_days} of {days} days: {dollars(part)}"
+    return head
+
+
+def _unit_rows(plan, person, loaded, today, week_start, *, factor, on_days, total_days):
+    rows, earned = [], Decimal(0)
+    for rule in loaded.units[plan.pk]:
+        kpi = rule.kpi
+        starts = kpi_starts(plan, kpi, week_start)
+        readings = loaded.company_readings.get(kpi.pk, {})
+        seen = [(s, readings[s]) for s in starts if s in readings and s <= today]
+        count = P.combine([Decimal(v) for _, v in seen], kpi.rollup) if seen else None
+        rate = Decimal(rule.rate)
+        total = money((count or 0) * rate)
+        pool = loaded.pool(plan)
+        if plan.unit_split == POOL:
+            part = money(total * Decimal(on_days) / pool["days"]) if pool["days"] else Decimal(0)
+        else:
+            part = money(total * factor)
+        earned += part
+        rows.append({
+            "kpi": str(kpi.pk), "name": kpi.name, "kind": kpi.kind, "rollup": kpi.rollup,
+            "rate": float(rate), "rate_text": rate_text(rate),
+            "units": num(count), "units_text": fmt(kpi, count or 0),
+            "total": float(total), "split": plan.unit_split, "people": pool["people"],
+            "earned": float(part),
+            "text": _unit_text(kpi, count or 0, rate, total, part, split=plan.unit_split,
+                               pool=pool, prorated=on_days < total_days, on_days=on_days,
+                               days=total_days),
+            "readings": [{"period_start": s.isoformat(), "label": P.short_label(s, kpi.cadence),
+                          "value": num(v)} for s, v in seen],
+        })
+    return rows, earned
 
 
 def live_result(plan, person, loaded, today, week_start):
@@ -289,6 +440,8 @@ def live_result(plan, person, loaded, today, week_start):
     gone_to = end if (plan.closed_at or today > end) else min(today, last)
     gone = max(0, (gone_to - first).days + 1) if gone_to >= first else 0
     full_amount = Decimal(person.amount if person.amount is not None else plan.amount)
+    if not loaded.components[plan.pk]:
+        full_amount = Decimal(0)               # per-unit pay only: no amount to earn toward
     amount = full_amount * factor
     rows, earned = [], Decimal(0)
     for comp in loaded.components[plan.pk]:
@@ -335,13 +488,18 @@ def live_result(plan, person, loaded, today, week_start):
         for key in ("value_exact", "full_target", "achievement_exact", "share_exact"):
             row.pop(key)
     best = max((r["next"] for r in rows if r["next"]), key=lambda n: n["gain"], default=None)
+    units, unit_earned = _unit_rows(plan, person, loaded, today, week_start, factor=factor,
+                                    on_days=on_days, total_days=total_days)
     return {
         "membership": str(person.membership_id), "name": name_of(person.membership.user),
         "full_amount": float(money(full_amount)), "amount": float(money(amount)),
         "prorated": on_days < total_days, "days_on": on_days, "days": total_days,
         "joined_on": person.joined_on.isoformat() if person.joined_on else None,
         "left_on": person.left_on.isoformat() if person.left_on else None,
-        "earned": float(money(earned)), "components": rows,
+        "earned": float(money(earned + unit_earned)),
+        "earned_components": float(money(earned)), "earned_units": float(money(unit_earned)),
+        "components": rows, "units": units,
+        "via": loaded.via.get((plan.pk, person.membership_id), []),
         "next": best["text"] if best else None,
     }
 
@@ -445,15 +603,40 @@ def plan_people(plans) -> dict:
             plan_id__in=[p.pk for p in plans if p.closed_at]).values_list(
             "plan_id", "membership_id"):
         out[plan_id].add(membership_id)
+    for plan_id, members in _team_members(plans).items():
+        out[plan_id] |= set(members)
     return out
+
+
+def team_counts(teams) -> dict:
+    """{team id: how many people a plan naming it would count}."""
+    from apps.tenancy.models import Role
+    from apps.work.models import ClientTeamMember
+
+    out = defaultdict(int)
+    for row in ClientTeamMember.all_objects.filter(
+            team__in=teams, membership__role=Role.ECC,
+            membership__revoked_at__isnull=True).select_related("membership", "team"):
+        if row.membership.client_company_id == row.team.client_company_id:
+            out[row.team_id] += 1
+    return out
+
+
+def per_unit_text(row) -> str:
+    """A person's per-unit pay in one line, for the Payroll list."""
+    return "; ".join(f"{u['name']}: {u['text']}" for u in row.get("units") or [] if u.get("text"))
 
 
 def strip_amounts(row) -> dict:
     """An assistant's copy of a row: achievement, no dollars."""
     out = {k: v for k, v in row.items()
-           if k not in ("full_amount", "amount", "earned", "next")}
+           if k not in ("full_amount", "amount", "earned", "earned_components", "earned_units",
+                        "next")}
     out["components"] = [{k: v for k, v in c.items() if k not in ("earned", "next")}
                          for c in row.get("components", [])]
+    out["units"] = [{k: v for k, v in u.items()
+                     if k not in ("rate", "rate_text", "total", "earned", "text")}
+                    for u in row.get("units", [])]
     return out
 
 
@@ -479,9 +662,20 @@ def _date(raw, field):
         raise SetupError("That isn't a date.", field) from None
 
 
-def _clean_components(scorecard, plan_period, raw) -> list:
-    if not isinstance(raw, list) or not FEWEST_COMPONENTS <= len(raw) <= MOST_COMPONENTS:
+def _clean_components(scorecard, plan_period, raw, *, units=False) -> list:
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
         raise SetupError("A plan has two to five components.", "components")
+    if not raw and units:
+        return []
+    if not raw:
+        raise SetupError("A plan needs two to five components, per-unit pay, or both.",
+                         "components")
+    if not FEWEST_COMPONENTS <= len(raw) <= MOST_COMPONENTS:
+        raise SetupError("A plan has two to five components"
+                         + (", or none beside its per-unit pay." if units else "."),
+                         "components")
     kpis = {str(k.pk): k for k in Kpi.objects.filter(scorecard=scorecard,
                                                      archived_at__isnull=True)}
     out, seen, total = [], set(), Decimal(0)
@@ -513,11 +707,69 @@ def _clean_components(scorecard, plan_period, raw) -> list:
     return out
 
 
-def _clean_people(company, plan_start, plan_end, raw) -> list:
+def _clean_units(scorecard, plan_period, raw) -> list:
+    """Per-unit pay: up to three company KPIs, each with its rate."""
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list) or len(raw) > MOST_UNIT_RULES:
+        raise SetupError("A plan has up to three per-unit rules.", "units")
+    kpis = {str(k.pk): k for k in Kpi.objects.filter(scorecard=scorecard,
+                                                     archived_at__isnull=True)}
+    out, seen = [], set()
+    for row in raw:
+        if not isinstance(row, dict):
+            raise SetupError("Each per-unit rule is a KPI and a rate.", "units")
+        kpi = kpis.get(str(row.get("kpi") or ""))
+        if kpi is None:
+            raise SetupError("Each per-unit rule is one of this scorecard's KPIs.", "units")
+        if kpi.pk in seen:
+            raise SetupError(f"{kpi.name} is paid per unit twice.", "units")
+        seen.add(kpi.pk)
+        if kpi.per_person:
+            raise SetupError(f"{kpi.name} has a reading per person. Per-unit pay counts one "
+                             "number for the company, such as its Google reviews.", "units")
+        if kpi.is_computed:
+            raise SetupError(f"{kpi.name} is worked out from two other KPIs. Per-unit pay "
+                             "counts a KPI's own readings.", "units")
+        if kpi.direction != Kpi.Direction.HIGHER:
+            raise SetupError(f"{kpi.name} isn't a KPI where more is better, so it can't be "
+                             "paid per unit.", "units")
+        if kpi.kind not in UNIT_KINDS:
+            raise SetupError(f"{kpi.name} is a {kpi.get_kind_display().lower()}. Per-unit pay "
+                             "counts a Count, Number or Money KPI.", "units")
+        if plan_period == BonusPlan.Period.MONTHLY and kpi.cadence == Kpi.Cadence.QUARTERLY:
+            raise SetupError(f"{kpi.name} is read quarterly, longer than a monthly plan.",
+                             "units")
+        rate = _decimal(row, "rate", "a rate per unit", required=True, high=Decimal(100000))
+        if rate <= 0:
+            raise SetupError("A rate per unit is more than $0.", "units")
+        out.append({"kpi": kpi, "rate": rate})
+    return out
+
+
+def _clean_teams(company, raw) -> list:
+    """Whole teams on the plan: live teams of the plan's own company, once."""
+    from apps.work.teams import live_teams
+
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise SetupError("Each team on a plan is one of the company's own teams, once.", "teams")
+    ids = [str((r.get("team") if isinstance(r, dict) else r) or "") for r in raw]
+    found = {str(t.pk): t for t in live_teams(company).filter(
+        pk__in=[i for i in ids if setup_is_uuid(i)])}
+    if len(found) != len(set(ids)) or len(ids) != len(set(ids)):
+        raise SetupError("Each team on a plan is one of the company's own teams, once.", "teams")
+    return [found[i] for i in ids]
+
+
+def _clean_people(company, plan_start, plan_end, raw, *, teams=False) -> list:
     from apps.tenancy.models import CLIENT_ROLES, Membership
 
-    if not isinstance(raw, list) or not raw:
-        raise SetupError("Name at least one person on the plan.", "people")
+    if raw in (None, "") and teams:
+        return []
+    if not isinstance(raw, list) or (not raw and not teams):
+        raise SetupError("Name at least one person or team on the plan.", "people")
     ids = [str(r.get("membership") or "") for r in raw]
     found = {str(m.pk): m for m in Membership.objects.filter(
         pk__in=[i for i in ids if setup_is_uuid(i)], client_company=company,
@@ -562,25 +814,49 @@ def clean_plan(scorecard, data, plan=None) -> dict:
     if start is None:
         raise SetupError("Choose the plan's period.", "period_start")
     start = P.start_of(start, period)
-    amount = _decimal(merged, "amount", "the amount per person", required=True, low=Decimal(0))
+    units = _clean_units(scorecard, period, merged.get("units"))
+    components = _clean_components(scorecard, period, merged.get("components"),
+                                   units=bool(units))
+    if components:
+        amount = _decimal(merged, "amount", "the amount per person", required=True,
+                          low=Decimal(0))
+    else:
+        amount = Decimal(0)                    # per-unit pay only
+    split = merged.get("unit_split") or BonusPlan.UnitSplit.EACH
+    if split not in BonusPlan.UnitSplit.values:
+        raise SetupError("Per-unit pay goes to each person in full, or is one pool split "
+                         "evenly.", "unit_split")
     straight = bool(merged.get("straight_line"))
     cap = _decimal(merged, "cap_pct", "the cap", low=Decimal(0), high=Decimal(500))
     end = P.end_of(start, period)
+    teams = _clean_teams(scorecard.company, merged.get("teams"))
     return {
         "name": name, "period": period, "period_start": start, "amount": money(amount),
         "straight_line": straight, "cap_pct": (cap if cap is not None else Decimal(120)),
-        "components": _clean_components(scorecard, period, merged.get("components")),
-        "people": _clean_people(scorecard.company, start, end, merged.get("people")),
+        "unit_split": split, "components": components, "units": units, "teams": teams,
+        "people": _clean_people(scorecard.company, start, end, merged.get("people"),
+                                teams=bool(teams)),
     }
+
+
+PLAN_FIELDS = ("name", "period", "period_start", "amount", "straight_line", "cap_pct",
+               "unit_split")
 
 
 def _write_parts(plan, clean):
     BonusComponent.all_objects.filter(plan=plan).delete()
+    BonusUnitRule.all_objects.filter(plan=plan).delete()
     BonusPerson.all_objects.filter(plan=plan).delete()
+    BonusTeam.all_objects.filter(plan=plan).delete()
     for i, c in enumerate(clean["components"]):
         BonusComponent.all_objects.create(tenant_id=plan.tenant_id, plan=plan, kpi=c["kpi"],
                                           weight=c["weight"], target_value=c["target_value"],
                                           tiers=c["tiers"], position=i)
+    for i, u in enumerate(clean["units"]):
+        BonusUnitRule.all_objects.create(tenant_id=plan.tenant_id, plan=plan, kpi=u["kpi"],
+                                         rate=u["rate"], position=i)
+    for team in clean["teams"]:
+        BonusTeam.all_objects.create(tenant_id=plan.tenant_id, plan=plan, team=team)
     for p in clean["people"]:
         BonusPerson.all_objects.create(tenant_id=plan.tenant_id, plan=plan,
                                        membership=p["membership"], amount=p["amount"],
@@ -603,8 +879,7 @@ def create_plan(scorecard, data, actor) -> BonusPlan:
                          f"{period_label(clean['period'], clean['period_start'])}.", "name")
     plan = BonusPlan.all_objects.create(
         tenant_id=scorecard.tenant_id, scorecard=scorecard, series=uuid.uuid4(),
-        created_by=actor, **{k: clean[k] for k in ("name", "period", "period_start", "amount",
-                                                   "straight_line", "cap_pct")})
+        created_by=actor, **{k: clean[k] for k in PLAN_FIELDS})
     _write_parts(plan, clean)
     audit(scorecard.company, actor, "scorecard.bonus_plan_created", name=plan.name,
           plan=str(plan.pk), period=period_label(plan))
@@ -616,7 +891,7 @@ def update_plan(plan, data, actor) -> BonusPlan:
     plan = BonusPlan.all_objects.select_for_update().get(pk=plan.pk)
     _refuse_closed(plan)
     clean = clean_plan(plan.scorecard, data, plan)
-    for key in ("name", "period", "period_start", "amount", "straight_line", "cap_pct"):
+    for key in PLAN_FIELDS:
         setattr(plan, key, clean[key])
     plan.save()
     _write_parts(plan, clean)
@@ -637,9 +912,10 @@ def archive_plan(plan, actor) -> BonusPlan:
 
 @transaction.atomic
 def copy_forward(plan, actor) -> BonusPlan:
-    """The next period's plan, the same in every way: people, amounts,
-    components, weights, targets and tiers. Someone who joined or left
-    part-way is on the next period from its start."""
+    """The next period's plan, the same in every way: people and teams,
+    amounts, components, weights, targets and tiers, per-unit pay and its
+    split. Someone who joined part-way is on the next period from its start;
+    someone who left part-way is not on it."""
     start = P.next_start(plan.period_start, plan.period)
     if BonusPlan.all_objects.filter(series=plan.series, period_start=start).exists():
         raise SetupError(f"{plan.name} for {period_label(plan.period, start)} is already "
@@ -647,12 +923,17 @@ def copy_forward(plan, actor) -> BonusPlan:
     new = BonusPlan.all_objects.create(
         tenant_id=plan.tenant_id, scorecard=plan.scorecard, series=plan.series,
         name=plan.name, period=plan.period, period_start=start, amount=plan.amount,
-        straight_line=plan.straight_line, cap_pct=plan.cap_pct, copied_from=plan,
-        created_by=actor)
+        straight_line=plan.straight_line, cap_pct=plan.cap_pct, unit_split=plan.unit_split,
+        copied_from=plan, created_by=actor)
     for c in BonusComponent.all_objects.filter(plan=plan):
         BonusComponent.all_objects.create(tenant_id=plan.tenant_id, plan=new, kpi_id=c.kpi_id,
                                           weight=c.weight, target_value=c.target_value,
                                           tiers=c.tiers, position=c.position)
+    for u in BonusUnitRule.all_objects.filter(plan=plan):
+        BonusUnitRule.all_objects.create(tenant_id=plan.tenant_id, plan=new, kpi_id=u.kpi_id,
+                                         rate=u.rate, position=u.position)
+    for t in BonusTeam.all_objects.filter(plan=plan, team__archived_at__isnull=True):
+        BonusTeam.all_objects.create(tenant_id=plan.tenant_id, plan=new, team_id=t.team_id)
     for p in BonusPerson.all_objects.filter(plan=plan):
         if p.left_on is not None:
             continue
@@ -663,9 +944,9 @@ def copy_forward(plan, actor) -> BonusPlan:
     return new
 
 
-def _snapshot(plan, today):
+def _snapshot(plan, today, loaded=None):
     week_start = plan.scorecard.week_start
-    loaded = Loaded([plan])
+    loaded = loaded or Loaded([plan])
     return [live_result(plan, person, loaded, today, week_start)
             for person in loaded.people[plan.pk]]
 
@@ -726,6 +1007,21 @@ def corrections(plan, today) -> list:
                     out.append({"membership": str(person.membership_id), "name": old.name,
                                 "kpi": kpi.name, "period": P.short_label(s, kpi.cadence),
                                 "frozen": was, "now": now})
+    # Per-unit pay reads the company's number: one line for everyone on it.
+    for rule in loaded.units[plan.pk]:
+        kpi = rule.kpi
+        then = next(({r["period_start"]: r["value"] for r in u.get("readings", [])}
+                     for old in frozen.values() for u in (old.detail or {}).get("units", [])
+                     if u.get("kpi") == str(kpi.pk)), None)
+        if then is None:
+            continue
+        mine = loaded.company_readings.get(kpi.pk, {})
+        for s in kpi_starts(plan, kpi, week_start):
+            now, was = num(mine.get(s)), then.get(s.isoformat())
+            if now != was:
+                out.append({"membership": "", "name": "Everyone on the plan", "kpi": kpi.name,
+                            "period": P.short_label(s, kpi.cadence), "frozen": was,
+                            "now": now})
     return out
 
 
@@ -741,9 +1037,10 @@ def reopen(plan, actor, today) -> BonusPlan:
                          "work out again.")
     before = {str(r.membership_id): str(r.earned)
               for r in BonusResult.all_objects.filter(plan=plan)}
+    loaded = Loaded([plan])                     # closed: its people are those it froze
     closed_at = plan.closed_at
     plan.closed_at = None                       # worked out live, once
-    rows = _snapshot(plan, today)
+    rows = _snapshot(plan, today, loaded)
     plan.closed_at = closed_at
     BonusResult.all_objects.filter(plan=plan).delete()
     for row in rows:
@@ -763,15 +1060,22 @@ def reopen(plan, actor, today) -> BonusPlan:
 
 def describe(plan, *, for_edit=False) -> dict:
     comps = list(BonusComponent.all_objects.filter(plan=plan).select_related("kpi"))
+    units = list(BonusUnitRule.all_objects.filter(plan=plan).select_related("kpi"))
+    teams = [t for t in BonusTeam.all_objects.filter(plan=plan).select_related("team")
+             .order_by("team__name") if t.team.archived_at is None]
     people = list(BonusPerson.all_objects.filter(plan=plan).select_related("membership__user"))
     out = {
         "id": str(plan.pk), "name": plan.name, "period": plan.period,
         "period_start": plan.period_start.isoformat(), "period_label": period_label(plan),
         "amount": str(plan.amount), "straight_line": plan.straight_line,
         "cap_pct": float(plan.cap_pct), "closed": plan.closed_at is not None,
+        "unit_split": plan.unit_split,
         "components": [{"kpi": str(c.kpi_id), "name": c.kpi.name, "weight": float(c.weight),
                         "target_value": None if c.target_value is None
                         else float(c.target_value), "tiers": c.tiers} for c in comps],
+        "units": [{"kpi": str(u.kpi_id), "name": u.kpi.name,
+                   "rate": f"{Decimal(u.rate).normalize():f}"} for u in units],
+        "teams": [{"team": str(t.team_id), "name": t.team.name} for t in teams],
         "people": [{"membership": str(p.membership_id), "name": name_of(p.membership.user),
                     "amount": None if p.amount is None else str(p.amount),
                     "joined_on": p.joined_on.isoformat() if p.joined_on else None,
@@ -779,8 +1083,8 @@ def describe(plan, *, for_edit=False) -> dict:
                    for p in people],
     }
     if for_edit:
-        out["components"] = [{k: v for k, v in c.items() if k != "name"}
-                             for c in out["components"]]
+        for key in ("components", "units", "teams"):
+            out[key] = [{k: v for k, v in c.items() if k != "name"} for c in out[key]]
     return out
 
 
@@ -795,7 +1099,7 @@ def plan_head(plan, today, *, totals=None) -> dict:
         "closed_at": plan.closed_at.isoformat() if plan.closed_at else None,
         "closed_by": name_of(plan.closed_by) if plan.closed_at else "",
         "straight_line": plan.straight_line, "cap_pct": float(plan.cap_pct),
-        "amount": float(plan.amount),
+        "amount": float(plan.amount), "unit_split": plan.unit_split,
         **({"totals": totals} if totals is not None else {}),
     }
 

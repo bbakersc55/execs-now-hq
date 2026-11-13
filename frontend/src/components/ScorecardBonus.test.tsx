@@ -232,6 +232,106 @@ describe("bonus plans (M5 part 2)", () => {
     expect(note).toHaveTextContent("The client owner confirms before the amounts change.");
   });
 
+  it("My bonus, per unit: N × $5 = total, how it is shared, and no bar to fill", async () => {
+    const user = userEvent.setup();
+    const unit = { kpi: "k9", name: "Five-star Google reviews", kind: "count" as const, rollup: "sum",
+      units: 4, units_text: "4", split: "each" as const, people: 3, rate: 5, rate_text: "$5",
+      total: 20, earned: 20, text: "4 × $5 = $20",
+      readings: [{ period_start: "2026-10-01", label: "Oct", value: 4 }] };
+    const me: BonusRow = { ...DEV, amount: 0, full_amount: 0, earned: 20, earned_components: 0,
+      earned_units: 20, components: [], units: [unit], via: ["Customer service"], next: null };
+    vi.stubGlobal("fetch", mockApi({
+      "GET /api/scorecard/bonus/": { ...MINE, plan: { ...PLAN, name: "Five-star review bonus", amount: 0 },
+        me, earlier: [] },
+      "GET /api/scorecard/": BOARD,
+    }));
+    renderRoute(<Scorecard me={aMe({ role: "ECC", client_company: "c1" })} />);
+    await user.click(await screen.findByRole("tab", { name: "My bonus" }));
+    const hero = await screen.findByRole("region", { name: "Earned so far" });
+    expect(within(hero).getByText("$20")).toBeInTheDocument();
+    expect(within(hero).getByText(/earned so far from per-unit pay this month/)).toBeInTheDocument();
+    expect(within(hero).queryByRole("img")).toBeNull();
+    const card = screen.getByRole("region", { name: "Five-star Google reviews per unit" });
+    expect(within(card).getByText("4 × $5 = $20")).toBeInTheDocument();
+    expect(within(card).getByText("$5 each")).toBeInTheDocument();
+    expect(within(card).getByText("Each person on the plan earns it in full.")).toBeInTheDocument();
+    const about = screen.getByRole("region", { name: "About this plan" });
+    expect(about).toHaveTextContent("Per-unit pay counts Alpine Stay Co.'s five-star google reviews for the month, $5 for each, to everyone on the plan in full.");
+    expect(about).toHaveTextContent("You're on it as part of Customer service.");
+    expect(about).not.toHaveTextContent("Achievement");
+  });
+
+  it("All bonuses, per unit: the units column, the team a person came by, and the Payroll list's working",
+    async () => {
+      const user = userEvent.setup();
+      const unit = { kpi: "k9", name: "Five-star reviews", kind: "count" as const, rollup: "sum",
+        units: 4, units_text: "4", split: "pool" as const, people: 2, rate: 5, rate_text: "$5",
+        total: 20, earned: 10, text: "4 × $5 = $20, split among 2: $10", readings: [] };
+      const row = (name: string, m: string, via: string[]): BonusRow => ({ ...DEV, name,
+        membership: m, amount: 0, full_amount: 0, earned: 10, components: [], units: [unit], via,
+        next: null });
+      const closed = { ...PLAN, name: "Reviews bonus", amount: 0, closed: true, ended: true,
+        days_left: 0, closed_at: "2026-10-01T10:00:00Z", closed_by: "Elena Brooks",
+        totals: { people: 2, earned: 20, full: 0 }, next_exists: true };
+      const all: BonusPayload = { ...MINE, views: ["all"], view: "all", plan: undefined,
+        me: undefined, periods: [{ key: "monthly:2026-09-01", label: "September 2026" }],
+        period: "monthly:2026-09-01",
+        plans: [{ plan: closed, rows: [row("Dana Ortiz", "m1", ["Customer service"]),
+          row("Happy Hogan", "m2", [])] }],
+        payroll: [{ name: "Dana Ortiz", plan: "Reviews bonus", period: "September 2026", earned: 10,
+          per_unit: "Five-star reviews: 4 × $5 = $20, split among 2: $10" }] };
+      vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/bonus/": all,
+        "GET /api/scorecard/": { ...BOARD, bonus_views: ["all"] } }));
+      renderRoute(<Scorecard me={aMe({ role: "FCC", client_company: "c1" })} />);
+      await user.click(await screen.findByRole("tab", { name: "All bonuses" }));
+      const table = await screen.findByRole("table", { name: "Reviews bonus people" });
+      const heads = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+      expect(heads).toEqual(["Person", "Five-star reviews ($5 each)", "Earned"]);
+      const rows = within(table).getAllByRole("row");
+      expect(rows[1]).toHaveTextContent("Dana Ortiz · Customer service");
+      expect(rows[2].textContent).toBe("Happy Hogan4$10");
+      expect(screen.getByText(/\$20 earned for 2 people/)).toBeInTheDocument();
+      const payroll = screen.getByRole("table", { name: "Payroll" });
+      expect(payroll).toHaveTextContent("Five-star reviews: 4 × $5 = $20, split among 2: $10");
+    });
+
+  it("the plan editor sends per-unit pay, its split and whole teams", async () => {
+    const user = userEvent.setup();
+    const all: BonusPayload = { ...MINE, views: ["all"], view: "all", plan: undefined,
+      me: undefined, may_build: true, practice: true, plans: [], periods: [], period: null,
+      editor: { kpis: [], members: [{ membership: "m2", name: "Happy Hogan" }],
+        unit_kpis: [{ id: "k9", name: "Five-star Google reviews", kind: "count", cadence: "monthly",
+          rollup: "sum" }],
+        teams: [{ id: "t1", name: "Customer service", people: 2 }] } };
+    const fetchMock = mockApi({ "GET /api/scorecard/bonus/": all,
+      "POST /api/scorecard/bonus/plans/": { id: "pl9" },
+      "GET /api/scorecard/": { ...BOARD, bonus_views: ["all"] } });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    await user.click(await screen.findByRole("tab", { name: "All bonuses" }));
+    await user.click(await screen.findByRole("button", { name: "New plan" }));
+    await user.type(screen.getByLabelText("Name"), "Five-star review bonus");
+    await user.click(screen.getByRole("button", { name: "Add per-unit pay" }));
+    await user.selectOptions(screen.getByLabelText("Per-unit 1 KPI"), "k9");
+    await user.type(screen.getByLabelText("Per-unit 1 rate"), "5");
+    await user.click(screen.getByLabelText(/One pool, split evenly/));
+    await user.click(screen.getByRole("button", { name: "Remove component 1" }));
+    await user.click(screen.getByRole("button", { name: "Remove component 1" }));
+    expect(screen.queryByLabelText("Amount per person, full period")).toBeNull();
+    expect(screen.getByText("Components (none: per-unit pay only)")).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/Customer service/));
+    await user.click(screen.getByLabelText("Happy Hogan"));
+    await user.click(screen.getByRole("button", { name: "Make the plan" }));
+    await waitFor(() => {
+      const call = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url.endsWith("/api/scorecard/bonus/plans/"));
+      expect(call?.body).toMatchObject({ name: "Five-star review bonus", components: [],
+        units: [{ kpi: "k9", rate: "5" }], unit_split: "pool", teams: ["t1"],
+        people: [{ membership: "m2" }] });
+    });
+  });
+
   it("no bonus tab for someone the server gives none", async () => {
     vi.stubGlobal("fetch", mockApi({ "GET /api/scorecard/": { ...BOARD, bonus_views: [] } }));
     renderRoute(<Scorecard me={aMe({ role: "ECC", client_company: "c1" })} />);

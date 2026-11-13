@@ -475,3 +475,348 @@ def test_a_mid_period_start_date_must_be_inside_the_period(sc):
                         "joined_on": (start - timedelta(days=3)).isoformat()}]}
     r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", data)
     assert r.status_code == 400 and "inside its period" in r.json()["detail"]
+
+
+# ------------------------------------------------------------------ per-unit pay (2026-11-12)
+#
+# "$5 per five-star Google review, monthly": a fixed amount for each unit of
+# a company KPI's reading for the period, each person in full or one pool
+# split evenly, beside the components or on its own. "For everyone" is the
+# fixture's company-level count, read weekly.
+
+def unit_plan(sc, start, *, split="each", people=("member",), teams=(), components=False,
+              rate=5, units=None, **extra):
+    who, k = sc["who"], sc["kpis"]
+    data = {"name": "Reviews bonus", "period": "monthly", "period_start": start.isoformat(),
+            "units": units if units is not None else [{"kpi": str(k["all"].pk), "rate": rate}],
+            "unit_split": split,
+            "people": [{"membership": str(who[p].pk)} for p in people],
+            "teams": [str(sc["teams"][t].pk) for t in teams], **extra}
+    if components:
+        data["amount"] = 600
+        data["components"] = [{"kpi": str(k["calls"].pk), "weight": 60},
+                              {"kpi": str(k["rating"].pk), "weight": 40}]
+    with tenant_context(sc["tenant"].pk):
+        return bonus.create_plan(k["all"].scorecard, data, sc["practice"]["ff"].user)
+
+
+def company_read(sc, kpi, start, value):
+    with tenant_context(sc["tenant"].pk):
+        KpiReading.objects.update_or_create(
+            tenant=sc["tenant"], kpi=sc["kpis"][kpi], period_start=start, membership=None,
+            defaults={"value": value, "entered_by": sc["practice"]["ff"].user,
+                      "entered_at": timezone.now()})
+
+
+def four_units(sc, start):
+    """Four units in the month: 3 in its first week, 1 in its second."""
+    first, second = weeks_of(start, P.end_of(start, P.MONTHLY))[:2]
+    company_read(sc, "all", first, 3)
+    company_read(sc, "all", second, 1)
+
+
+def mine(sc, who, plan):
+    r = get(sc, who, view="mine", plan=str(plan.pk))
+    assert r.status_code == 200, r.content
+    return r.json()["me"]
+
+
+def test_per_unit_pay_gives_each_person_the_full_amount(sc):
+    start = last_month()
+    plan = unit_plan(sc, start, people=("member", "colleague"))
+    four_units(sc, start)
+    for who in ("member", "colleague"):
+        me = mine(sc, who, plan)
+        unit = me["units"][0]
+        assert unit["text"] == "4 × $5 = $20"
+        assert (unit["units"], unit["total"], unit["earned"]) == (4, 20, 20)
+        assert me["earned"] == 20 and me["earned_units"] == 20
+        assert me["components"] == [] and me["amount"] == 0
+        assert [r["value"] for r in unit["readings"]] == [3, 1]
+
+
+def test_a_pool_is_split_evenly_among_the_people_on_the_plan(sc):
+    start = last_month()
+    plan = unit_plan(sc, start, split="pool", people=("member", "colleague"))
+    four_units(sc, start)
+    me = mine(sc, "member", plan)
+    assert me["units"][0]["text"] == "4 × $5 = $20, split among 2: $10"
+    assert me["earned"] == 10
+
+
+def test_a_pool_splits_by_days_when_someone_joined_part_way(sc):
+    start = last_month()
+    days = (P.end_of(start, P.MONTHLY) - start).days + 1
+    joined = start + timedelta(days=15)
+    who = sc["who"]
+    with tenant_context(sc["tenant"].pk):
+        plan = bonus.create_plan(sc["kpis"]["all"].scorecard, {
+            "name": "Pool", "period": "monthly", "period_start": start.isoformat(),
+            "units": [{"kpi": str(sc["kpis"]["all"].pk), "rate": 5}], "unit_split": "pool",
+            "people": [{"membership": str(who["member"].pk)},
+                       {"membership": str(who["colleague"].pk),
+                        "joined_on": joined.isoformat()}]}, sc["practice"]["ff"].user)
+    four_units(sc, start)
+    full, part = mine(sc, "member", plan), mine(sc, "colleague", plan)
+    late_days = days - 15
+    assert full["units"][0]["earned"] == pytest.approx(20 * days / (days + late_days), abs=0.01)
+    assert full["earned"] + part["earned"] == pytest.approx(20, abs=0.01)
+    assert "split among 2 by days on the plan" in part["units"][0]["text"]
+
+
+def test_per_unit_pay_sits_beside_the_components(sc, closed_month):
+    with tenant_context(sc["tenant"].pk):
+        ff = sc["practice"]["ff"].user
+        bonus.update_plan(closed_month, {"units": [{"kpi": str(sc["kpis"]["all"].pk),
+                                                    "rate": "2.50"}]}, ff)
+    four_units(sc, closed_month.period_start)
+    me = mine(sc, "member", closed_month)
+    assert len(me["components"]) == 2 and me["amount"] == 600
+    assert me["units"][0]["text"] == "4 × $2.50 = $10"
+    assert me["earned"] == pytest.approx(me["earned_components"] + 10, abs=0.001)
+
+
+def test_a_per_unit_plan_needs_no_amount(sc):
+    plan = unit_plan(sc, last_month())
+    assert plan.amount == 0
+    described = bonus.describe(plan)
+    assert described["components"] == [] and described["units"][0]["rate"] == "5"
+    assert described["unit_split"] == "each"
+
+
+@pytest.mark.parametrize("case,words", [
+    ("per_person", "reading per person"),
+    ("lower", "more is better"),
+    ("zero", "more than $0"),
+    ("nothing", "two to five components, per-unit pay, or both"),
+    ("one_component", "or none beside its per-unit pay"),
+    ("four_rules", "up to three"),
+    ("twice", "paid per unit twice"),
+    ("split", "one pool split evenly"),
+])
+def test_per_unit_pay_is_refused_in_words(sc, case, words):
+    from apps.scorecard import setup
+
+    k = sc["kpis"]
+    data = {"company": str(sc["company"].pk), "name": "X", "period": "monthly",
+            "period_start": last_month().isoformat(),
+            "units": [{"kpi": str(k["all"].pk), "rate": 5}],
+            "people": [{"membership": str(sc["who"]["member"].pk)}]}
+    if case == "per_person":
+        data["units"] = [{"kpi": str(k["calls"].pk), "rate": 5}]
+    if case == "lower":
+        with tenant_context(sc["tenant"].pk):
+            worse = setup.create_kpi(k["all"].scorecard, {
+                "name": "Complaints", "kind": "count", "cadence": "weekly", "rollup": "sum",
+                "direction": "lower", "target_value": 2,
+                "page": str(sc["pages"]["weekly"].pk)}, sc["practice"]["ff"].user)
+        data["units"] = [{"kpi": str(worse.pk), "rate": 5}]
+    if case == "zero":
+        data["units"] = [{"kpi": str(k["all"].pk), "rate": 0}]
+    if case == "nothing":
+        data["units"] = []
+    if case == "one_component":
+        data["components"] = [{"kpi": str(k["calls"].pk), "weight": 100}]
+        data["amount"] = 100
+    if case == "four_rules":
+        data["units"] = [{"kpi": str(k[n].pk), "rate": 1} for n in ("all", "lead", "ops", "cash")]
+    if case == "twice":
+        data["units"] = [{"kpi": str(k["all"].pk), "rate": 1}] * 2
+    if case == "split":
+        data["unit_split"] = "halves"
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", data)
+    assert r.status_code == 400 and words in r.json()["detail"], r.content
+
+
+def test_a_kpi_of_another_companys_scorecard_cannot_be_paid_per_unit(sc):
+    from apps.scorecard import setup
+
+    other = ClientCompanyFactory(tenant=sc["tenant"], name="Elsewhere")
+    with tenant_context(sc["tenant"].pk):
+        card = setup.ensure(other, sc["practice"]["ff"].user)
+        theirs = setup.create_kpi(card, {"name": "Their reviews", "kind": "count",
+                                         "cadence": "monthly", "rollup": "sum",
+                                         "page": str(card.pages.get().pk)},
+                                  sc["practice"]["ff"].user)
+    data = {"company": str(sc["company"].pk), "name": "X", "period": "monthly",
+            "period_start": last_month().isoformat(),
+            "units": [{"kpi": str(theirs.pk), "rate": 5}],
+            "people": [{"membership": str(sc["who"]["member"].pk)}]}
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", data)
+    assert r.status_code == 400 and "this scorecard's KPIs" in r.json()["detail"]
+
+
+def test_an_assistant_sees_the_units_but_no_dollars(sc):
+    plan = unit_plan(sc, last_month())
+    four_units(sc, plan.period_start)
+    data = get(sc, "va", view="all").json()
+    row = next(r for g in data["plans"] if g["plan"]["id"] == str(plan.pk) for r in g["rows"])
+    unit = row["units"][0]
+    assert unit["units"] == 4
+    for key in ("rate", "rate_text", "total", "earned", "text"):
+        assert key not in unit
+    assert "earned_units" not in row and "$" not in json.dumps(row)
+
+
+def test_closing_freezes_per_unit_pay_and_a_correction_waits_for_the_owner(sc):
+    start = last_month()
+    plan = unit_plan(sc, start, people=("member", "colleague"))
+    four_units(sc, start)
+    owner = sc["api"].as_(sc["who"]["owner"])
+    assert post(owner, f"{B}plans/{plan.pk}/close/").status_code == 200
+    company_read(sc, "all", weeks_of(start, P.end_of(start, P.MONTHLY))[0], 9)
+    assert mine(sc, "member", plan)["earned"] == 20          # frozen
+    data = get(sc, "owner", view="all").json()
+    group = next(g for g in data["plans"] if g["plan"]["id"] == str(plan.pk))
+    fixes = group["plan"]["corrections"]
+    assert [(c["name"], c["frozen"], c["now"]) for c in fixes] == [("Everyone on the plan", 3, 9)]
+    assert post(owner, f"{B}plans/{plan.pk}/reopen/", {"confirm": True}).status_code == 200
+    assert mine(sc, "member", plan)["units"][0]["text"] == "10 × $5 = $50"
+
+
+def test_the_payroll_list_and_spreadsheet_say_how_per_unit_pay_is_worked_out(sc):
+    start = last_month()
+    plan = unit_plan(sc, start, split="pool", people=("member", "colleague"))
+    four_units(sc, start)
+    owner = sc["api"].as_(sc["who"]["owner"])
+    post(owner, f"{B}plans/{plan.pk}/close/")
+    data = get(sc, "owner", view="all", period=f"monthly:{start}").json()
+    rows = [p for p in data["payroll"] if p["plan"] == "Reviews bonus"]
+    assert {p["per_unit"] for p in rows} == {"For everyone: 4 × $5 = $20, split among 2: $10"}
+    r = owner.get(f"{B}payroll/?company={sc['company'].pk}&period=monthly:{start}")
+    book = zipfile.ZipFile(io.BytesIO(r.content))
+    sheet1 = book.read("xl/worksheets/sheet1.xml").decode()
+    sheet2 = book.read("xl/worksheets/sheet2.xml").decode()
+    assert "Per unit" in sheet1 and "4 × $5 = $20, split among 2: $10" in sheet1
+    assert "For everyone (per unit)" in sheet2
+    assert "$5 per unit, one pool split among 2" in sheet2
+
+
+def test_copy_forward_carries_per_unit_pay_its_split_and_the_teams(sc):
+    plan = unit_plan(sc, last_month(), split="pool", people=(), teams=("ops",))
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/{plan.pk}/copy-forward/")
+    assert r.status_code == 201, r.content
+    new = r.json()
+    assert new["unit_split"] == "pool"
+    assert [u["kpi"] for u in new["units"]] == [str(sc["kpis"]["all"].pk)]
+    assert [t["name"] for t in new["teams"]] == ["Operations"] and new["people"] == []
+
+
+# ------------------------------------------------------------------ whole teams on a plan
+
+OPS_PEOPLE = {"Mia Member", "Cole Colleague", "Max Manager", "Lee Leader", "Otto Opsviewer"}
+
+
+def all_rows(sc, plan, who="ff"):
+    data = get(sc, who, view="all").json()
+    return next(g["rows"] for g in data["plans"] if g["plan"]["id"] == str(plan.pk))
+
+
+def test_a_team_puts_everyone_on_it_on_the_plan(sc):
+    plan = unit_plan(sc, last_month(), people=(), teams=("ops",))
+    rows = all_rows(sc, plan)
+    assert {r["name"] for r in rows} == OPS_PEOPLE
+    assert all(r["via"] == ["Operations"] for r in rows)
+    assert "mine" in get(sc, "member").json()["views"]
+    # Only the people on it see it as theirs.
+    for who in ("sales_member", "viewer", "on_no_team"):
+        assert get(sc, who).json()["views"] == []
+        assert get(sc, who, view="mine", plan=str(plan.pk)).json()["view"] is None
+
+
+def test_a_member_of_a_team_plan_sees_only_their_own_row(sc):
+    plan = unit_plan(sc, last_month(), people=(), teams=("ops",))
+    r = get(sc, "member", view="mine", plan=str(plan.pk))
+    body = names_in(r)
+    assert "Mia Member" in body
+    for other in OPS_PEOPLE - {"Mia Member"}:
+        assert other not in body
+
+
+def test_a_manager_sees_their_teams_rows_on_a_team_plan(sc):
+    plan = unit_plan(sc, last_month(), people=(), teams=("ops",))
+    data = get(sc, "manager", view="team").json()
+    names = {r["name"] for g in data["plans"] if g["plan"]["id"] == str(plan.pk)
+             for r in g["rows"]}
+    assert names == OPS_PEOPLE
+    assert "Sam Sales" not in json.dumps(data)
+
+
+def test_the_client_owner_is_on_a_plan_only_by_name(sc):
+    from apps.work import teams
+
+    teams.place(sc["teams"]["ops"], sc["who"]["owner"], teams.Level.MEMBER)
+    plan = unit_plan(sc, last_month(), people=(), teams=("ops",))
+    assert "Olive Owner" not in {r["name"] for r in all_rows(sc, plan)}
+    named = unit_plan(sc, last_month(), people=("owner",), teams=("ops",), name="Named")
+    assert "Olive Owner" in {r["name"] for r in all_rows(sc, named)}
+
+
+def test_someone_named_and_on_the_team_is_on_once_by_their_own_row(sc):
+    start = last_month()
+    joined = start + timedelta(days=10)
+    who = sc["who"]
+    with tenant_context(sc["tenant"].pk):
+        plan = bonus.create_plan(sc["kpis"]["all"].scorecard, {
+            "name": "Both", "period": "monthly", "period_start": start.isoformat(),
+            "units": [{"kpi": str(sc["kpis"]["all"].pk), "rate": 5}],
+            "teams": [str(sc["teams"]["ops"].pk)],
+            "people": [{"membership": str(who["member"].pk), "joined_on": joined.isoformat()}]},
+            sc["practice"]["ff"].user)
+    rows = all_rows(sc, plan)
+    assert len(rows) == len(OPS_PEOPLE)
+    mia = next(r for r in rows if r["name"] == "Mia Member")
+    assert mia["prorated"] and mia["via"] == []
+
+
+def test_a_team_plan_follows_the_team_until_the_close_freezes_it(sc):
+    from apps.work import teams
+    from apps.work.models import ClientTeamMember
+
+    plan = unit_plan(sc, last_month(), people=(), teams=("ops",))
+    teams.place(sc["teams"]["ops"], sc["who"]["sales_member"], teams.Level.MEMBER)
+    assert "Sam Sales" in {r["name"] for r in all_rows(sc, plan)}
+    owner = sc["api"].as_(sc["who"]["owner"])
+    assert post(owner, f"{B}plans/{plan.pk}/close/").status_code == 200
+    frozen = {r["name"] for r in all_rows(sc, plan)}
+    # After the close: someone leaves the team, someone joins it.
+    ClientTeamMember.all_objects.filter(membership=sc["who"]["colleague"]).delete()
+    teams.place(sc["teams"]["ops"], sc["who"]["viewer"], teams.Level.MEMBER)
+    assert {r["name"] for r in all_rows(sc, plan)} == frozen
+    assert "mine" in get(sc, "colleague").json()["views"]
+    assert get(sc, "colleague", view="mine", plan=str(plan.pk)).status_code == 200
+    assert get(sc, "viewer").json()["views"] == []
+
+
+def test_a_team_of_another_company_or_practice_is_refused(sc):
+    from .factories import ClientTeamFactory
+
+    other = ClientCompanyFactory(tenant=sc["tenant"], name="Elsewhere")
+    theirs = ClientTeamFactory(tenant=sc["tenant"], client_company=other)
+    stranger = ClientTeamFactory(tenant=TenantFactory())
+    for team in (theirs, stranger):
+        data = {"company": str(sc["company"].pk), "name": "X", "period": "monthly",
+                "period_start": last_month().isoformat(),
+                "units": [{"kpi": str(sc["kpis"]["all"].pk), "rate": 5}],
+                "teams": [str(team.pk)]}
+        r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", data)
+        assert r.status_code == 400 and "company's own teams" in r.json()["detail"]
+
+
+def test_a_plan_names_at_least_one_person_or_team(sc):
+    data = {"company": str(sc["company"].pk), "name": "X", "period": "monthly",
+            "period_start": last_month().isoformat(),
+            "units": [{"kpi": str(sc["kpis"]["all"].pk), "rate": 5}], "people": [],
+            "teams": []}
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", data)
+    assert r.status_code == 400 and "person or team" in r.json()["detail"]
+
+
+def test_the_editor_offers_teams_and_company_kpis_for_per_unit_pay(sc):
+    editor = get(sc, "ff", view="all").json()["editor"]
+    assert {t["name"] for t in editor["teams"]} >= {"Operations", "Sales"}
+    ops = next(t for t in editor["teams"] if t["name"] == "Operations")
+    assert ops["people"] == len(OPS_PEOPLE)
+    names = {k["name"] for k in editor["unit_kpis"]}
+    assert "For everyone" in names
+    assert not names & {"Calls", "Rating"}                       # per person

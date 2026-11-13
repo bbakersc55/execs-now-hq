@@ -13,7 +13,7 @@ import zipfile
 from xml.sax.saxutils import escape
 
 PAYROLL_HEADER = ["Person", "Plan", "Period", "Full-period amount", "Days on the plan",
-                  "Amount earned"]
+                  "Per unit", "Amount earned"]
 DETAIL_HEADER = ["Person", "Plan", "Period", "Component", "Weight %", "Readings",
                  "Value", "Target", "Expected by the close", "Achievement %", "Tiers",
                  "Share %", "Earned"]
@@ -100,13 +100,24 @@ def _tiers_text(component, straight, cap) -> str:
     return "; ".join(f"from {t['from']:g}%: {t['share']:g}%" for t in component["tiers"])
 
 
+def _split_text(unit) -> str:
+    rate = unit.get("rate_text") or ""
+    if unit.get("split") == "pool":
+        return f"{rate} per unit, one pool split among {unit.get('people')}"
+    return f"{rate} per unit, each person in full"
+
+
 def rows_for(plans_with_rows) -> list:
-    """[(plan_head, [frozen rows])] as the two sheets."""
+    """[(plan_head, [frozen rows])] as the two sheets. Per-unit pay is said
+    as it is worked out, "4 × $5 = $20", on both."""
+    from .bonus import per_unit_text
+
     payroll, detail = [PAYROLL_HEADER], [DETAIL_HEADER]
     for head, rows in plans_with_rows:
         for row in rows:
             payroll.append([row["name"], head["name"], head["period_label"],
-                            row.get("full_amount"), row.get("days_on"), row["earned"]])
+                            row.get("full_amount"), row.get("days_on"), per_unit_text(row),
+                            row["earned"]])
             for c in row.get("components", []):
                 detail.append([
                     row["name"], head["name"], head["period_label"], c["name"], c["weight"],
@@ -114,4 +125,10 @@ def rows_for(plans_with_rows) -> list:
                     c.get("value"), c.get("target"), c.get("expected"), c.get("achievement"),
                     _tiers_text(c, head["straight_line"], head["cap_pct"]), c.get("share"),
                     c.get("earned")])
+            for u in row.get("units") or []:
+                detail.append([
+                    row["name"], head["name"], head["period_label"], f"{u['name']} (per unit)",
+                    None,
+                    ", ".join(f"{r['label']}: {r['value']:g}" for r in u.get("readings", [])),
+                    u.get("units"), None, None, None, _split_text(u), None, u.get("earned")])
     return [("Payroll", payroll), ("Readings and tiers", detail)]

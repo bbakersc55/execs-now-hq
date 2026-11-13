@@ -262,6 +262,12 @@ def test_every_measure_from_stored_reviews():
     assert v("unanswered") == 2
     # Replied in October: 1.5 days and 1 day.
     assert v("median_days_to_reply") == Decimal("1.2")          # 1.25, half to even
+    # Every review by October's last day, September's included; none after.
+    assert v("total_reviews") == 5
+    assert google_reviews.value_for("total_reviews", rows, date(2026, 10, 1),
+                                    date(2026, 10, 12), utc) == 3
+    assert google_reviews.value_for("total_reviews", rows, date(2026, 8, 1),
+                                    date(2026, 8, 31), utc) == 0
     empty = google_reviews.value_for("average_rating", rows, date(2026, 8, 1), date(2026, 8, 31),
                                      utc)
     assert empty is None
@@ -295,6 +301,28 @@ def test_the_feed_writes_readings_by_the_kpis_cadence(practice, google):
     assert tile["feed"]["kind"] == "reviews" and "Google reviews" in tile["feed"]["text"]
 
 
+def test_the_all_time_total_reads_every_review_by_each_periods_end(practice, google):
+    p = practice
+    connection = connected(p)
+    google.pages = [[review(3, created="2026-10-20T15:00:00Z"),
+                     review(2, stars=3, created="2026-10-05T15:00:00Z"),
+                     review(1, created="2026-09-10T15:00:00Z")]]
+    sync(connection)
+    with tenant_context(p["t"].pk):
+        total = setup.create_kpi(p["card"], {
+            "name": "Total Google reviews", "kind": "count", "cadence": "monthly",
+            "rollup": "last", "page": str(p["card"].pages.get().pk),
+            "reading_owner": str(p["ff"].user_id)}, p["ff"].user)
+    with mock.patch("apps.scorecard.views_reviews._today", return_value=TODAY):
+        made = put(p["client"], f"{B}feed/", {"company": str(p["company"].pk),
+                                             "kpi": str(total.pk), "measure": "total_reviews"})
+    assert made.status_code == 200, made.content
+    with tenant_context(p["t"].pk):
+        readings = {r.period_start: r.value for r in KpiReading.objects.filter(kpi=total)}
+    assert readings[date(2026, 10, 1)] == 3 and readings[date(2026, 9, 1)] == 1
+    assert readings[date(2026, 8, 1)] == 0
+
+
 def test_a_measure_must_fit_the_kpi(practice, google):
     p = practice
     connected(p)
@@ -306,6 +334,11 @@ def test_a_measure_must_fit_the_kpi(practice, google):
                                             "kpi": str(p["kpis"]["new"].pk),
                                             "measure": "reviews_by_star"})
     assert no_star.status_code == 400 and "stars" in no_star.json()["measure"]
+    # A running total, added up week by week, would count each review again.
+    summed = put(p["client"], f"{B}feed/", {"company": str(p["company"].pk),
+                                           "kpi": str(p["kpis"]["new"].pk),
+                                           "measure": "total_reviews"})
+    assert summed.status_code == 400 and "rolls up by Last" in summed.json()["measure"]
 
 
 def test_the_editor_gets_the_menu_without_asking_google(practice, google):

@@ -490,9 +490,11 @@ def default_tiers():
 class BonusPlan(TenantScopedModel):
     """A bonus plan for one period of one company (M5 part 2, spec "Per-person
     KPIs and bonus plans"): the people on it, the amount each earns for a full
-    period, and two to five weighted components. Copying it forward makes the
-    next period's plan in the same `series`, which is how a person's earlier
-    periods are found. It shows what is earned; it pays nothing (decision 8).
+    period, and two to five weighted components; or per-unit pay
+    (`BonusUnitRule`); or both. Its people are named one by one
+    (`BonusPerson`), as whole teams (`BonusTeam`), or both. Copying it forward
+    makes the next period's plan in the same `series`, which is how a person's
+    earlier periods are found. It shows what is earned; it pays nothing (decision 8).
 
     Closing it freezes it: every person's result, with the readings, targets,
     weights and tiers it came from, is kept in `BonusResult` and shown from
@@ -502,6 +504,12 @@ class BonusPlan(TenantScopedModel):
     class Period(models.TextChoices):
         MONTHLY = "monthly", "Monthly"
         QUARTERLY = "quarterly", "Quarterly"
+
+    class UnitSplit(models.TextChoices):
+        """How a plan's per-unit pay (`BonusUnitRule`) reaches its people."""
+
+        EACH = "each", "Each person earns the full amount"
+        POOL = "pool", "One pool, split evenly"
 
     scorecard = models.ForeignKey(Scorecard, on_delete=models.CASCADE,
                                   related_name="bonus_plans")
@@ -517,6 +525,10 @@ class BonusPlan(TenantScopedModel):
     straight_line = models.BooleanField(default=False, db_default=False)
     cap_pct = models.DecimalField(max_digits=6, decimal_places=2, default=120,
                                   db_default=120)
+    #: 2026-11-12: per-unit pay goes to each person in full, or is one pool
+    #: split evenly among the people on the plan.
+    unit_split = models.CharField(max_length=6, choices=UnitSplit.choices,
+                                  default=UnitSplit.EACH, db_default=UnitSplit.EACH)
     copied_from = models.ForeignKey("self", null=True, blank=True,
                                     on_delete=models.SET_NULL, related_name="+")
     closed_at = models.DateTimeField(null=True, blank=True)
@@ -583,6 +595,40 @@ class BonusPerson(TenantScopedModel):
                                     name="bonus_person_once_on_a_plan"),
             models.CheckConstraint(condition=Q(amount__isnull=True) | Q(amount__gte=0),
                                    name="bonus_person_amount_not_negative"),
+        ]
+
+
+class BonusUnitRule(TenantScopedModel):
+    """Per-unit pay on a plan (2026-11-12): a fixed amount for each unit of a
+    company KPI's reading for the period, "$5 per five-star Google review".
+    Beside the weighted components, or on its own. The plan's `unit_split`
+    says whether each person earns it in full or it is one pool."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="unit_rules")
+    kpi = models.ForeignKey(Kpi, on_delete=models.PROTECT, related_name="+")
+    rate = models.DecimalField(max_digits=12, decimal_places=4)
+    position = models.PositiveSmallIntegerField(default=0, db_default=0)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_unit_rule"
+        ordering = ["position", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "kpi"], name="bonus_unit_rule_kpi_once"),
+            models.CheckConstraint(condition=Q(rate__gt=0), name="bonus_unit_rule_rate_positive"),
+        ]
+
+
+class BonusTeam(TenantScopedModel):
+    """A whole team on a plan (2026-11-12): everyone on it is on the plan for
+    the period, as it stands, until the close freezes who was."""
+
+    plan = models.ForeignKey(BonusPlan, on_delete=models.CASCADE, related_name="teams")
+    team = models.ForeignKey("work.ClientTeam", on_delete=models.CASCADE, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "bonus_team"
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "team"], name="bonus_team_once_on_a_plan"),
         ]
 
 
