@@ -296,6 +296,8 @@ def me(request):
         # P11: the plans engine is there while any Command Center is on, for
         # the practice and its portal alike; with the plan's horizon names.
         "has_plan": bool(membership and _centers_on(membership.tenant_id)),
+        # P12: a tool run shared with this client owner or senior leader.
+        "has_tool_runs": bool(membership and _tool_runs(request)),
         "horizons": (_horizons(membership.tenant) if membership else None),
         # P8: feeds those Command Centers recommend, first in the feed picker.
         "recommended_feeds": (_recommended_feeds(membership.tenant_id)
@@ -723,3 +725,9 @@ def _horizons(tenant):
     from apps.tenancy import words
 
     return words.horizons_of(tenant)
+
+
+def _tool_runs(request) -> bool:
+    from apps.tools.services import portal_has_runs
+
+    return portal_has_runs(request)

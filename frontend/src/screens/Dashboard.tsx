@@ -22,8 +22,7 @@ import { Words, useWords } from "../lib/words";
 type Move = Board["pipeline"][number];
 
 const TILES = ["tasks", "digests", "pipeline", "goals", "waiting"] as const;
-// P11: "weeks" (each client's week at a glance) first, so it is in view.
-const PANELS = ["weeks", "meetings", "due", "approval", "pipeline", "finances", "clients"] as const;
+const PANELS = ["meetings", "due", "approval", "pipeline", "finances", "clients"] as const;
 type TileId = (typeof TILES)[number];
 type PanelId = (typeof PANELS)[number];
 /** A block anywhere on the dashboard. Prefixed, because "pipeline" is both a
@@ -48,7 +47,7 @@ const tileNames = (w: Words): Record<TileId, string> => ({
 });
 const PANEL_NAMES: Record<PanelId, string> = {
   meetings: "Today and tomorrow", due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
-  finances: "Practice finances", clients: "Clients", weeks: "This week, by client",
+  finances: "Practice finances", clients: "Clients",
 };
 
 /**
@@ -89,9 +88,7 @@ export function Dashboard({ me }: { me: Me }) {
 
   const layout = normalise(saved);
   // A VA has no financials (access matrix), so not even the empty slot.
-  const hidden = (key: BlockKey) => (key === "panel:finances" && me.role === "VA")
-    // P11: only while some client has a plan this week.
-    || (key === "panel:weeks" && !clients.some((c) => c.week));
+  const hidden = (key: BlockKey) => key === "panel:finances" && me.role === "VA";
   const kinds = new Map((pipelines.data ?? []).map((p) => [p.name, p.kind]));
 
   const tile: Record<TileId, ReactNode> = {
@@ -272,7 +269,11 @@ export function Dashboard({ me }: { me: Me }) {
       </>
     ),
     meetings: <MeetingsPanel />,
-    weeks: (
+  };
+  // P11: each client's week at a glance. Not one of the arranged panels: it
+  // sits first, above Getting started and the notices (2026-11-13), and only
+  // while some client has a plan this week.
+  const weeks = clients.some((c) => c.week) && (
       <>
         <h3 className="section">This week, by client</h3>
         <div className="clients">
@@ -288,8 +289,7 @@ export function Dashboard({ me }: { me: Me }) {
           ))}
         </div>
       </>
-    ),
-  };
+  );
 
   return (
     <>
@@ -308,6 +308,8 @@ export function Dashboard({ me }: { me: Me }) {
             </button>
           </span>
         } />
+
+      {weeks && <section className="home-weeks" aria-label="This week, by client">{weeks}</section>}
 
       {/* P2: the practice owner's Getting started list, until it is all done. */}
       {me.role === "FF" && <GettingStarted />}
@@ -540,10 +542,8 @@ function normalise(saved: Layout | LegacyLayout | null | undefined): Layout {
   bottom = keep(bottom);
   for (const key of ALL_BLOCKS) {
     if (seen.has(key)) continue;
-    // A layout saved before Home had meetings (2026-10-27) gets them first;
-    // one saved before the plans' weeks (P11) gets those first of all.
+    // A layout saved before Home had meetings (2026-10-27) gets them first.
     if (key === "panel:meetings") bottom.unshift(key);
-    else if (key === "panel:weeks") bottom.unshift(key);
     else (key.startsWith("tile:") ? top : bottom).push(key);
   }
   return { top, bottom };

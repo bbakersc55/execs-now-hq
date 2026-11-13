@@ -215,10 +215,8 @@ describe("arranging the dashboard", () => {
       .toEqual(["Today and tomorrow", "Due by day", "Pipeline", "Waiting for approval"]);
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    // P11's "This week, by client" leads, hidden while no client has a plan
-    // but kept in its place, as an assistant's finances slot is.
-    expect(saved.bottom.slice(0, 5))
-      .toEqual(["panel:weeks", "panel:meetings", "panel:due", "panel:pipeline", "panel:approval"]);
+    expect(saved.bottom.slice(0, 4))
+      .toEqual(["panel:meetings", "panel:due", "panel:pipeline", "panel:approval"]);
   });
 
   it("moves a tile by dragging it onto another", async () => {
@@ -330,8 +328,8 @@ describe("arranging the dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    expect(saved.bottom).toEqual(["panel:weeks", "panel:meetings", "panel:due", "panel:approval",
-      "panel:pipeline", "panel:finances"]);
+    expect(saved.bottom).toEqual(
+      ["panel:meetings", "panel:due", "panel:approval", "panel:pipeline", "panel:finances"]);
     expect(screen.queryByRole("heading", { name: "Practice finances" })).not.toBeInTheDocument();
   });
 
@@ -470,5 +468,22 @@ describe("today and tomorrow", () => {
              { label: "Tomorrow", date: "2026-10-28", events: [] }] } });
     expect(await screen.findByRole("link", { name: "your Profile" }))
       .toHaveAttribute("href", "/profile#calendar");
+  });
+
+  it("puts each client's week first, above Getting started and the notices", async () => {
+    show(aBoard({ clients: [{ id: "c1", name: "Acme Fasteners", open_tasks: 3, overdue: 0,
+      open_goals: 1, week: { sprint: "Every order picked right", done: 2, total: 5,
+        off_track: 1 } }] }));
+    const region = await screen.findByRole("region", { name: "This week, by client" });
+    expect(region.previousElementSibling).toHaveClass("page-head");
+    expect(within(region).getByRole("link", { name: "Acme Fasteners's week" }))
+      .toHaveAttribute("href", "/companies/c1/plan");
+    expect(region).toHaveTextContent("Every order picked right · 2 of 5 done");
+  });
+
+  it("shows no week block while no client has a plan", async () => {
+    show();
+    await screen.findByRole("heading", { name: "Clients" });
+    expect(screen.queryByRole("region", { name: "This week, by client" })).toBeNull();
   });
 });

@@ -373,8 +373,8 @@ EMAILS = {
 # ------------------------------------------------ 5–7. tools, feeds, AI
 
 #: The coming tools (the worksheet engine is next), by name only.
-TOOLS = ["Bottleneck finder", "Process map worksheet", "Org chart builder",
-         "Capacity and utilization calculator"]
+#: P12: the four tools, built (`apps.tools.shipped`), named as they ship.
+TOOLS = ["Bottleneck finder", "Capacity model", "Meeting cadence builder", "Org chart by seat"]
 
 #: Recommended feeds, shown first in a company's feed picker when the module
 #: is on: KPI feed codes (`scorecard.Kpi.Feed`), and bank feeds, which feed

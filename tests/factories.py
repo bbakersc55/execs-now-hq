@@ -2099,3 +2099,28 @@ class PlanCloseFactory(TenantScopedFactory):
     period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5)
                                     + datetime.timedelta(days=7 * n))
     summary = "Week of January 5. 3 of 4 tasks done."
+
+
+# --- P12: the worksheet engine ---------------------------------------------------
+
+class ToolFactory(TenantScopedFactory):
+    class Meta:
+        model = "tools.Tool"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Tool {n}")
+    definition = factory.LazyFunction(lambda: {"sections": [{"title": "Numbers", "fields": [
+        {"key": "a", "label": "A", "type": "number"}]}], "results": []})
+
+
+class ToolRunFactory(TenantScopedFactory):
+    class Meta:
+        model = "tools.ToolRun"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    tool_key = "ops_bottleneck"
+    tool_name = "Bottleneck finder"
+    name = factory.Sequence(lambda n: f"Run {n}")
+    run_date = datetime.date(2026, 11, 13)
+    definition = factory.LazyFunction(dict)

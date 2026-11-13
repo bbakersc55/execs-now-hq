@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ToolsShelfCard } from "./Tools";
 
 import { Modal, PageHead } from "../components/shell";
 import { PlaybookEditor } from "../components/Playbooks";
@@ -202,10 +203,8 @@ export function CommandCenterPage({ me }: { me: Me }) {
               <Link className="btn small" to="/settings/templates">Email templates</Link>
             </div>}
           </Card>
-          <Card title="Tools">
-            <p className="small muted" style={{ marginTop: 0 }}>Coming next, with the worksheet engine.</p>
-            <ul className="shelf">{shelves.tools.map((t) => <li key={t}>{t}</li>)}</ul>
-          </Card>
+          {/* P12: the worksheet engine's tools and recent runs. */}
+          <ToolsShelfCard />
           <Card title="Integrations">
             <p className="small muted" style={{ marginTop: 0 }}>Recommended, and shown first in a
               company's feed picker.</p>

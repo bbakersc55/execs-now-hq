@@ -5,10 +5,11 @@ import {
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
   Receipt, Landmark, Users, Gauge, X, FileSignature, Compass, CalendarRange,
-  ListChecks } from "lucide-react";
+  ListChecks, Wrench } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 import { PlanScreen, PlansScreen, ThisWeekScreen } from "./screens/Plan";
+import { ToolEditorScreen, ToolRunScreen, ToolsScreen } from "./screens/Tools";
 import { Landing } from "./components/Landing";
 
 import { ActingBanner } from "./components/ActAs";
@@ -167,6 +168,9 @@ const NAV: NavItem[] = [
   // P11: the plans, while any Command Center is on.
   { to: "/plans", label: "Plans", roles: ["FF", "CF", "VA"], icon: CalendarRange,
     when: (me) => !!me.has_plan },
+  // P12: the worksheet tools, with any Command Center on.
+  { to: "/tools", label: "Tools", roles: ["FF", "CF", "VA"], icon: Wrench,
+    when: (me) => !!me.has_plan },
   { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" , icon: ContactIcon },
   { to: "/pipeline", label: "Pipeline", roles: TENANT , icon: Workflow },
   { to: "/companies", label: "Companies", roles: TENANT , icon: Building2 },
@@ -205,6 +209,9 @@ const NAV: NavItem[] = [
     when: (me) => !!me.has_plan },
   { to: "/plan", label: "Plan", roles: CLIENT, icon: CalendarRange,
     when: (me) => !!me.has_plan },
+  // P12: worksheets the practice has shared with the client owner or a leader.
+  { to: "/tools", label: "Shared with you", roles: CLIENT, icon: Wrench,
+    when: (me) => !!me.has_tool_runs },
   { to: "/tasks", label: (w) => w.Tasks, roles: CLIENT , icon: CheckSquare },
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
@@ -449,6 +456,9 @@ export function App() {
             <Route path="/companies/:id/plan" element={<PlanScreen me={me} />} />
             <Route path="/plans" element={<PlansScreen />} />
             <Route path="/plans/practice" element={<PlanScreen me={me} practice />} />
+            <Route path="/tools" element={<ToolsScreen me={me} />} />
+            <Route path="/tools/:ref/edit" element={<ToolEditorScreen />} />
+            <Route path="/tool-runs/:id" element={<ToolRunScreen me={me} />} />
             <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
             {/* ...and the portal's own. */}
             <Route path="/scorecard" element={me.role === "FF" || me.role === "CF" || me.role === "VA"

@@ -239,32 +239,54 @@ def _graph_events(connection, token, start, end, own) -> list[dict]:
     return out
 
 
+def microsoft_recurrence(rrule: str, starts_at: datetime) -> dict:
+    """An RRULE of the four the meeting cadence makes (weekly, every two
+    weeks, the first weekday of each month or quarter), as Graph's pattern."""
+    parts = dict(p.split("=", 1) for p in rrule.split(";"))
+    names = {"MO": "monday", "TU": "tuesday", "WE": "wednesday", "TH": "thursday",
+             "FR": "friday", "SA": "saturday", "SU": "sunday"}
+    day = parts.get("BYDAY", "")
+    interval = int(parts.get("INTERVAL", "1"))
+    if parts.get("FREQ") == "MONTHLY":
+        pattern = {"type": "relativeMonthly", "interval": interval,
+                   "daysOfWeek": [names[day[-2:]]], "index": "first"}
+    else:
+        pattern = {"type": "weekly", "interval": interval, "daysOfWeek": [names[day[-2:]]]}
+    return {"pattern": pattern, "range": {"type": "noEnd",
+                                          "startDate": starts_at.date().isoformat()}}
+
+
 def create_event(connection, *, title: str, starts_at: datetime, minutes: int,
-                 tz_name: str, note: str = "") -> dict:
+                 tz_name: str, note: str = "", rrule: str = "") -> dict:
     """One event on the person's own calendar, with no attendees: nobody is
-    invited by the app. Returns {id, web_link}."""
+    invited by the app. `rrule` (P12) makes it recur. Returns {id, web_link}."""
     token = access_token(connection)
     ends_at = starts_at + timedelta(minutes=minutes)
     if connection.provider == "microsoft":
         from apps.crm.services import graph
 
         local = "%Y-%m-%dT%H:%M:%S"
-        response = graph._call("POST", f"{graph.GRAPH}/me/events", token=token, json={
+        body = {
             "subject": title[:255],
             "body": {"contentType": "text", "content": note},
             "start": {"dateTime": starts_at.strftime(local), "timeZone": tz_name},
-            "end": {"dateTime": ends_at.strftime(local), "timeZone": tz_name}})
+            "end": {"dateTime": ends_at.strftime(local), "timeZone": tz_name}}
+        if rrule:
+            body["recurrence"] = microsoft_recurrence(rrule, starts_at)
+        response = graph._call("POST", f"{graph.GRAPH}/me/events", token=token, json=body)
         if not response.ok:
             raise CalendarUnavailable(
                 f"Microsoft 365 would not add the event ({response.status_code}): "
                 f"{graph._said(response)[:200]}")
         data = response.json()
         return {"id": data.get("id", ""), "web_link": data.get("webLink", "")}
+    body = {"summary": title[:255], "description": note,
+            "start": {"dateTime": starts_at.isoformat(), "timeZone": tz_name},
+            "end": {"dateTime": ends_at.isoformat(), "timeZone": tz_name}}
+    if rrule:
+        body["recurrence"] = [f"RRULE:{rrule}"]
     response = requests.post(f"{GOOGLE_API}/calendars/primary/events",
-                             headers={"Authorization": f"Bearer {token}"}, timeout=30, json={
-                                 "summary": title[:255], "description": note,
-                                 "start": {"dateTime": starts_at.isoformat(), "timeZone": tz_name},
-                                 "end": {"dateTime": ends_at.isoformat(), "timeZone": tz_name}})
+                             headers={"Authorization": f"Bearer {token}"}, timeout=30, json=body)
     if not response.ok:
         raise CalendarUnavailable(
             f"Google Calendar would not add the event ({response.status_code}).")

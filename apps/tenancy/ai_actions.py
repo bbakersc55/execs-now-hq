@@ -155,6 +155,11 @@ ACTIONS: tuple[Action, ...] = (
            fixed_why="Runs in the app on the practice's key, so its proposals land in the "
                      "plan's tray. AI apps propose items with propose_plan_items.",
            center="any"),
+    # P12: the tool builder, with any Command Center on.
+    Action("tool_builder", "New tool: propose a worksheet (tool builder)", "Tools",
+           ("tool_builder",), DEEP, "user", False,
+           fixed_why="Runs in the app on the practice's key, so the proposal opens in the "
+                     "tool editor before anything is saved.", center="any"),
     Action("ops_weekly_note", "Weekly note from the scorecard", "Scorecard",
            ("ops_weekly_note",), STANDARD, "user", True,
            "Using Execs NOW HQ, read this week's scorecard_readings for {record} and draft "

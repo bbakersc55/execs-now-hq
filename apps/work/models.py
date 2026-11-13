@@ -667,6 +667,8 @@ class TaskUpdate(TenantScopedModel):
         AI_APP = "ai_app", "An AI app"
         #: P8: made by starting a playbook on a company.
         PLAYBOOK = "playbook", "A playbook"
+        #: P12: made from a tool run's flagged rows.
+        TOOL = "tool", "A tool"
 
     task = models.ForeignKey(Task, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="updates")

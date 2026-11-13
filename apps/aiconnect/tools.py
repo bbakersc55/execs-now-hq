@@ -769,9 +769,52 @@ def propose_plan_items(p, company_id: str, horizon: str, items: list) -> dict:
                     "to accept, edit or discard."}
 
 
+def list_tool_runs(p, company_id: str) -> dict:
+    """A company's tool runs (P12): name, tool, date and whether it is shared
+    with the client."""
+    from apps.tools.models import ToolRun
+    from apps.tools.services import available
+
+    if p.role not in ("FF", "CF", "VA"):
+        raise ToolRefused("Only the practice reads tool runs here.")
+    if not available(p.tenant.pk):
+        raise ToolRefused("Tools are part of the Command Centers; this practice has none on.")
+    company = _company(p, company_id)
+    runs = list(ToolRun.objects.filter(company=company, archived_at__isnull=True)[:100])
+    p.touch("company", company.pk)
+    return {"company": company.name,
+            "runs": [{"id": str(r.pk), "name": r.name, "tool": r.tool_name,
+                      "date": r.run_date.isoformat(), "shared_with_client": r.shared_with_client}
+                     for r in runs]}
+
+
+def get_tool_run(p, run_id: str) -> dict:
+    """One tool run (P12) as text: its fields, its tables and its results,
+    worked out from the definition it was made with."""
+    from apps.tools import definition as D
+    from apps.tools.models import ToolRun
+    from apps.tools.services import available, summary_text
+
+    if p.role not in ("FF", "CF", "VA"):
+        raise ToolRefused("Only the practice reads tool runs here.")
+    if not available(p.tenant.pk):
+        raise ToolRefused("Tools are part of the Command Centers; this practice has none on.")
+    run = ToolRun.objects.filter(pk=_uuid(run_id, "run_id"), archived_at__isnull=True,
+                                 company__in=_companies(p)).select_related("company").first()
+    if run is None:
+        raise ToolRefused("No tool run with that id that you can see.")
+    evaluation = D.evaluate(run.definition, run.values)
+    p.touch("tool_run", run.pk)
+    return {"id": str(run.pk), "name": run.name, "tool": run.tool_name,
+            "company": run.company.name, "date": run.run_date.isoformat(),
+            "results": [{"label": r["label"], "value": r["text"]} for r in evaluation["results"]],
+            "text": summary_text(run, evaluation)}
+
+
 READ_TOOLS = (practice_summary, list_companies, company_overview, search_contacts, get_contact,
               list_pipelines, list_tasks, list_goals, list_notes, scorecard_readings,
               pending_meeting_proposals, sending_queue, digest_drafts, invoices_summary,
-              documents, list_strategy_sessions, strategy_session, company_plan)
+              documents, list_strategy_sessions, strategy_session, company_plan,
+              list_tool_runs, get_tool_run)
 WRITE_TOOLS = (create_task, add_note, draft_email, propose_map_rows, enter_kpi_reading,
                create_digest_draft, propose_plan_items)

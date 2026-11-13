@@ -275,6 +275,18 @@ def build() -> MCPServer:
         return await run("company_plan", T.company_plan, company_id=company_id,
                          horizon=horizon)
 
+    @server.tool(annotations=READ)
+    async def list_tool_runs(company_id: str) -> dict:
+        """A company's tool runs (bottleneck finder, capacity model and the rest): each
+        run's id, name, tool, date and whether it is shared with the client."""
+        return await run("list_tool_runs", T.list_tool_runs, company_id=company_id)
+
+    @server.tool(annotations=READ)
+    async def get_tool_run(run_id: str) -> dict:
+        """One tool run, read: its results and the whole worksheet as text, worked out from
+        the definition it was made with. run_id comes from list_tool_runs."""
+        return await run("get_tool_run", T.get_tool_run, run_id=run_id)
+
     @server.tool(annotations=DRAFT)
     async def propose_plan_items(company_id: str, horizon: str,
                                  items: list[dict[str, Any]]) -> dict:

@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "apps.aiconnect",
     "apps.centers",
     "apps.plans",
+    "apps.tools",
 ]
 
 MIDDLEWARE = [

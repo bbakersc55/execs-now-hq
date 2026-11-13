@@ -212,6 +212,10 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .plans import plans as plan_seed
 
         plan_seed(world)
+        # P12: a run of each Operations tool at Acme, and a tool of Summit's own.
+        from .tools import tools as tool_seed
+
+        tool_seed(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the

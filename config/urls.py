@@ -65,6 +65,7 @@ urlpatterns = [
     path("api/", include("apps.aiconnect.urls")),
     path("api/", include("apps.centers.urls")),
     path("api/", include("apps.plans.urls")),
+    path("api/", include("apps.tools.urls")),
     path("api/", include("apps.scorecard.urls")),
     path("api/", include("apps.esign.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed

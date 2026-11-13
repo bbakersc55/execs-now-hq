@@ -59,6 +59,8 @@ class PlanItem(TenantScopedModel):
         CLIENT = "client", "Proposed by the client"
         AI_APP = "ai_app", "From an AI app"
         CARRIED = "carried", "Carried over"
+        #: P12: proposed from a tool run.
+        TOOL = "tool", "From a tool"
 
     company = models.ForeignKey("crm.Company", on_delete=models.CASCADE,
                                 related_name="plan_items")

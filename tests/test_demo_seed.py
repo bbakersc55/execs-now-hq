@@ -923,6 +923,22 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
                                                                       "quarter", "month"))
     home = owner_api.get("/api/dashboard/").json()["clients"]
     assert next(c for c in home if c["name"] == "Acme Fasteners")["week"]["total"] >= 1
+    # P12: a run of each Operations tool at Acme, worked out; Summit's own tool.
+    runs = owner_api.get(f"/api/tool-runs/?company={acme.pk}").json()["runs"]
+    assert sorted(r["tool_key"] for r in runs) == ["ops_bottleneck", "ops_capacity",
+                                                  "ops_meetings", "ops_org_chart"]
+    by_tool = {r["tool_key"]: owner_api.get(f"/api/tool-runs/{r['id']}/").json() for r in runs}
+    found = {r["key"]: r for r in by_tool["ops_bottleneck"]["evaluation"]["results"]}
+    assert found["constraint"]["value"] == "Head and thread"
+    org = {r["key"]: r for r in by_tool["ops_org_chart"]["evaluation"]["results"]}
+    assert org["open"]["value"] == ["Quality lead", "Second-shift supervisor"]
+    assert len(owner_api.get(f"/api/tool-runs/{by_tool['ops_meetings']['id']}/files/calendar/")
+               .json()["events"]) == 4
+    shelf = owner_api.get("/api/tools/").json()
+    assert "Client health check" in [t["name"] for t in shelf["tools"] if not t["shipped"]]
+    shared = wiley_api.get("/api/tool-runs/?company=mine").json()["runs"]
+    assert {r["tool_key"] for r in shared} == {"ops_bottleneck", "ops_org_chart"}
+    assert marvin_api.get("/api/tool-runs/?company=mine").json()["runs"] == []
 
     # -------------------------------------------------- the second run resets
     with tenant_context(tenant.pk):

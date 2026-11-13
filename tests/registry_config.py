@@ -323,6 +323,12 @@ register(PlanItem, factories.PlanItemFactory, api_exposed=False)
 register(PlanItemTask, factories.PlanItemTaskFactory, api_exposed=False)
 register(PlanItemKpi, factories.PlanItemKpiFactory, api_exposed=False)
 register(PlanClose, factories.PlanCloseFactory, api_exposed=False)
+# P12: the worksheet engine. Read only through /api/tools/ and /api/tool-runs/,
+# which reach a company through the plans engine's rule (tests/test_tools.py).
+from apps.tools.models import Tool, ToolRun  # noqa: E402
+
+register(Tool, factories.ToolFactory, api_exposed=False)
+register(ToolRun, factories.ToolRunFactory, api_exposed=False)
 # 2026-11-12: per-unit pay and whole teams on a plan, read the same way.
 register(BonusUnitRule, factories.BonusUnitRuleFactory, api_exposed=False)
 register(BonusTeam, factories.BonusTeamFactory, api_exposed=False)

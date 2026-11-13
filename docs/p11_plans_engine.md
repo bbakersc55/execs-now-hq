@@ -212,9 +212,11 @@ every plan route is 404 and the menus show nothing.
     conversion. All three horizons go into the current quarter.
 14. **Plans** got a staff menu entry, under Operations, as well as the links
     asked for.
-15. **Home's week at a glance is a panel of its own,** "This week, by
-    client", first under the tiles and hidden while no client has a plan.
-    The client cards in the Clients panel carry the same line.
+15. **Home's week at a glance is a block of its own,** "This week, by
+    client". Since 2026-11-13 it sits first, above Getting started and the
+    notices, and is not one of the arranged panels. It is hidden while no
+    client has a plan. The client cards in the Clients panel carry the same
+    line.
 16. **A horizon's tray sits under its items,** with "N proposed, waiting
     below" at the top of the column.
 
