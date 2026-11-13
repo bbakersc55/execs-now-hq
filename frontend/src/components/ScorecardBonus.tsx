@@ -257,9 +257,8 @@ function BonusTables({ d, view, companyId, onPeriod }: {
   const startNew = () => setEditing({
     name: "", period: "monthly", period_start: new Date().toISOString().slice(0, 8) + "01",
     amount: "", straight_line: false, cap_pct: 120,
-    components: [{ kpi: "", weight: 50, target_value: null, tiers: DEFAULT_TIERS },
-      { kpi: "", weight: 50, target_value: null, tiers: DEFAULT_TIERS }],
-    people: [], unit_split: "each", units: [], teams: [] });
+    // No starter rows: a plan of per-unit pay alone has none.
+    components: [], people: [], unit_split: "each", units: [], teams: [] });
   const perUnit = (d.payroll ?? []).some((p) => p.per_unit);
   const edit = async (id: string) => {
     const plan = await api.get<BonusPlanDraft>(`/api/scorecard/bonus/plans/${id}/`);
@@ -420,17 +419,30 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
 }) {
   const [p, setP] = useState<BonusPlanDraft>({ ...draft, unit_split: draft.unit_split ?? "each",
     units: draft.units ?? [], teams: draft.teams ?? [] });
+  const [problem, setProblem] = useState<Problem | null>(null);
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: (sent: Sent) => {
       const body = { ...p, company: companyId,
-        components: p.components.map((c) => ({ ...c, target_value: c.target_value === "" ? null : c.target_value })),
-        units: p.units.map((u) => ({ kpi: u.kpi, rate: u.rate })),
+        components: sent.components.map((i) => p.components[i])
+          .map((c) => ({ ...c, target_value: c.target_value === "" ? null : c.target_value })),
+        units: sent.units.map((i) => ({ kpi: p.units[i].kpi, rate: p.units[i].rate })),
         teams: p.teams.map((t) => t.team) };
       return p.id ? api.patch(`/api/scorecard/bonus/plans/${p.id}/`, body)
         : api.post("/api/scorecard/bonus/plans/", body);
     },
     onSuccess: onSaved,
+    onError: (err, sent) => setProblem(locate(err, sent, p, choices)),
   });
+  const submit = () => {
+    setProblem(null);
+    // A row with no KPI chosen is left out, not refused: the form may have one
+    // added and not used. A per-unit row with a rate typed is sent, so the
+    // server says what it lacks.
+    save.mutate({
+      components: p.components.flatMap((c, i) => (c.kpi ? [i] : [])),
+      units: p.units.flatMap((u, i) => (u.kpi || String(u.rate ?? "").trim() ? [i] : [])),
+    });
+  };
   const set = (patch: Partial<BonusPlanDraft>) => setP({ ...p, ...patch });
   const setComp = (i: number, patch: Partial<BonusPlanDraft["components"][number]>) =>
     set({ components: p.components.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
@@ -438,12 +450,13 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
   const onTeams = new Set(p.teams.map((t) => t.team));
   const total = p.components.reduce((a, c) => a + (Number(c.weight) || 0), 0);
   const weighted = p.components.length > 0;
+  const bad = (part: Problem["part"], i: number) => problem?.part === part && problem.index === i;
   const setUnit = (i: number, patch: Partial<BonusPlanDraft["units"][number]>) =>
     set({ units: p.units.map((u, j) => (j === i ? { ...u, ...patch } : u)) });
   return (
     <Modal label={p.id ? "Edit bonus plan" : "New bonus plan"} wide onClose={onClose}
       title={p.id ? `Edit ${p.name}` : "New bonus plan"}>
-      {save.isError && <Banner kind="bad">{(save.error as Error).message}</Banner>}
+      {save.isError && <Banner kind="bad">{problem?.text ?? (save.error as Error).message}</Banner>}
       <div className="bn-form">
         <label>Name<input value={p.name} onChange={(e) => set({ name: e.target.value })} /></label>
         <label>Period<select value={p.period} onChange={(e) => set({ period: e.target.value as "monthly" | "quarterly" })}>
@@ -454,15 +467,17 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
           onChange={(e) => set({ amount: e.target.value })} /></label>}
       </div>
       <fieldset className="bn-fieldset">
-        <legend>{weighted ? `Components (${total}% of 100%)` : "Components (none: per-unit pay only)"}</legend>
+        <legend>{weighted ? `Components (${total}% of 100%)` : p.units.length
+          ? "Components (none: per-unit pay only)" : "Components (none yet)"}</legend>
         {weighted && <label className="check"><input type="checkbox" checked={p.straight_line}
           onChange={(e) => set({ straight_line: e.target.checked })} /> A straight line instead of tiers
           (the share is the achievement)</label>}
         {weighted && p.straight_line && <label>Capped at %<input inputMode="decimal" value={p.cap_pct}
           onChange={(e) => set({ cap_pct: Number(e.target.value) || 0 })} /></label>}
         {p.components.map((c, i) => (
-          <div key={i} className="bn-comp-row">
-            <label>KPI<select aria-label={`Component ${i + 1} KPI`} value={c.kpi} onChange={(e) => setComp(i, { kpi: e.target.value })}>
+          <div key={i} className={`bn-comp-row${bad("components", i) ? " bn-row-bad" : ""}`}>
+            <label>KPI<select aria-label={`Component ${i + 1} KPI`} value={c.kpi}
+              aria-invalid={bad("components", i) || undefined} onChange={(e) => setComp(i, { kpi: e.target.value })}>
               <option value="">Choose a per-person KPI</option>
               {choices.kpis.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select></label>
@@ -485,9 +500,8 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
                   tiers: [...c.tiers, { from: (c.tiers[c.tiers.length - 1]?.from ?? 0) + 10, share: 100 }] })}>Add a tier</button>}
               </details>
             )}
-            {(p.components.length > 2 || p.units.length > 0) && <button className="small ghost"
-              aria-label={`Remove component ${i + 1}`}
-              onClick={() => set({ components: p.components.filter((_, j) => j !== i) })}>Remove</button>}
+            <button className="small ghost" aria-label={`Remove component ${i + 1}`}
+              onClick={() => set({ components: p.components.filter((_, j) => j !== i) })}>Remove</button>
           </div>
         ))}
         {p.components.length < 5 && <button className="small" onClick={() => set({
@@ -499,8 +513,9 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
         <p className="sc-muted bn-small">A fixed amount for each unit of a company KPI's reading
           for the period, such as $5 per five-star Google review. Beside the components, or on its own.</p>
         {p.units.map((u, i) => (
-          <div key={i} className="bn-comp-row">
+          <div key={i} className={`bn-comp-row${bad("units", i) ? " bn-row-bad" : ""}`}>
             <label>KPI<select aria-label={`Per-unit ${i + 1} KPI`} value={u.kpi}
+              aria-invalid={bad("units", i) || undefined}
               onChange={(e) => setUnit(i, { kpi: e.target.value })}>
               <option value="">Choose a company KPI</option>
               {(choices.unit_kpis ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
@@ -537,7 +552,8 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
         {choices.members.map((m) => {
           const row = p.people.find((x) => x.membership === m.membership);
           return (
-            <div key={m.membership} className="bn-person-row">
+            <div key={m.membership}
+              className={`bn-person-row${row && bad("people", p.people.indexOf(row)) ? " bn-row-bad" : ""}`}>
               <label className="check"><input type="checkbox" checked={onPlan.has(m.membership)}
                 onChange={(e) => set({ people: e.target.checked
                   ? [...p.people, { membership: m.membership, amount: null, joined_on: null, left_on: null }]
@@ -553,12 +569,42 @@ function PlanEditor({ draft, choices, companyId, onClose, onSaved }: {
         })}
       </fieldset>
       <div className="row tight">
-        <button className="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+        <button className="primary" disabled={save.isPending} onClick={submit}>
           {p.id ? "Save the plan" : "Make the plan"}</button>
         <button onClick={onClose}>Cancel</button>
       </div>
     </Modal>
   );
+}
+
+/** Which form rows a save sent: their places in the form, in order. */
+interface Sent { components: number[]; units: number[] }
+
+/** A refused save, said against the form's own row. */
+interface Problem { part: "components" | "units" | "people"; index: number; text: string }
+
+/** The server names a refused row by its place in what was sent (`row`, from
+ *  0); a row left out moves the rest up, so it is turned back into the form's
+ *  own row before it is said: "Component 3: Calls is in the plan twice." */
+function locate(err: unknown, sent: Sent, p: BonusPlanDraft,
+  choices: BonusEditorChoices): Problem | null {
+  const e = err as Error & { data?: { field?: string; row?: number } };
+  const field = e.data?.field;
+  const row = e.data?.row;
+  if (typeof row !== "number") return null;
+  if (field === "components" && sent.components[row] !== undefined) {
+    const index = sent.components[row];
+    return { part: "components", index, text: `Component ${index + 1}: ${e.message}` };
+  }
+  if (field === "units" && sent.units[row] !== undefined) {
+    const index = sent.units[row];
+    return { part: "units", index, text: `Per-unit pay ${index + 1}: ${e.message}` };
+  }
+  if (field === "people" && p.people[row]) {
+    const who = choices.members.find((m) => m.membership === p.people[row].membership);
+    return { part: "people", index: row, text: `${who?.name ?? `Person ${row + 1}`}: ${e.message}` };
+  }
+  return null;
 }
 
 export { BONUS_VIEW_LABEL };

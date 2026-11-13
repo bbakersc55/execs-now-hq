@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -662,6 +663,18 @@ def _date(raw, field):
         raise SetupError("That isn't a date.", field) from None
 
 
+@contextmanager
+def _at_row(field, index):
+    """A refusal about one row of a plan's components, per-unit pay or people
+    says which row it is (`row`, from 0, as sent), so the form can point at it."""
+    try:
+        yield
+    except SetupError as exc:
+        if "row" in exc.extra:
+            raise
+        raise SetupError(str(exc), field, **{**exc.extra, "row": index}) from None
+
+
 def _clean_components(scorecard, plan_period, raw, *, units=False) -> list:
     if raw in (None, ""):
         raw = []
@@ -679,28 +692,31 @@ def _clean_components(scorecard, plan_period, raw, *, units=False) -> list:
     kpis = {str(k.pk): k for k in Kpi.objects.filter(scorecard=scorecard,
                                                      archived_at__isnull=True)}
     out, seen, total = [], set(), Decimal(0)
-    for row in raw:
-        kpi = kpis.get(str(row.get("kpi") or ""))
-        if kpi is None:
-            raise SetupError("Each component is one of this scorecard's KPIs.", "components")
-        if kpi.pk in seen:
-            raise SetupError(f"{kpi.name} is in the plan twice.", "components")
-        seen.add(kpi.pk)
-        if not kpi.per_person or kpi.is_computed:
-            raise SetupError(f"{kpi.name} isn't a per-person KPI. A component counts "
-                             "each person's own numbers.", "components")
-        if kpi.direction == Kpi.Direction.RANGE:
-            raise SetupError(f"{kpi.name} is judged within a range; a component is "
-                             "higher or lower is better.", "components")
-        if plan_period == BonusPlan.Period.MONTHLY and kpi.cadence == Kpi.Cadence.QUARTERLY:
-            raise SetupError(f"{kpi.name} is read quarterly, longer than a monthly plan.",
-                             "components")
-        weight = _decimal(row, "weight", "a weight", required=True, low=Decimal("0.01"),
-                          high=Decimal(100))
-        total += weight
-        target = _decimal(row, "target_value", "a target")
-        out.append({"kpi": kpi, "weight": weight.quantize(CENTS), "target_value": target,
-                    "tiers": clean_tiers(row.get("tiers"))})
+    for i, row in enumerate(raw):
+        with _at_row("components", i):
+            if not isinstance(row, dict):
+                raise SetupError("Each component is a KPI and a weight.", "components")
+            kpi = kpis.get(str(row.get("kpi") or ""))
+            if kpi is None:
+                raise SetupError("Each component is one of this scorecard's KPIs.", "components")
+            if kpi.pk in seen:
+                raise SetupError(f"{kpi.name} is in the plan twice.", "components")
+            seen.add(kpi.pk)
+            if not kpi.per_person or kpi.is_computed:
+                raise SetupError(f"{kpi.name} isn't a per-person KPI. A component counts "
+                                 "each person's own numbers.", "components")
+            if kpi.direction == Kpi.Direction.RANGE:
+                raise SetupError(f"{kpi.name} is judged within a range; a component is "
+                                 "higher or lower is better.", "components")
+            if plan_period == BonusPlan.Period.MONTHLY and kpi.cadence == Kpi.Cadence.QUARTERLY:
+                raise SetupError(f"{kpi.name} is read quarterly, longer than a monthly plan.",
+                                 "components")
+            weight = _decimal(row, "weight", "a weight", required=True, low=Decimal("0.01"),
+                              high=Decimal(100))
+            total += weight
+            target = _decimal(row, "target_value", "a target")
+            out.append({"kpi": kpi, "weight": weight.quantize(CENTS), "target_value": target,
+                        "tiers": clean_tiers(row.get("tiers"))})
     if total.quantize(CENTS) != Decimal(100):
         raise SetupError(f"The weights add to {total.normalize():f}%; they must add to 100%.",
                          "components")
@@ -716,34 +732,35 @@ def _clean_units(scorecard, plan_period, raw) -> list:
     kpis = {str(k.pk): k for k in Kpi.objects.filter(scorecard=scorecard,
                                                      archived_at__isnull=True)}
     out, seen = [], set()
-    for row in raw:
-        if not isinstance(row, dict):
-            raise SetupError("Each per-unit rule is a KPI and a rate.", "units")
-        kpi = kpis.get(str(row.get("kpi") or ""))
-        if kpi is None:
-            raise SetupError("Each per-unit rule is one of this scorecard's KPIs.", "units")
-        if kpi.pk in seen:
-            raise SetupError(f"{kpi.name} is paid per unit twice.", "units")
-        seen.add(kpi.pk)
-        if kpi.per_person:
-            raise SetupError(f"{kpi.name} has a reading per person. Per-unit pay counts one "
-                             "number for the company, such as its Google reviews.", "units")
-        if kpi.is_computed:
-            raise SetupError(f"{kpi.name} is worked out from two other KPIs. Per-unit pay "
-                             "counts a KPI's own readings.", "units")
-        if kpi.direction != Kpi.Direction.HIGHER:
-            raise SetupError(f"{kpi.name} isn't a KPI where more is better, so it can't be "
-                             "paid per unit.", "units")
-        if kpi.kind not in UNIT_KINDS:
-            raise SetupError(f"{kpi.name} is a {kpi.get_kind_display().lower()}. Per-unit pay "
-                             "counts a Count, Number or Money KPI.", "units")
-        if plan_period == BonusPlan.Period.MONTHLY and kpi.cadence == Kpi.Cadence.QUARTERLY:
-            raise SetupError(f"{kpi.name} is read quarterly, longer than a monthly plan.",
-                             "units")
-        rate = _decimal(row, "rate", "a rate per unit", required=True, high=Decimal(100000))
-        if rate <= 0:
-            raise SetupError("A rate per unit is more than $0.", "units")
-        out.append({"kpi": kpi, "rate": rate})
+    for i, row in enumerate(raw):
+        with _at_row("units", i):
+            if not isinstance(row, dict):
+                raise SetupError("Each per-unit rule is a KPI and a rate.", "units")
+            kpi = kpis.get(str(row.get("kpi") or ""))
+            if kpi is None:
+                raise SetupError("Each per-unit rule is one of this scorecard's KPIs.", "units")
+            if kpi.pk in seen:
+                raise SetupError(f"{kpi.name} is paid per unit twice.", "units")
+            seen.add(kpi.pk)
+            if kpi.per_person:
+                raise SetupError(f"{kpi.name} has a reading per person. Per-unit pay counts one "
+                                 "number for the company, such as its Google reviews.", "units")
+            if kpi.is_computed:
+                raise SetupError(f"{kpi.name} is worked out from two other KPIs. Per-unit pay "
+                                 "counts a KPI's own readings.", "units")
+            if kpi.direction != Kpi.Direction.HIGHER:
+                raise SetupError(f"{kpi.name} isn't a KPI where more is better, so it can't be "
+                                 "paid per unit.", "units")
+            if kpi.kind not in UNIT_KINDS:
+                raise SetupError(f"{kpi.name} is a {kpi.get_kind_display().lower()}. Per-unit pay "
+                                 "counts a Count, Number or Money KPI.", "units")
+            if plan_period == BonusPlan.Period.MONTHLY and kpi.cadence == Kpi.Cadence.QUARTERLY:
+                raise SetupError(f"{kpi.name} is read quarterly, longer than a monthly plan.",
+                                 "units")
+            rate = _decimal(row, "rate", "a rate per unit", required=True, high=Decimal(100000))
+            if rate <= 0:
+                raise SetupError("A rate per unit is more than $0.", "units")
+            out.append({"kpi": kpi, "rate": rate})
     return out
 
 
@@ -778,18 +795,19 @@ def _clean_people(company, plan_start, plan_end, raw, *, teams=False) -> list:
         raise SetupError("Each person on a plan is a portal user of the company, once.",
                          "people")
     out = []
-    for row in raw:
-        joined = _date(row.get("joined_on"), "people")
-        left = _date(row.get("left_on"), "people")
-        for day in (joined, left):
-            if day is not None and not plan_start <= day <= plan_end:
-                raise SetupError("A start or end date on the plan is inside its period.",
-                                 "people")
-        if joined and left and left < joined:
-            raise SetupError("Someone leaves the plan before they join it.", "people")
-        out.append({"membership": found[str(row.get("membership"))],
-                    "amount": _decimal(row, "amount", "an amount", low=Decimal(0)),
-                    "joined_on": joined, "left_on": left})
+    for i, row in enumerate(raw):
+        with _at_row("people", i):
+            joined = _date(row.get("joined_on"), "people")
+            left = _date(row.get("left_on"), "people")
+            for day in (joined, left):
+                if day is not None and not plan_start <= day <= plan_end:
+                    raise SetupError("A start or end date on the plan is inside its period.",
+                                     "people")
+            if joined and left and left < joined:
+                raise SetupError("Someone leaves the plan before they join it.", "people")
+            out.append({"membership": found[str(row.get("membership"))],
+                        "amount": _decimal(row, "amount", "an amount", low=Decimal(0)),
+                        "joined_on": joined, "left_on": left})
     return out
 
 

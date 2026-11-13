@@ -1795,6 +1795,7 @@ td.bn-ok, td.bn-behind, td.bn-off { font-weight: 600; }
 .bn-unit-sum { font-size: 16px; font-weight: 600; color: var(--sc-ink); background: var(--sc-none-bg);
                border-radius: 8px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
 .bn-split { display: flex; flex-direction: column; gap: 6px; }
+.bn-row-bad { border-left: 3px solid var(--sc-off); padding-left: 8px; }
 .bn-earned { display: flex; justify-content: space-between; align-items: baseline;
              border-top: 1px solid var(--sc-line-soft); padding-top: 10px; font-size: 13px; }
 .bn-earned-amt { font-size: 20px; font-weight: 700; }

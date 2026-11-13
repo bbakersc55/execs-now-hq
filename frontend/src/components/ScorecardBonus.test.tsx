@@ -316,8 +316,6 @@ describe("bonus plans (M5 part 2)", () => {
     await user.selectOptions(screen.getByLabelText("Per-unit 1 KPI"), "k9");
     await user.type(screen.getByLabelText("Per-unit 1 rate"), "5");
     await user.click(screen.getByLabelText(/One pool, split evenly/));
-    await user.click(screen.getByRole("button", { name: "Remove component 1" }));
-    await user.click(screen.getByRole("button", { name: "Remove component 1" }));
     expect(screen.queryByLabelText("Amount per person, full period")).toBeNull();
     expect(screen.getByText("Components (none: per-unit pay only)")).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Customer service/));
@@ -330,6 +328,69 @@ describe("bonus plans (M5 part 2)", () => {
         units: [{ kpi: "k9", rate: "5" }], unit_split: "pool", teams: ["t1"],
         people: [{ membership: "m2" }] });
     });
+  });
+
+  const EDITOR_PAGE = (editor: BonusPayload["editor"]): BonusPayload => ({ ...MINE, views: ["all"],
+    view: "all", plan: undefined, me: undefined, may_build: true, practice: true, plans: [],
+    periods: [], period: null, editor });
+  const CHOICES = { kpis: [{ id: "kc", name: "Calls", kind: "count" as const, direction: "higher",
+    rollup: "sum", cadence: "weekly" as const, target: 10, people: [] }],
+    members: [{ membership: "m2", name: "Happy Hogan" }],
+    unit_kpis: [{ id: "k9", name: "Five-star Google reviews", kind: "count" as const,
+      cadence: "monthly" as const, rollup: "sum" }], teams: [] };
+
+  async function openNewPlan(fetchMock: ReturnType<typeof mockApi>) {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<Scorecard me={aMe({ role: "FF" })} />, { path: "/companies/:id/scorecard",
+      route: "/companies/c1/scorecard" });
+    await user.click(await screen.findByRole("tab", { name: "All bonuses" }));
+    await user.click(await screen.findByRole("button", { name: "New plan" }));
+    return user;
+  }
+
+  it("a per-unit-only plan made through the form: no component rows, a blank one ignored",
+    async () => {
+      const fetchMock = mockApi({ "GET /api/scorecard/bonus/": EDITOR_PAGE(CHOICES),
+        "POST /api/scorecard/bonus/plans/": { status: 201, body: { id: "pl9" } },
+        "GET /api/scorecard/": { ...BOARD, bonus_views: ["all"] } });
+      const user = await openNewPlan(fetchMock);
+      expect(screen.queryByLabelText("Component 1 KPI")).toBeNull();
+      expect(screen.getByText("Components (none yet)")).toBeInTheDocument();
+      // A component row added and left with no KPI is not sent.
+      await user.click(screen.getByRole("button", { name: "Add a component" }));
+      expect(screen.getByLabelText("Component 1 KPI")).toHaveValue("");
+      await user.type(screen.getByLabelText("Name"), "Five-star review bonus");
+      await user.click(screen.getByRole("button", { name: "Add per-unit pay" }));
+      await user.selectOptions(screen.getByLabelText("Per-unit 1 KPI"), "k9");
+      await user.type(screen.getByLabelText("Per-unit 1 rate"), "5");
+      await user.click(screen.getByLabelText("Happy Hogan"));
+      await user.click(screen.getByRole("button", { name: "Make the plan" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      const call = fetchMock.calls.find((c) => c.method === "POST"
+        && c.url.endsWith("/api/scorecard/bonus/plans/"));
+      expect(call?.body).toMatchObject({ name: "Five-star review bonus", components: [],
+        units: [{ kpi: "k9", rate: "5" }], unit_split: "each",
+        people: [{ membership: "m2" }] });
+    });
+
+  it("a refused save names the form's own row, past the blank ones left out", async () => {
+    const fetchMock = mockApi({ "GET /api/scorecard/bonus/": EDITOR_PAGE(CHOICES),
+      "POST /api/scorecard/bonus/plans/": () => ({ status: 400, body: {
+        detail: "Calls is in the plan twice.", field: "components", row: 1 } }),
+      "GET /api/scorecard/": { ...BOARD, bonus_views: ["all"] } });
+    const user = await openNewPlan(fetchMock);
+    for (let i = 0; i < 3; i += 1) {
+      await user.click(screen.getByRole("button", { name: "Add a component" }));
+    }
+    await user.selectOptions(screen.getByLabelText("Component 2 KPI"), "kc");
+    await user.selectOptions(screen.getByLabelText("Component 3 KPI"), "kc");
+    await user.click(screen.getByRole("button", { name: "Make the plan" }));
+    expect(await screen.findByText("Component 3: Calls is in the plan twice.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Component 3 KPI")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Component 2 KPI")).not.toHaveAttribute("aria-invalid");
+    const call = fetchMock.calls.find((c) => c.method === "POST");
+    expect((call?.body as { components: unknown[] }).components).toHaveLength(2);
   });
 
   it("no bonus tab for someone the server gives none", async () => {

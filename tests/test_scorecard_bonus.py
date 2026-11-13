@@ -820,3 +820,51 @@ def test_the_editor_offers_teams_and_company_kpis_for_per_unit_pay(sc):
     names = {k["name"] for k in editor["unit_kpis"]}
     assert "For everyone" in names
     assert not names & {"Calls", "Rating"}                       # per person
+
+
+# ------------------------------------------------------------------ the form's request (2026-11-13)
+
+def form_body(sc, **over):
+    """What the New bonus plan form sends for a plan of per-unit pay alone:
+    no components, the amount left blank, the rate as typed."""
+    return {"company": str(sc["company"].pk), "name": "Five-star review bonus",
+            "period": "monthly", "period_start": last_month().isoformat(), "amount": "",
+            "straight_line": False, "cap_pct": 120, "components": [],
+            "units": [{"kpi": str(sc["kpis"]["all"].pk), "rate": "5"}], "unit_split": "each",
+            "teams": [], "people": [{"membership": str(sc["who"]["member"].pk),
+                                     "amount": None, "joined_on": None, "left_on": None}],
+            **over}
+
+
+def test_a_per_unit_only_plan_saves_from_the_forms_request(sc):
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", form_body(sc))
+    assert r.status_code == 201, r.content
+    made = r.json()
+    assert made["components"] == [] and made["amount"] == "0.00"
+    assert made["units"] == [{"kpi": str(sc["kpis"]["all"].pk), "name": "For everyone",
+                              "rate": "5"}]
+    four_units(sc, last_month())
+    assert mine(sc, "member", BonusPlan.all_objects.get(pk=made["id"]))["units"][0]["text"] \
+        == "4 × $5 = $20"
+
+
+@pytest.mark.parametrize("part,rows,index", [
+    ("components", "dup", 1),
+    ("units", "bad_rate", 1),
+    ("people", "bad_date", 0),
+])
+def test_a_refused_row_says_which_row_it_is(sc, part, rows, index):
+    k = sc["kpis"]
+    over = {}
+    if rows == "dup":
+        over = {"amount": 600, "components": [{"kpi": str(k["calls"].pk), "weight": 50},
+                                              {"kpi": str(k["calls"].pk), "weight": 50}]}
+    if rows == "bad_rate":
+        over = {"units": [{"kpi": str(k["all"].pk), "rate": "5"},
+                          {"kpi": str(k["lead"].pk), "rate": "0"}]}
+    if rows == "bad_date":
+        over = {"people": [{"membership": str(sc["who"]["member"].pk),
+                            "joined_on": (last_month() - timedelta(days=2)).isoformat()}]}
+    r = post(sc["api"].as_(sc["practice"]["ff"]), f"{B}plans/", form_body(sc, **over))
+    assert r.status_code == 400
+    assert (r.json()["field"], r.json()["row"]) == (part, index), r.content

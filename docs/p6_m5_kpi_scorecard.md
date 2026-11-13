@@ -356,6 +356,13 @@ reading for the period, such as $5 per five-star Google review, monthly.
 - **Copy forward** carries the teams (live ones), per-unit pay and the split.
 - **The table** shows a person who came by a team with the team's name.
 
+**The form (2026-11-13).** "New plan" opens with no component rows, so a plan
+of per-unit pay alone saves. A component row left with no KPI is not sent,
+and nor is a per-unit row with neither a KPI nor a rate. A refused row comes
+back with `field` and `row` (its place in what was sent, from 0). The form
+turns that back into its own row: "Component 3: Calls is in the plan twice.",
+with the row marked.
+
 **Tests:** `tests/test_scorecard_bonus.py` (per-unit each, pool, pool by days,
 beside components, refusals, another company's KPI, assistants, the freeze and
 correction, the Payroll list and spreadsheet, copy forward; teams: everyone
