@@ -22,7 +22,8 @@ import { Words, useWords } from "../lib/words";
 type Move = Board["pipeline"][number];
 
 const TILES = ["tasks", "digests", "pipeline", "goals", "waiting"] as const;
-const PANELS = ["meetings", "due", "approval", "pipeline", "finances", "clients"] as const;
+// P11: "weeks" (each client's week at a glance) first, so it is in view.
+const PANELS = ["weeks", "meetings", "due", "approval", "pipeline", "finances", "clients"] as const;
 type TileId = (typeof TILES)[number];
 type PanelId = (typeof PANELS)[number];
 /** A block anywhere on the dashboard. Prefixed, because "pipeline" is both a
@@ -47,7 +48,7 @@ const tileNames = (w: Words): Record<TileId, string> => ({
 });
 const PANEL_NAMES: Record<PanelId, string> = {
   meetings: "Today and tomorrow", due: "Due by day", approval: "Waiting for approval", pipeline: "Pipeline",
-  finances: "Practice finances", clients: "Clients",
+  finances: "Practice finances", clients: "Clients", weeks: "This week, by client",
 };
 
 /**
@@ -88,7 +89,9 @@ export function Dashboard({ me }: { me: Me }) {
 
   const layout = normalise(saved);
   // A VA has no financials (access matrix), so not even the empty slot.
-  const hidden = (key: BlockKey) => key === "panel:finances" && me.role === "VA";
+  const hidden = (key: BlockKey) => (key === "panel:finances" && me.role === "VA")
+    // P11: only while some client has a plan this week.
+    || (key === "panel:weeks" && !clients.some((c) => c.week));
   const kinds = new Map((pipelines.data ?? []).map((p) => [p.name, p.kind]));
 
   const tile: Record<TileId, ReactNode> = {
@@ -254,6 +257,14 @@ export function Dashboard({ me }: { me: Me }) {
                   {client.open_tasks} open · {w.count(client.open_goals, "goal")}
                 </span>
                 {client.overdue > 0 && <Pill kind="bad">{client.overdue} overdue</Pill>}
+                {client.week && (
+                  <span className="small client-week">
+                    {client.week.sprint ? <>This week: {client.week.sprint} · {client.week.done} of
+                      {" "}{client.week.total} done</> : "No sprint this week"}
+                    {client.week.off_track > 0 && <> · <Pill kind="bad">{client.week.off_track} off
+                      track</Pill></>}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
@@ -261,6 +272,23 @@ export function Dashboard({ me }: { me: Me }) {
       </>
     ),
     meetings: <MeetingsPanel />,
+    weeks: (
+      <>
+        <h3 className="section">This week, by client</h3>
+        <div className="clients">
+          {clients.filter((c) => c.week).map((client) => (
+            <Link key={client.id} className="client-card" to={`/companies/${client.id}/plan`}
+              aria-label={`${client.name}'s week`}>
+              <strong>{client.name}</strong>
+              <span className="small client-week">{client.week!.sprint
+                ? <>{client.week!.sprint} · {client.week!.done} of {client.week!.total} done</>
+                : "No sprint this week"}</span>
+              {client.week!.off_track > 0 && <Pill kind="bad">{client.week!.off_track} off track</Pill>}
+            </Link>
+          ))}
+        </div>
+      </>
+    ),
   };
 
   return (
@@ -512,8 +540,10 @@ function normalise(saved: Layout | LegacyLayout | null | undefined): Layout {
   bottom = keep(bottom);
   for (const key of ALL_BLOCKS) {
     if (seen.has(key)) continue;
-    // A layout saved before Home had meetings (2026-10-27) gets them first.
+    // A layout saved before Home had meetings (2026-10-27) gets them first;
+    // one saved before the plans' weeks (P11) gets those first of all.
     if (key === "panel:meetings") bottom.unshift(key);
+    else if (key === "panel:weeks") bottom.unshift(key);
     else (key.startsWith("tile:") ? top : bottom).push(key);
   }
   return { top, bottom };

@@ -149,6 +149,12 @@ ACTIONS: tuple[Action, ...] = (
            "(list_strategy_sessions) and propose Strategy Map rows into its tray with "
            "propose_map_rows: bottleneck, root cause, fix, owner, 30/60/90, measurable.",
            fixed_why=AI_APP_ONLY, center="operations", in_app=False),
+    # P11: the plans engine's drafts, with any Command Center on.
+    Action("plan_draft", "Draft from sources and Break this down (plan)", "Plan",
+           ("plan_draft",), DEEP, "user", False,
+           fixed_why="Runs in the app on the practice's key, so its proposals land in the "
+                     "plan's tray. AI apps propose items with propose_plan_items.",
+           center="any"),
     Action("ops_weekly_note", "Weekly note from the scorecard", "Scorecard",
            ("ops_weekly_note",), STANDARD, "user", True,
            "Using Execs NOW HQ, read this week's scorecard_readings for {record} and draft "
@@ -228,7 +234,8 @@ def table(tenant_id) -> list[dict]:
     on = set(centers.enabled(tenant_id))
     out = []
     for a in ACTIONS:
-        if a.center and a.center not in on:
+        # "any": listed while any Command Center is on (the plans engine).
+        if a.center == "any" and not on or a.center not in ("", "any") and a.center not in on:
             continue
         row = saved.get(a.key)
         out.append({

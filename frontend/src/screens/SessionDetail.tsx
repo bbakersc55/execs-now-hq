@@ -1115,14 +1115,25 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
 }) {
   const w = useWords();
   const [choices, setChoices] = useState<Record<string, Choice>>({});
+  // P11: after converting, the offer to put the 30/60/90 rows on the plan.
+  const [offer, setOffer] = useState<{ rows: number; company: string } | null>(null);
+  const [placed, setPlaced] = useState("");
+  const place = useMutation({
+    mutationFn: () => api.post<{ made: number; titles: string[] }>("/api/plans/from-session/",
+      { session: id }),
+    onSuccess: (r) => { setPlaced(`${r.made} on the plan as this quarter's priorities.`);
+      setOffer(null); },
+    onError: (e: Error) => setPlaced(e.message),
+  });
   const preview = useQuery<{ rows: ConversionRow[] }>({
     queryKey: ["conversion-preview", id],
     queryFn: () => api.get<{ rows: ConversionRow[] }>(`${path}conversion-preview/`),
   });
   const convert = useMutation({
-    mutationFn: () => api.post<{ created: { as: string; title: string }[] }>(
-      `${path}convert/`, { choices }),
+    mutationFn: () => api.post<{ created: { as: string; title: string }[];
+      plan_offer?: { rows: number; company: string } }>(`${path}convert/`, { choices }),
     onSuccess: (result) => {
+      if (result.plan_offer) setOffer(result.plan_offer);
       setNote(`Created ${result.created.length} — ${result.created
         .map((c) => `${c.title} (${c.as === "goal" || c.as === "project" ? w.of(c.as) : c.as})`)
         .join(", ")}.`);
@@ -1138,6 +1149,16 @@ function ConvertCard({ id, path, data, onChanged, setNote }: {
           Converted {when(data.converted_at)}. The {w.goals} and {w.projects} are on the Work
           screen, each linking back to the row it came from.
         </p>
+        {offer && (
+          <div className="row tight">
+            <span className="small">Put the {offer.rows} 30/60/90 {offer.rows === 1 ? "row" : "rows"} on
+              the company's plan as this quarter's priorities?</span>
+            <button className="small primary" disabled={place.isPending}
+              onClick={() => place.mutate()}>Put them on the plan</button>
+            <button className="small ghost" onClick={() => setOffer(null)}>Not now</button>
+          </div>
+        )}
+        {placed && <p className="small">{placed}{data.company && <> <Link to={`/companies/${data.company.id}/plan`}>Open the plan</Link></>}</p>}
       </Card>
     );
   }

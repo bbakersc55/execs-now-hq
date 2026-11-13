@@ -682,9 +682,96 @@ def record_call(connection, tool: str, touched: list, *, ok: bool) -> None:
     type(connection).all_objects.filter(pk=connection.pk).update(last_used_at=timezone.now())
 
 
+def company_plan(p, company_id: str, horizon: str = "") -> dict:
+    """A company's plan (P11): each horizon's current period with its items,
+    what each serves and what serves it, its tasks and its KPIs' status.
+    horizon: picture, year, quarter, month or week; empty for all five."""
+    from apps.plans import read as plans
+    from apps.plans.access import PlanAccess, available
+    from apps.scorecard import board
+
+    if p.role not in ("FF", "CF", "VA"):
+        raise ToolRefused("Only the practice reads a company's plan here.")
+    if not available(p.tenant.pk):
+        raise ToolRefused("The plan is part of the Command Centers; this practice has none on.")
+    if horizon and horizon not in ("picture", "year", "quarter", "month", "week"):
+        raise ToolRefused("horizon is picture, year, quarter, month or week.")
+    company = _company(p, company_id)
+    access = PlanAccess(p.request(), company)
+    data = plans.plan(access, board.today_for(company.tenant))
+    out = []
+    for column in data["horizons"]:
+        if horizon and column["key"] != horizon:
+            continue
+        out.append({
+            "horizon": column["key"], "name": column["name"],
+            "period": column["period_label"],
+            "items": [{"id": i["id"], "title": i["title"], "status": i["status_label"],
+                       "done_means": i["done_means"],
+                       "owner": (i["owner"] or {}).get("name", ""),
+                       "serves": (i["serves"] or {}).get("title", ""),
+                       "served_by": [c["title"] for c in i["served_by"]],
+                       "goal": (i["goal"] or {}).get("title", ""),
+                       "tasks": [{"title": t["title"], "status": t["status_label"]}
+                                 for t in i["tasks"]],
+                       "kpis": [{"name": k["name"], "status": k["status_label"],
+                                 "latest": k["value_text"]} for k in i["kpis"]]}
+                      for i in column["items"]],
+            "proposals_waiting": len(column["proposals"]),
+            "last_closed": (column["last_close"] or {}).get("summary", ""),
+        })
+    p.touch("company", company.pk)
+    return {"company": company.name, "horizons": out}
+
+
+def propose_plan_items(p, company_id: str, horizon: str, items: list) -> dict:
+    """Items for a company's plan (P11), proposed into its tray for this
+    period of the horizon: a person accepts, edits or discards each. Each
+    item: title (required), done_means, serves_id (an item on the horizon
+    just above, from company_plan)."""
+    from apps.plans import periods as PP
+    from apps.plans.access import available
+    from apps.plans.models import PlanItem
+    from apps.scorecard import board
+
+    if p.role not in ("FF", "CF"):
+        raise ToolRefused("Only the practice owner or an associate proposes plan items.")
+    if not available(p.tenant.pk):
+        raise ToolRefused("The plan is part of the Command Centers; this practice has none on.")
+    if horizon not in ("picture", "year", "quarter", "month", "week"):
+        raise ToolRefused("horizon is picture, year, quarter, month or week.")
+    company = _company(p, company_id)
+    if not isinstance(items, list) or not items or len(items) > 12:
+        raise ToolRefused("items is a list of one to twelve items.")
+    start = PP.start_of(horizon, board.today_for(company.tenant), company)
+    above = PP.above(horizon)
+    made = []
+    for i, row in enumerate(items):
+        if not isinstance(row, dict) or not " ".join(str(row.get("title") or "").split()):
+            raise ToolRefused(f"Item {i + 1} needs a title.")
+        parent = None
+        if row.get("serves_id"):
+            parent = PlanItem.objects.filter(pk=_uuid(row["serves_id"], "serves_id"),
+                                             company=company, horizon=above,
+                                             state=PlanItem.State.ACCEPTED).first()
+            if parent is None:
+                raise ToolRefused(f"Item {i + 1}: serves_id is an item on the horizon just "
+                                  "above, from company_plan.")
+        made.append(PlanItem.objects.create(
+            tenant=p.tenant, company=company, horizon=horizon, period_start=start,
+            title=" ".join(str(row["title"]).split())[:300],
+            done_means=str(row.get("done_means") or "").strip()[:2000], parent=parent,
+            state=PlanItem.State.PROPOSED, source=PlanItem.Source.AI_APP, from_ai_app=True,
+            drew_on=[f"{p.connection.app_name or 'An AI app'}"], created_by=p.user))
+    p.touch("plan_item", *[m.pk for m in made])
+    return {"proposed": len(made), "ids": [str(m.pk) for m in made],
+            "note": "In the plan's tray, marked as made by an AI app, waiting for a person "
+                    "to accept, edit or discard."}
+
+
 READ_TOOLS = (practice_summary, list_companies, company_overview, search_contacts, get_contact,
               list_pipelines, list_tasks, list_goals, list_notes, scorecard_readings,
               pending_meeting_proposals, sending_queue, digest_drafts, invoices_summary,
-              documents, list_strategy_sessions, strategy_session)
+              documents, list_strategy_sessions, strategy_session, company_plan)
 WRITE_TOOLS = (create_task, add_note, draft_email, propose_map_rows, enter_kpi_reading,
-               create_digest_draft)
+               create_digest_draft, propose_plan_items)

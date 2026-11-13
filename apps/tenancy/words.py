@@ -31,6 +31,17 @@ DEFAULTS: dict[str, tuple[str, str]] = {
     "scorecard": ("scorecard", "scorecards"),
 }
 
+#: The plan's five horizon names (P11), one label each, editable beside the
+#: words above. Stored under "horizons" in the same field, only where changed.
+HORIZON_KINDS = ("picture", "year", "quarter", "month", "week")
+HORIZON_DEFAULTS: dict[str, str] = {
+    "picture": "Three-year picture",
+    "year": "This year's goals",
+    "quarter": "This quarter's priorities",
+    "month": "This month's plan",
+    "week": "This week's sprint",
+}
+
 MAX_LENGTH = 30
 _ALLOWED = re.compile(r"^[^\W\d_]+(?:[ '\-][^\W\d_]+)*$")
 
@@ -114,6 +125,23 @@ def of(tenant) -> Words:
     return Words(**values)
 
 
+def horizons_of(tenant) -> dict[str, str]:
+    """The plan's horizon names, as the practice set them or by default."""
+    stored = ((getattr(tenant, "work_words", None) or {}) if tenant is not None
+              else {}).get("horizons") or {}
+    out = {}
+    for kind, default in HORIZON_DEFAULTS.items():
+        value = stored.get(kind) if isinstance(stored, dict) else None
+        out[kind] = " ".join(value.split()) if isinstance(value, str) and value.strip() \
+            else default
+    return out
+
+
+def _check(word: str) -> bool:
+    return bool(word) and len(word) <= MAX_LENGTH and bool(_ALLOWED.match(word)) \
+        and len(word.split()) <= 3
+
+
 def for_request(request) -> Words:
     membership = getattr(request, "membership", None)
     return of(membership.tenant if membership is not None else getattr(request, "tenant", None))
@@ -139,6 +167,25 @@ def save(tenant, *, actor, data: dict) -> Words:
                     f"One to three words of letters, at most {MAX_LENGTH} characters.")
         if (one, many) != DEFAULTS[kind]:
             stored[kind] = [one, many]
+    horizons = data.get("horizons")
+    if horizons is None:
+        kept = (tenant.work_words or {}).get("horizons")
+        if kept:
+            stored["horizons"] = kept
+    elif isinstance(horizons, dict):
+        names = {}
+        for kind in HORIZON_KINDS:
+            # Kept as typed: a heading, not the middle of a sentence.
+            word = " ".join(str(horizons.get(kind) or "").split())
+            if not word:
+                continue
+            if not _check(word):
+                errors[f"horizons.{kind}"] = (
+                    f"One to three words of letters, at most {MAX_LENGTH} characters.")
+            elif word != HORIZON_DEFAULTS[kind]:
+                names[kind] = word
+        if names:
+            stored["horizons"] = names
     if errors:
         raise WordsInvalid(errors)
     before = tenant.work_words or {}

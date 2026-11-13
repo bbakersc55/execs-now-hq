@@ -153,7 +153,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       )}
       {/* M5 part 1: an assistant sees the scorecard too, and sets nothing up. */}
       {c.is_client_company && (
-        <p className="small"><Link to={`/companies/${c.id}/scorecard`}>{w.Scorecard} for this client</Link></p>
+        <p className="small"><Link to={`/companies/${c.id}/scorecard`}>{w.Scorecard} for this client</Link>
+          {/* P11: the plan, while a Command Center is on. */}
+          {me.has_plan && <> · <Link to={`/companies/${c.id}/plan`}>Plan for this client</Link></>}</p>
       )}
 
       {/* As wide together as the Teams card below them (Bryan, 2026-10-15). */}

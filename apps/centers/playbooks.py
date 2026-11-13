@@ -237,6 +237,10 @@ def start(playbook: Playbook, *, company, start_date: date, lead, owner_contact=
         tenant=tenant, title=outline.goal, description=outline.why, client_company=company,
         owner=lead, client_owner_contact=owner_contact,
         target_date=due(start_date, outline.weeks))
+    # P11: the playbook's goal on the company plan's year.
+    from apps.plans import services as plans
+
+    plans.put_goal_on_year(company, goal, actor=actor, day=start_date, source_id=playbook.pk)
     tasks = 0
     for project_outline in outline.projects:
         project = Project.objects.create(

@@ -87,6 +87,8 @@ export function Work({ me }: { me: Me }) {
   return (
     <>
       <PageHead title={isTenant ? "Work" : "Our work"}
+        action={me.has_plan ? <Link className="btn" to={isTenant ? "/plans" : "/plan"}>
+          {isTenant ? "Plans" : "Our plan"}</Link> : undefined}
         sub={isTenant
           ? `${w.AGoal}'s status is derived from the work underneath it unless someone sets it.`
           : `${w.Goals} hold ${w.projects}, ${w.projects} hold ${w.tasks} — and ${w.aTask} can stand on its own.`} />

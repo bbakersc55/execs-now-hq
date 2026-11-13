@@ -2,7 +2,8 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-13 UTC**, after Release 41. **The next session starts at
-"2026-11-13: Release 41, the SkyRun bonus" just below**; then
+"2026-11-13, later: the plans engine (P11)" just below**; then
+"2026-11-13: Release 41, the SkyRun bonus"; then
 "2026-11-12, late: where things stand"; then
 "2026-11-12: Release 40, Command Centers"; then
 "2026-11-10: Release 39, AI apps over MCP"; then
@@ -28,6 +29,22 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-13, later: the plans engine (P11), built on `dev`, not released
+
+- **Spec as built:** `docs/p11_plans_engine.md`.
+  - One plan per company and one for the practice, in five horizons.
+  - Draft from sources and Break this down, on the Deep tier with the price
+    shown first, into a tray.
+  - Close the week, month or quarter, with the summary in the weekly digest
+    drafts.
+  - The portal by level, and This week.
+  - Home's week at a glance.
+  - Two MCP tools.
+- **Migrations, additive:** `plans 0001`, `crm 0058` (`company.fiscal_year_start`)
+  and `centers 0003` (choices only).
+- **Also in it:** the New bonus plan form fix (`bd14886`).
+- **For Bryan:** the choices list at the end of the spec.
 
 ## 2026-11-13: Release 41, the SkyRun bonus
 

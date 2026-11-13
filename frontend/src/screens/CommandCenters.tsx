@@ -149,7 +149,8 @@ export function CommandCenterPage({ me }: { me: Me }) {
   const editor = me.role === "FF" || me.role === "CF";
   return (
     <>
-      <PageHead title={c.name} sub={c.description} />
+      <PageHead title={c.name} sub={c.description}
+        action={<Link className="btn" to="/plans">Plans</Link>} />
       {!c.on && <Banner kind="warn">This Command Center is off. Turn it on in Settings → Command
         Centers to use what it brings.</Banner>}
       {template.isError && <Banner kind="bad">{(template.error as Error).message}</Banner>}

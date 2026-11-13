@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     "apps.esign",
     "apps.aiconnect",
     "apps.centers",
+    "apps.plans",
 ]
 
 MIDDLEWARE = [

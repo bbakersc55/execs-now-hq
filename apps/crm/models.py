@@ -62,6 +62,9 @@ class Company(TenantScopedModel):
     #: the sender's own default.
     mail_from = models.ForeignKey("crm.Mailbox", null=True, blank=True,
                                   on_delete=models.SET_NULL, related_name="+")
+    #: The month its fiscal year starts (P11): the plan's year and quarters
+    #: follow it. January unless set.
+    fiscal_year_start = models.PositiveSmallIntegerField(default=1, db_default=1)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "company"

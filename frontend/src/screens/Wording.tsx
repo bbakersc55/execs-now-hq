@@ -4,11 +4,14 @@ import { useLocation } from "react-router-dom";
 
 import { Banner, Card } from "../components/ui";
 import { api } from "../lib/api";
+import { DEFAULT_HORIZONS, HORIZON_KEYS, HorizonKey } from "../lib/plans";
 import {
   DEFAULT_WORD_PAIRS, SCORECARD_WORD_KINDS, WORD_KINDS, WordKind, WordPairs, cap, makeWords,
 } from "../lib/words";
 
-interface WordsData { words: WordPairs; defaults: WordPairs }
+type Horizons = Record<HorizonKey, string>;
+interface WordsData { words: WordPairs; defaults: WordPairs; horizons?: Horizons;
+  horizon_defaults?: Horizons }
 
 /**
  * Settings → Branding → Wording (2026-10-15, from Melissa's feedback; a
@@ -24,22 +27,30 @@ export function WordingSection() {
   const data = useQuery<WordsData>({
     queryKey: ["words-settings"], queryFn: () => api.get<WordsData>("/api/settings/words") });
   const [form, setForm] = useState<WordPairs | null>(null);
+  const [horizons, setHorizons] = useState<Horizons | null>(null);
   const [note, setNote] = useState<{ kind: string; text: string } | null>(null);
   useEffect(() => {
     if (data.data && form === null) setForm({ ...DEFAULT_WORD_PAIRS, ...data.data.words });
-  }, [data.data, form]);
+    if (data.data && horizons === null) setHorizons({ ...DEFAULT_HORIZONS, ...data.data.horizons });
+  }, [data.data, form, horizons]);
   // Reached from Getting started: brought into view once it has drawn.
   const { hash } = useLocation();
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (form && hash === "#wording") box.current?.scrollIntoView?.({ block: "start" });
+    // P11: from the Plan page's "Rename the horizons".
+    if (form && hash === "#plan-horizons") {
+      document.getElementById("plan-horizons")?.scrollIntoView?.({ block: "center" });
+    }
   }, [form !== null, hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useMutation({
-    mutationFn: (words: WordPairs) => api.put<WordsData>("/api/settings/words", { words }),
+    mutationFn: (words: WordPairs) => api.put<WordsData>("/api/settings/words",
+      { words, horizons }),
     onSuccess: (saved) => {
       qc.setQueryData(["words-settings"], saved);
       setForm({ ...DEFAULT_WORD_PAIRS, ...saved.words });
+      setHorizons({ ...DEFAULT_HORIZONS, ...saved.horizons });
       qc.invalidateQueries({ queryKey: ["me"] });
       setNote({ kind: "ok", text: "Saved. The new words show from now on; nothing else changed." });
     },
@@ -80,6 +91,18 @@ export function WordingSection() {
           <thead><tr><th>Scorecard</th><th>One</th><th>More than one</th></tr></thead>
           <tbody>{rows(SCORECARD_WORD_KINDS)}</tbody>
         </table>
+        {horizons && (
+          <table aria-label="Plan horizons" id="plan-horizons">
+            <thead><tr><th>Plan horizon</th><th colSpan={2}>Called</th></tr></thead>
+            <tbody>{HORIZON_KEYS.map((key) => (
+              <tr key={key}>
+                <td>{DEFAULT_HORIZONS[key]}</td>
+                <td colSpan={2}><input aria-label={`Name for ${DEFAULT_HORIZONS[key]}`}
+                  maxLength={30} value={horizons[key]}
+                  onChange={(e) => setHorizons({ ...horizons, [key]: e.target.value })} /></td>
+              </tr>))}</tbody>
+          </table>
+        )}
         <p className="small muted" aria-label="How it reads">
           Reads as: {sample.Goals} hold {sample.projects}, {sample.projects} hold
           {" "}{sample.tasks}, and {sample.aTask} can have {sample.steps}. Each
@@ -93,7 +116,8 @@ export function WordingSection() {
           <button className="primary" disabled={save.isPending}
             onClick={() => save.mutate(form)}>Save the wording</button>
           <button className="ghost" disabled={save.isPending}
-            onClick={() => setForm({ ...DEFAULT_WORD_PAIRS, ...data.data!.defaults })}>
+            onClick={() => { setForm({ ...DEFAULT_WORD_PAIRS, ...data.data!.defaults });
+              setHorizons({ ...DEFAULT_HORIZONS }); }}>
             Back to the defaults</button>
         </div>
       </Card>

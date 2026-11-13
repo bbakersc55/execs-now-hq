@@ -178,7 +178,8 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert {"On-time completion rate", "Rework or callback rate",
                 "First-time fix rate"} <= set(Kpi.objects.filter(
                     scorecard__company=run.goal.client_company).values_list("name", flat=True))
-        measured = Goal.objects.exclude(pk=run.goal_id)
+        # P11: Summit's own plan has the practice's own goals (no company).
+        measured = Goal.objects.exclude(pk=run.goal_id).exclude(client_company__isnull=True)
         per_company = dict(measured.values_list("client_company__name")
                            .annotate(n=Count("id")))
         assert len(per_company) == 11 and all(1 <= n <= 3 for n in per_company.values())
@@ -892,6 +893,36 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert goal_order.current_goals(acme)[0].title == "The 90-day operations reset"
     runs = owner_api.get(f"/api/playbooks/?company={acme.pk}").json()["runs"]
     assert [(r["goal_title"], r["tasks"]) for r in runs] == [("The 90-day operations reset", 22)]
+    # P11: Acme's plan across all five horizons, through the real API as the
+    # owner, Acme's client owner and Acme's team member.
+    plan = owner_api.get(f"/api/plans/{acme.pk}/").json()
+    by = {c["key"]: c for c in plan["horizons"]}
+    assert all(by[h]["items"] for h in ("picture", "year", "quarter", "month", "week"))
+    assert "The 90-day operations reset" in [i["title"] for i in by["year"]["items"]]
+    sprint = by["week"]["items"][0]
+    assert sprint["serves"]["title"] == "Hold four weekly operations meetings"
+    assert sprint["tasks"] and any(not t["done"] for t in sprint["tasks"])
+    assert by["week"]["last_close"]["summary"].startswith("Week of")
+    assert "carried over to next week" in by["week"]["last_close"]["summary"]
+    assert any(k["status"] for i in by["quarter"]["items"] for k in i["kpis"])
+    assert any(i["status"] == "off_track" for i in by["month"]["items"])
+    assert [p["proposed_by"] for p in by["quarter"]["proposals"]] == ["Wiley Coyote"]
+    wiley_api = api.as_(Membership.all_objects.get(tenant=tenant,
+                                                   user__full_name="Wiley Coyote"))
+    marvin_api = api.as_(Membership.all_objects.get(tenant=tenant,
+                                                    user__full_name="Marvin Martian"))
+    assert [c["key"] for c in wiley_api.get("/api/plans/mine/").json()["horizons"]] == [
+        "picture", "year", "quarter", "month", "week"]
+    assert [c["key"] for c in marvin_api.get("/api/plans/mine/").json()["horizons"]] == [
+        "month", "week"]
+    week = marvin_api.get("/api/plans/mine/week/").json()
+    assert week["sprint"]["title"] == sprint["title"] and week["mine"]
+    assert [s["horizon"] for s in week["serves"]] == ["month"]
+    summit = owner_api.get("/api/plans/practice/").json()
+    assert all(c["items"] for c in summit["horizons"] if c["key"] in ("picture", "year",
+                                                                      "quarter", "month"))
+    home = owner_api.get("/api/dashboard/").json()["clients"]
+    assert next(c for c in home if c["name"] == "Acme Fasteners")["week"]["total"] >= 1
 
     # -------------------------------------------------- the second run resets
     with tenant_context(tenant.pk):

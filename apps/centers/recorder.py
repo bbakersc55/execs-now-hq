@@ -96,6 +96,28 @@ def _keep_map_row(row):
                     "statement": row.statement})
 
 
+@receiver(post_save, sender="plans.PlanItem", dispatch_uid="library_plan_item")
+def _plan_item(sender, instance, **kwargs):
+    _safely(_keep_plan_item)(sender, instance, **kwargs)
+
+
+def _keep_plan_item(item):
+    """P11: the tray's decisions. Only a proposal that was decided on (it has
+    `decided_at`); an item added by hand is not one."""
+    from apps.centers.models import LibraryRecord
+
+    kinds = {"accepted": LibraryRecord.Kind.PLAN_ITEM_ACCEPTED,
+             "discarded": LibraryRecord.Kind.PLAN_ITEM_REJECTED}
+    if item.decided_at is None or item.state not in kinds or not _recording(item.tenant_id):
+        return
+    keep(item.tenant_id, kind=kinds[item.state], source_type="plan_item", source_id=item.pk,
+         title=item.title[:255],
+         structure={"horizon": item.horizon, "title": item.title,
+                    "done_means": item.done_means, "source": item.source,
+                    "drew_on": item.drew_on or [], "from_ai_app": item.from_ai_app,
+                    "serves": item.parent.title if item.parent_id else ""})
+
+
 @receiver(post_save, sender="esign.Document", dispatch_uid="library_document")
 def _document(sender, instance, **kwargs):
     _safely(_keep_document)(sender, instance, **kwargs)

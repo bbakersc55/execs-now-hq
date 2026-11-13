@@ -845,7 +845,8 @@ class SessionViewSet(StrategyViewSet):
             target_type="strategy_session", target_id=session.pk,
             payload={"created": [{"as": kind, "id": str(obj.pk)} for kind, obj in made]})
         return Response({"created": [{"as": kind, "id": str(obj.pk),
-                                      "title": obj.title} for kind, obj in made]},
+                                      "title": obj.title} for kind, obj in made],
+                         **_plan_offer(request, session)},
                         status=201)
 
 
@@ -1461,3 +1462,17 @@ class TemplateViewSet(StrategyViewSet):
         if changed:
             self._audit("strategy.template_edited", template, {"questions": changed})
         return Response({"changed": changed, "template": represent_template(template)})
+
+
+def _plan_offer(request, session) -> dict:
+    """P11: after conversion, offer to put the session's 30/60/90 rows on the
+    company's plan as this quarter's priorities (while a Command Center is on)."""
+    from apps.plans import services as plans
+    from apps.plans.access import available
+
+    if session.company_id is None or not available(request.membership.tenant_id):
+        return {}
+    session.refresh_from_db()
+    rows = plans.session_rows(session)
+    return {"plan_offer": {"rows": len(rows), "company": str(session.company_id)}} if rows \
+        else {}

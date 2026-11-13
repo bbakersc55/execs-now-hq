@@ -121,6 +121,10 @@ export interface Me {
   modules?: string[];
   /** P8: the Command Centers this practice has on ("operations"). Staff only. */
   command_centers?: string[];
+  /** P11: the plans engine is there (any Command Center on), staff and portal alike. */
+  has_plan?: boolean;
+  /** P11: the plan's five horizon names, the practice's own. */
+  horizons?: Record<"picture" | "year" | "quarter" | "month" | "week", string> | null;
   /** P8: KPI feeds those Command Centers recommend, shown first. */
   recommended_feeds?: string[];
   /** Which of the three environments (owner, 2026-09-29). */
@@ -1314,7 +1318,9 @@ export interface Dashboard {
   pipeline: { id: string; contact: string; name: string; pipeline: string;
               from: string; to: string; at: string }[];
   clients: { id: string; name: string; open_tasks: number; overdue: number;
-             open_goals: number }[];
+             open_goals: number;
+             /** P11: the week at a glance, while a Command Center is on. */
+             week?: { sprint: string; done: number; total: number; off_track: number } }[];
   /** AI credit and budget — the FF's only (FR-0.9); null for everyone else. */
   ai?: AiBudget | null;
   /** P5: absent or null for everyone but the practice owner. */

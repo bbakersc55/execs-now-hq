@@ -293,6 +293,10 @@ def me(request):
         # "Operations" and the offers each brings. Staff only, as modules.
         "command_centers": (_centers_on(membership.tenant_id)
                             if membership and membership.role in ("FF", "CF", "VA") else []),
+        # P11: the plans engine is there while any Command Center is on, for
+        # the practice and its portal alike; with the plan's horizon names.
+        "has_plan": bool(membership and _centers_on(membership.tenant_id)),
+        "horizons": (_horizons(membership.tenant) if membership else None),
         # P8: feeds those Command Centers recommend, first in the feed picker.
         "recommended_feeds": (_recommended_feeds(membership.tenant_id)
                               if membership and membership.role in ("FF", "CF", "VA") else []),
@@ -713,3 +717,9 @@ def _recommended_feeds(tenant_id) -> list[str]:
             if feed in Kpi.Feed.values and feed not in out:
                 out.append(feed)
     return out
+
+
+def _horizons(tenant):
+    from apps.tenancy import words
+
+    return words.horizons_of(tenant)

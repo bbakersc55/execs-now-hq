@@ -609,9 +609,11 @@ def _groups(owed, w=practice_words.DEFAULT):
     return [sections[k] for k in section_order]
 
 
-def digest_text(narrative, sections, waiting=None, scorecard=None) -> str:
+def digest_text(narrative, sections, waiting=None, scorecard=None, plan=None) -> str:
     """The text/plain part, from the same sections as the HTML."""
     parts = [narrative.strip()] if narrative else []
+    if plan:
+        parts.append("\n".join([plan["heading"]] + [f"  - {line}" for line in plan["lines"]]))
     for section in sections:
         if section["goal"]:
             heading = f"Toward: {section['goal']}"
@@ -676,15 +678,22 @@ def render(digest, owed, *, narrative="", scorecard_lines=(), scorecard=None):
 
     from apps.crm.services import email_layout
 
+    from apps.plans import digest as plan_digest
+
     w = practice_words.of(digest.tenant)
     sections = _groups(owed, w)
     waiting = _waiting(scorecard_lines, w)
+    # P11: a week, month or quarter of the company's plan closed since the
+    # last digest this person was sent.
+    plan_lines = plan_digest.lines_for(digest)
+    plan = {"heading": plan_digest.HEADING, "lines": plan_lines} if plan_lines else None
     parts = [{"title": title, "lines": scorecard[key]} for title, key in SCORECARD_PARTS
              if scorecard and scorecard[key]]
     html = render_to_string("email/digest_content.html", email_layout.template_context(
         digest.tenant, narrative=narrative, sections=sections, words=w, waiting=waiting,
+        plan=plan,
         scorecard={"heading": scorecard["heading"], "parts": parts} if scorecard else None))
-    return digest_text(narrative, sections, waiting, scorecard), html
+    return digest_text(narrative, sections, waiting, scorecard, plan), html
 
 
 # -------------------------------------------------------------- generation

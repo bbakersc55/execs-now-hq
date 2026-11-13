@@ -215,8 +215,10 @@ describe("arranging the dashboard", () => {
       .toEqual(["Today and tomorrow", "Due by day", "Pipeline", "Waiting for approval"]);
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    expect(saved.bottom.slice(0, 4))
-      .toEqual(["panel:meetings", "panel:due", "panel:pipeline", "panel:approval"]);
+    // P11's "This week, by client" leads, hidden while no client has a plan
+    // but kept in its place, as an assistant's finances slot is.
+    expect(saved.bottom.slice(0, 5))
+      .toEqual(["panel:weeks", "panel:meetings", "panel:due", "panel:pipeline", "panel:approval"]);
   });
 
   it("moves a tile by dragging it onto another", async () => {
@@ -328,8 +330,8 @@ describe("arranging the dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     const saved = JSON.parse(
       localStorage.getItem("dashboard-layout:bryan.baker@getexecutivesnow.com")!);
-    expect(saved.bottom).toEqual(
-      ["panel:meetings", "panel:due", "panel:approval", "panel:pipeline", "panel:finances"]);
+    expect(saved.bottom).toEqual(["panel:weeks", "panel:meetings", "panel:due", "panel:approval",
+      "panel:pipeline", "panel:finances"]);
     expect(screen.queryByRole("heading", { name: "Practice finances" })).not.toBeInTheDocument();
   });
 

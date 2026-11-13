@@ -294,18 +294,24 @@ class WordsSettingsView(APIView):
 
     def get(self, request):
         return Response({"words": words.of(request.tenant).as_dict(),
-                         "defaults": words.DEFAULT.as_dict()})
+                         "defaults": words.DEFAULT.as_dict(),
+                         "horizons": words.horizons_of(request.tenant),
+                         "horizon_defaults": words.HORIZON_DEFAULTS})
 
     def put(self, request):
         if not IsFF().has_permission(request, self):
             return Response({"detail": "Only the practice owner changes the words."},
                             status=403)
         try:
-            saved = words.save(request.tenant, actor=request.user,
-                               data=request.data.get("words") or {})
+            data = dict(request.data.get("words") or {})
+            if "horizons" in request.data:           # P11: the plan's horizon names
+                data["horizons"] = request.data.get("horizons") or {}
+            saved = words.save(request.tenant, actor=request.user, data=data)
         except words.WordsInvalid as exc:
             return Response({"detail": str(exc), "errors": exc.errors}, status=400)
-        return Response({"words": saved.as_dict(), "defaults": words.DEFAULT.as_dict()})
+        return Response({"words": saved.as_dict(), "defaults": words.DEFAULT.as_dict(),
+                         "horizons": words.horizons_of(request.tenant),
+                         "horizon_defaults": words.HORIZON_DEFAULTS})
 
 
 class BrandingImageView(APIView):

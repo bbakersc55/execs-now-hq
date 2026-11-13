@@ -240,5 +240,21 @@ def _clients(request, tasks, goals) -> list[dict]:
             "overdue": theirs.filter(due_date__lt=today).count(),
             "open_goals": goals.filter(client_company_id=company.pk).count(),
         })
+    # P11: each client's week at a glance, while a Command Center is on.
+    from apps.plans import read as plans
+    from apps.plans.access import available
+
+    if rows and available(request.membership.tenant_id):
+        week = plans.glance(Company.objects.filter(pk__in=[r["id"] for r in rows]), today)
+        for row in rows:
+            found = week.get(_pk(row["id"]))
+            if found:
+                row["week"] = found
     rows.sort(key=lambda row: (-row["overdue"], -row["open_tasks"], row["name"]))
     return rows
+
+
+def _pk(value):
+    import uuid
+
+    return uuid.UUID(str(value))

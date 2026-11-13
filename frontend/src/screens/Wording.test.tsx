@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_HORIZONS } from "../lib/plans";
 import { DEFAULT_WORD_PAIRS, WordsProvider, makeWords, useWords } from "../lib/words";
 import { mockApi, renderRoute } from "../test/render";
 import { WordingSection } from "./Wording";
@@ -51,7 +52,7 @@ describe("Settings → Branding → Wording", () => {
       "Reads as: Goals hold projects, projects hold actions, and an action can have steps.");
     await user.click(screen.getByRole("button", { name: "Save the wording" }));
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PUT")?.body)
-      .toEqual({ words: ACTIONS }));
+      .toEqual({ words: ACTIONS, horizons: DEFAULT_HORIZONS }));
     expect(await screen.findByText(/nothing else changed/)).toBeInTheDocument();
   });
 });

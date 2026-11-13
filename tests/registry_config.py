@@ -314,6 +314,15 @@ register(BonusComponent, factories.BonusComponentFactory, api_exposed=False)
 register(BonusPerson, factories.BonusPersonFactory, api_exposed=False)
 register(BonusResult, factories.BonusResultFactory, api_exposed=False)
 register(BonusReopen, factories.BonusReopenFactory, api_exposed=False)
+# P11: the plans engine. Read only through /api/plans/ and /api/plan-items/,
+# which find the company through `apps.plans.access.company_for`
+# (tests/test_plans.py).
+from apps.plans.models import PlanClose, PlanItem, PlanItemKpi, PlanItemTask  # noqa: E402
+
+register(PlanItem, factories.PlanItemFactory, api_exposed=False)
+register(PlanItemTask, factories.PlanItemTaskFactory, api_exposed=False)
+register(PlanItemKpi, factories.PlanItemKpiFactory, api_exposed=False)
+register(PlanClose, factories.PlanCloseFactory, api_exposed=False)
 # 2026-11-12: per-unit pay and whole teams on a plan, read the same way.
 register(BonusUnitRule, factories.BonusUnitRuleFactory, api_exposed=False)
 register(BonusTeam, factories.BonusTeamFactory, api_exposed=False)

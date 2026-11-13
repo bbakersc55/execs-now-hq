@@ -2056,3 +2056,46 @@ class KpiLibraryEntryFactory(TenantScopedFactory):
     page = "operations"
     name = factory.Sequence(lambda n: f"Library KPI {n}")
     kind = "number"
+
+
+# --- P11: the plans engine ------------------------------------------------------
+
+class PlanItemFactory(TenantScopedFactory):
+    class Meta:
+        model = "plans.PlanItem"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    horizon = "quarter"
+    period_start = datetime.date(2026, 10, 1)
+    title = factory.Sequence(lambda n: f"Plan item {n}")
+
+
+class PlanItemTaskFactory(TenantScopedFactory):
+    class Meta:
+        model = "plans.PlanItemTask"
+
+    tenant = factory.SubFactory(TenantFactory)
+    item = factory.SubFactory(PlanItemFactory, tenant=factory.SelfAttribute("..tenant"))
+    task = factory.SubFactory(TaskFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class PlanItemKpiFactory(TenantScopedFactory):
+    class Meta:
+        model = "plans.PlanItemKpi"
+
+    tenant = factory.SubFactory(TenantFactory)
+    item = factory.SubFactory(PlanItemFactory, tenant=factory.SelfAttribute("..tenant"))
+    kpi = factory.SubFactory(KpiFactory, tenant=factory.SelfAttribute("..tenant"))
+
+
+class PlanCloseFactory(TenantScopedFactory):
+    class Meta:
+        model = "plans.PlanClose"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    horizon = "week"
+    period_start = factory.Sequence(lambda n: datetime.date(2026, 1, 5)
+                                    + datetime.timedelta(days=7 * n))
+    summary = "Week of January 5. 3 of 4 tasks done."

@@ -4,9 +4,11 @@ import {
   ClipboardList,
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
-  Receipt, Landmark, Users, Gauge, X, FileSignature, Compass } from "lucide-react";
+  Receipt, Landmark, Users, Gauge, X, FileSignature, Compass, CalendarRange,
+  ListChecks } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
+import { PlanScreen, PlansScreen, ThisWeekScreen } from "./screens/Plan";
 import { Landing } from "./components/Landing";
 
 import { ActingBanner } from "./components/ActAs";
@@ -162,6 +164,9 @@ const NAV: NavItem[] = [
   { to: "/centers/operations", label: "Operations", roles: ["FF", "CF", "VA"],
     group: "Command Centers", icon: Compass,
     when: (me) => (me.command_centers ?? []).includes("operations") },
+  // P11: the plans, while any Command Center is on.
+  { to: "/plans", label: "Plans", roles: ["FF", "CF", "VA"], icon: CalendarRange,
+    when: (me) => !!me.has_plan },
   { to: "/contacts", label: "Contacts", roles: TENANT , group: "Accounts" , icon: ContactIcon },
   { to: "/pipeline", label: "Pipeline", roles: TENANT , icon: Workflow },
   { to: "/companies", label: "Companies", roles: TENANT , icon: Building2 },
@@ -195,6 +200,11 @@ const NAV: NavItem[] = [
   { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
+  // P11: the plan and the week, while the practice has a Command Center on.
+  { to: "/plan/week", label: "This week", roles: CLIENT, icon: ListChecks,
+    when: (me) => !!me.has_plan },
+  { to: "/plan", label: "Plan", roles: CLIENT, icon: CalendarRange,
+    when: (me) => !!me.has_plan },
   { to: "/tasks", label: (w) => w.Tasks, roles: CLIENT , icon: CheckSquare },
   // Module 4B — replaces FR-3.38's progress report. A place they can go,
   // not a document somebody remembered to send.
@@ -384,7 +394,7 @@ export function App() {
             : n.label(words) })).map((n) => (
             <Fragment key={`${n.to}-${n.label}`}>
               {n.group && <div className="nav-group">{n.group}</div>}
-              <NavLink to={n.to} end={n.to === "/work" || n.to === "/report"}
+              <NavLink to={n.to} end={n.to === "/work" || n.to === "/report" || n.to === "/plan"}
                 title={collapsed ? n.label : undefined}
                 className={({ isActive }) => (isActive ? "active" : "")}>
                 <n.icon size={18} strokeWidth={1.75} aria-hidden="true" />
@@ -436,6 +446,9 @@ export function App() {
             <Route path="/companies/:id" element={<CompanyDetail me={me} />} />
             {/* M5 part 1: a client's scorecard, for the practice. */}
             <Route path="/companies/:id/scorecard" element={<Scorecard me={me} />} />
+            <Route path="/companies/:id/plan" element={<PlanScreen me={me} />} />
+            <Route path="/plans" element={<PlansScreen />} />
+            <Route path="/plans/practice" element={<PlanScreen me={me} practice />} />
             <Route path="/companies/:id/scorecard/enter" element={<ScorecardEntry me={me} />} />
             {/* ...and the portal's own. */}
             <Route path="/scorecard" element={me.role === "FF" || me.role === "CF" || me.role === "VA"
@@ -494,6 +507,8 @@ export function App() {
                 with the sheet on top of it. */}
             <Route path="/tasks/:id" element={<Tasks me={me} />} />
             <Route path="/work" element={<Work me={me} />} />
+            <Route path="/plan" element={<PlanScreen me={me} />} />
+            <Route path="/plan/week" element={<ThisWeekScreen />} />
             <Route path="/work/goals/:id" element={<WorkParentDetail me={me} kind="goal" />} />
             <Route path="/work/projects/:id" element={<WorkParentDetail me={me} kind="project" />} />
             <Route path="/meetings" element={<Meetings me={me} />} />

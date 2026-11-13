@@ -118,6 +118,10 @@ class LibraryRecord(TenantScopedModel):
         SOP = "sop", "A finished SOP"
         DOCUMENT = "document", "A finished document"
         PLAYBOOK_RUN = "playbook_run", "A playbook run"
+        #: P11: a plan item proposed (by Claude, an AI app or a client) and
+        #: then accepted or discarded.
+        PLAN_ITEM_ACCEPTED = "plan_item_accepted", "An accepted plan item"
+        PLAN_ITEM_REJECTED = "plan_item_rejected", "A discarded plan item"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     source_type = models.CharField(max_length=40)

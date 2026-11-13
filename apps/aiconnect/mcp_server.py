@@ -39,8 +39,8 @@ INSTRUCTIONS = (
     "invoices, documents and strategy sessions. You act as the person who connected you, "
     "with their role, and see what they see. Reads are live. Writes only draft: a task or "
     "note marked as made by an AI app, an email waiting in the Sending queue, Strategy Map "
-    "rows in a session's tray, a KPI reading marked entered by AI, a digest waiting for "
-    "approval. Nothing here sends mail, moves money, signs, deletes, changes a pipeline "
+    "rows in a session's tray, plan items in a plan's tray, a KPI reading marked entered "
+    "by AI, a digest waiting for approval. Nothing here sends mail, moves money, signs, deletes, changes a pipeline "
     "stage or changes settings. Ids come from other tools' answers; never invent one.")
 
 READ = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
@@ -266,6 +266,24 @@ def build() -> MCPServer:
         (30, 60 or 90), measurable, header, statement."""
         return await run("propose_map_rows", T.propose_map_rows, session_id=session_id,
                          rows=rows)
+
+    @server.tool(annotations=READ)
+    async def company_plan(company_id: str, horizon: str = "") -> dict:
+        """A company's plan: each horizon's current period (three-year picture, year,
+        quarter, month, week) with its items, what each serves, their tasks and KPIs.
+        horizon: picture, year, quarter, month or week; empty for all five."""
+        return await run("company_plan", T.company_plan, company_id=company_id,
+                         horizon=horizon)
+
+    @server.tool(annotations=DRAFT)
+    async def propose_plan_items(company_id: str, horizon: str,
+                                 items: list[dict[str, Any]]) -> dict:
+        """Propose items for a company's plan into its tray, for this period of the horizon,
+        marked as made by an AI app; a person accepts, edits or discards each. horizon:
+        picture, year, quarter, month or week. Each item: title (required), done_means,
+        serves_id (an item on the horizon just above, from company_plan)."""
+        return await run("propose_plan_items", T.propose_plan_items, company_id=company_id,
+                         horizon=horizon, items=items)
 
     @server.tool(annotations=DRAFT)
     async def enter_kpi_reading(company_id: str, kpi_id: str, period_start: str, value: str,

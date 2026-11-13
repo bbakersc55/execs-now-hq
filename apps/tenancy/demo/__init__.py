@@ -207,6 +207,11 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .centers import operations as command_center
 
         command_center(world)
+        # P11: Acme's plan across the five horizons, tied to the reset and
+        # its scorecard, and a short one for Summit itself. No Claude.
+        from .plans import plans as plan_seed
+
+        plan_seed(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the
