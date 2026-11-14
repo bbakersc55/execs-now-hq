@@ -202,6 +202,22 @@ export const COLLECT_TIMEOUT = 15000;
  */
 export const COLLECT_TAG_DATA = ["tokenizationKey", "variant"] as const;
 
+/**
+ * Three settings configure() is given for Apple Pay's sake (2026-11-14).
+ * Collect.js builds an Apple Pay request on every page, button or not,
+ * each time it fetches a token, and without these logs "Could not create
+ * PaymentRequestAbstraction. Please verify the provided options are valid."
+ * (`ApplePayRequest.create`, its ApplePayRequest.js:114). The error was
+ * harmless: with no `#applepaybutton` on the page nothing is mounted and the
+ * card fields are built apart from it. All three are on Collect.js's own
+ * list. They are also Surcharge Plus's inputs to its token lookup; this form
+ * asks for no quote (no lookUpCallback) and the sale's amount is the
+ * server's. Proved on the sandbox: `scripts/nmi_token_proof.py --link-collect`.
+ */
+export function collectWalletSettings(amountCents: number) {
+  return { currency: "USD", country: "US", price: (amountCents / 100).toFixed(2) };
+}
+
 /** The tag that loaded Collect.js, found by its address alone. */
 function collectTag(): HTMLScriptElement | null {
   return document.querySelector<HTMLScriptElement>('script[src$="/token/Collect.js"]');
@@ -311,6 +327,7 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
       try {
         cj.configure({
           variant: "inline",
+          ...collectWalletSettings(amountCents),
           fields: {
             ccnumber: { selector: `#${ids.ccnumber}`, title: "Card number",
                         placeholder: "Card number" },

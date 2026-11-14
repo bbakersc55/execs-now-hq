@@ -116,6 +116,24 @@ describe("Collect.js from the white-label host (2026-11-10)", () => {
         .toEqual(["data-tokenization-key", "data-variant", "src"]);
     });
 
+  it("gives configure() the currency, country and price its Apple Pay request checks "
+    + "(the console error of 2026-11-14), and nothing Collect.js would refuse", async () => {
+    for (const [cents, price] of [[2295, "22.95"], [0, "0.00"]] as const) {
+      document.querySelectorAll(TAG).forEach((t) => t.remove());
+      delete window.CollectJS;
+      const { unmount } = render(<NmiCardForm publicKey="pub" amountCents={cents}
+        payPath="/api/x/pay/" onDone={() => {}} form={{ kind: "collect", script_url: VAULTIX }} />);
+      const { seen } = await loadScript();
+      await waitFor(() => expect(seen.config).toBeDefined());
+      // Collect.js's own test (ApplePayRequest.getOptionErrors): an uppercase
+      // three-letter currency, a numeric string price, an uppercase two-letter country.
+      expect(seen.config).toMatchObject({ currency: "USD", country: "US", price });
+      expect(Number.isNaN(parseFloat(seen.config!.price as string))).toBe(false);
+      for (const name of Object.keys(seen.config!)) expect(COLLECT_ACCEPTS).toContain(name);
+      unmount();
+    }
+  });
+
   it("hands the token to a card being saved, not to a payment", async () => {
     const onToken = vi.fn(async () => true as const);
     render(<NmiCardForm publicKey="pub" amountCents={0} payPath="/api/unused/"

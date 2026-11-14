@@ -203,6 +203,68 @@ had used its own page with a plain tag and never ran our loader. Now:
   token API (`/token/api/create`), the fields drawn from Vaultix's
   `inline.php`, a token, and the v5 sale with it.
 
+**2026-11-14: the Apple Pay console error.** The live pay page's console
+showed "Could not create PaymentRequestAbstraction. Please verify the
+provided options are valid." twice (`ApplePayRequest.js:114`) while the card
+fields worked. Collect.js's own source (its source map,
+`secure.nmi.com/token/Collect.js.map`) shows why. The file is the same on
+secure.nmi.com, sandbox.nmi.com and secure.vaultixpay.com.
+- Each time Collect.js gets a token (on load, on every `configure()`, and
+  again after every token it hands back), it builds an Apple Pay field. It
+  does this whether or not the page has an Apple Pay button. Its factory looks
+  for the button (`#applepaybutton`) only to report problems with it. With no
+  button, it builds the field and mounts it nowhere.
+- The field's constructor calls `ApplePayRequest.create`. That logs the error
+  and returns nothing unless `currency` (three uppercase letters), `price` (a
+  numeric string) and `country` (two uppercase letters) are set.
+- **So the error was harmless.** Nothing is mounted, and the card frames are
+  built separately (`buildInlineIframes`).
+- **The setting that stops it:** `currency`, `country` and `price`, all on
+  Collect.js's accepted list. They go in `configure()`
+  (`collectWalletSettings` in `NmiCardForm.tsx`: USD, US, and the form's
+  amount, `0.00` for a card being saved). They are not put on the tag, which
+  keeps its two attributes. The fields, the token and the sale are unchanged.
+- **One side effect:** `price` and `currency` also go to Collect.js's token
+  lookup as Surcharge Plus inputs. On an account enrolled in Surcharge Plus,
+  that lookup would quote a surcharge for the amount. This form reads no
+  quote, and the server still sets the sale's amount.
+- **Proved in headless Chrome on the sandbox.**
+  - Before the change, `--link-collect secure.nmi.com` logged the error three
+    times (twice on load, once after paying), and the card still paid.
+  - After the change, the same run logged nothing, paid ($33.18 approved, the
+    invoice paid, the receipt and the owner's notice sent, Paid on reopening).
+  - `--autopay --form-host secure.nmi.com` saved a card through Collect.js
+    and auto-pay charged it.
+  - `--bank-fees` counted two errors per page without the settings and none
+    with them. The token answers were identical either way.
+
+### 1.5 Bank payments and card fees: what the sandbox shows (2026-11-14)
+
+`scripts/nmi_token_proof.py --bank-fees`, against the platform's sandbox
+account only. It uses its own page with Collect.js from secure.nmi.com, and
+NMI's published test bank account (routing 490000018, account 24413815). No
+app code was changed for it. Each result is **proved** (on the sandbox, by
+that run), **not provable on the sandbox**, or **needs the processor** (only a
+live account, NMI or Vaultix can answer it).
+
+| # | Question | Status | What was found |
+|---|---|---|---|
+| B1 | A bank account tokenized through Collect.js | **Proved** | Collect.js takes inline `checkname`, `checkaba` and `checkaccount` fields. It makes a token only when all three are filled. The answer is `check: {name, account: "*******5", aba: "490000018", transit: null, institution: null, hash: ""}`, with every `card` field null. The account shows only its **last digit** here. |
+| B2 | A bank sale from that token, no SEC code | **Proved** | `payment_details.payment_token` alone was approved (`response` 1, 100 SUCCESS, `type` "ck", `pendingsettlement`). NMI filled in **WEB**, checking, personal. |
+| B3 | With a SEC code: WEB and CCD | **Proved** | `payment_details.sec_code` beside the token: WEB and CCD were both approved. For CCD, NMI set `account_holder_type` to **business** by itself. A top-level `sec_code` is refused (400, `extraParameters`). The Query API reads each sale back as `transaction_type` ck, with its `sec_code`, `account_holder_type` and `account_type`, `check_account` "2xxxxx15", `check_aba` and `check_name`. |
+| B4 | A bank account in the Customer Vault, charged | **Proved** | `POST /customers` with the bank token stores it. The answer shows `check_account` "\*\*\*\*3815", which is the **only place the last four appear**. A sale with `customer_vault.id` was approved as WEB and personal, and the Query API shows its `customerid`. The record was deleted (204). |
+| B5 | CCD on a stored bank account | **Proved** | `payment_details: {sec_code: "CCD"}` beside `customer_vault` was approved as CCD and business, though NMI's reference says not to send `payment_details` with a vault charge. A top-level `sec_code` is refused. A record stored with `sec_code` CCD and `account_holder_type` business was accepted, but the record keeps neither, and a sale on it went through as WEB and personal. **CCD has to be sent on every vault sale.** |
+| B6 | Can the sandbox make a return? | **Not provable on the sandbox** | The sandbox **settles nothing**. All 53 approved sales since 10/21 are still `pendingsettlement`, with no `settle` action, and a return comes only after settlement. The account's 19 bank transactions (all from 11/14) have only `sale` actions. The one trigger it has is the card one: a bank sale under $1.00 is **declined at once** (HTTP 200, `response` 2, "FAILED"). That is a decline, not a return. |
+| B7 | How the Query API reports a return | **Partly proved; the rest needs the processor** | Proved: `return` is the only return-like action type the Query API recognizes. Filtering on it returned 0 transactions, while a made-up name returns all 78. It ignores `check_return`, `check_late_return` and **`chargeback`** (78 of 78 each, the same as a made-up name). Still open: whether a return is an action on the original sale or a transaction of its own, its date, the sign of its amount, and the R-code text. **`apps/billing/readback.py` expects `chargeback`.** A `return` would reach it as "other": recorded and shown to the owner as needing a look, never dropped. Mapping `return` is a follow-up, not made here. |
+| B8 | A return on a sale older than 7 days | **Not provable for a return; proved for a refund** | A $0.01 refund made on 11/14 against a sale from 10/21 is a **transaction of its own**: a new id, with `original_transaction_id` set to the sale and the sale's `order_id` carried over. The read-back's 7-day window lists it, and it matches by the original id. The 10/21 sale itself is not listed in that window. If a return is instead an action on the original sale, a query by date might not find a sale older than the window. That needs the first live return, or NMI's answer. |
+| C1 | The credit/debit category for test cards | **Proved for the field; the values need the processor** | This sandbox account publishes `category` both in `lookUpCallback(card)` (`{number, bin, exp: null, type, category, hash}`, once the number is valid) and in the token answer's `card` (the same, plus `exp`). The values do not match the card networks: 4111… unknown, 5431… unknown, 6011 6011… credit (with `type` null), 3411… credit, 400005… (a debit BIN) unknown, 520082… (a debit BIN) **credit**, 510510… (a prepaid BIN) unknown. "debit" and "prepaid" never appeared. The sandbox's BIN data is not real, so whether live BINs read right is for the processor. Also: a second card typed on the same page is looked up against Collect.js's fresh token and answers empty or with the card before, so a lookup is good once per token. |
+| C2 | Surcharge Plus's quote (`card.surcharge`) | **Needs the processor** | It was absent from every lookup and token, with or without `price` and `currency`. The sandbox account is not enrolled. |
+| C3 | Where a surcharge goes on a v5 sale | **Proved** | **A top-level `surcharge`** (`"0.30"` or `0.30`) is accepted. **`amount` is the total including it**: $15.07 was sent with 0.30 and read back as $15.07. It is reported in the sale's answer and in `GET /payments/{id}` as `order_details.surcharge` "0.30", and in the Query API as `<surcharge>0.30</surcharge>`. A request with `order_details.surcharge`, where NMI's own surcharge guide puts it, is **refused** (400, `extraParameters`): that is where v5 reports it, not where it takes it. Each sale was refunded. Still for the processor: whether a live account may surcharge, its caps, and how settlement reports it. |
+
+Also seen: an unknown field is now refused with **400** `E_INVALID_SUBMISSION`
+(A10 saw 422 on 10/21). The gateway treats any refusal the same way, so
+nothing depends on the code.
+
 **Paused.** In production the stub never answers. With `NMI_LIVE_CALLS` off,
 every gateway call is refused (`CardPaymentsPaused`), and card payments are
 paused:
@@ -409,6 +471,8 @@ a practice shares the platform's keys. Only practice accounts are read so far;
 the platform account's own read-back is not built. **Not proved against NMI:**
 the sandbox cannot make a chargeback, so the action names a live account uses
 for one (`chargeback` is assumed) are checked at the first real one.
+*(2026-11-14: the Query API does not recognize `chargeback` as an action type,
+and does recognize `return`; see §1.5, B7.)*
 
 ## 5. Data model
 

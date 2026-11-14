@@ -9,6 +9,30 @@
     .venv/bin/python scripts/nmi_token_proof.py --collect secure.vaultixpay.com  # its host
     .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.nmi.com         # the real
     .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.vaultixpay.com  # pay page
+    .venv/bin/python scripts/nmi_token_proof.py --bank-fees   # bank payments, card category, surcharge
+
+**--bank-fees** (2026-11-14) proves, on the sandbox only and with no app code,
+what bank payments and a card fee would stand on. It serves its own page on
+127.0.0.1:8198 with Collect.js from secure.nmi.com and the sandbox's public
+key, and makes its own v5 and Query API calls with the sandbox's private key
+(it refuses to run on anything but sandbox.nmi.com):
+- NMI's published test bank account typed into Collect.js's check frames,
+  the token and what Collect.js says about it;
+- a bank sale on a token with no SEC code, then WEB and CCD (each place a SEC
+  code might go is tried; a refused one charges nothing), read back through
+  the Query API;
+- a bank account stored in the Customer Vault, a sale on it, the record
+  deleted;
+- the sandbox's amount trigger on a bank sale, which action names the Query
+  API knows for a return, every bank transaction the account has, and how a
+  date-window query reports an action made today on a sale older than seven
+  days (a $0.01 refund on an old sandbox card sale: the sandbox makes no
+  returns, so this is the nearest action it can make);
+- the credit/debit category for test cards, from `lookUpCallback` and from
+  the token response, with and without `price`/`currency`/`country` (the
+  settings that also stop Collect.js's Apple Pay console error);
+- a card sale with a surcharge at the top of the body and in
+  `order_details`, each read back from v5 and the Query API, then refunded.
 
 **--link-collect HOST** (2026-11-13) is --link with the card form a live
 white-label account gets: the real pay page, built from this tree, loads
@@ -706,6 +730,9 @@ def link_collect(host) -> dict:
     refused = [m for m in result["seen"]["console"] + result["seen"]["page_errors"]
                if "too many fields" in m]
     result["config_refused"] = refused
+    # Collect.js's "Could not create PaymentRequestAbstraction" (2026-11-14):
+    # gone once the form gives it currency, country and price.
+    result["apple_pay_errors"] = sum(APPLE_PAY_ERROR in m for m in result["seen"]["console"])
     if host == "secure.vaultixpay.com":
         result["reported"] = json.loads(manage("shell", "-c", FAILURE_READ, env_extra=env)
                                         .strip().splitlines()[-1])
@@ -722,6 +749,7 @@ def link_collect(host) -> dict:
     result.update(read)
     before = result["form_before_paying"]
     result["ok"] = (not refused and before["collectjs_defined"]
+                    and result["apple_pay_errors"] == 0
                     and not before["payment_component"]
                     and before["script"] == f"https://{host}/token/Collect.js"
                     and all(f["frames"] for f in before["field_frames"])
@@ -736,6 +764,555 @@ def link_collect(host) -> dict:
                     == read["attempt"]["nmi_transaction_id"]
                     and result["after"].get("shows_paid")
                     and not result["after"].get("card_form_shown"))
+    return result
+
+
+# ------------------------------------------------- bank payments and card fees
+
+BANK_PORT = 8198
+BANK_BASE = f"http://127.0.0.1:{BANK_PORT}"
+#: NMI's published sandbox bank account (docs.nmi.com/reference/testing-methods).
+TEST_BANK = ("Sandbox Proof", "490000018", "24413815")
+#: For the category: NMI's published test cards, and public test numbers on
+#: BINs the card networks list as debit and prepaid. Only ever typed into
+#: Collect.js's frames on the sandbox.
+CATEGORY_CARDS = [
+    ("Visa, NMI's test card", "4111111111111111", "999"),
+    ("Mastercard, NMI's test card", "5431111111111111", "999"),
+    ("Discover, NMI's test card", "6011601160116611", "999"),
+    ("Amex, NMI's test card", "341111111111111", "1234"),
+    ("Visa on a debit BIN", "4000056655665556", "999"),
+    ("Mastercard on a debit BIN", "5200828282828210", "999"),
+    ("Mastercard on a prepaid BIN", "5105105105105100", "999"),
+]
+#: The settings that give Collect.js's Apple Pay request what it validates
+#: (ApplePayRequest.getOptionErrors), and are Surcharge Plus's inputs too.
+PRICED = {"price": "10.00", "currency": "USD", "country": "US"}
+APPLE_PAY_ERROR = "Could not create PaymentRequestAbstraction"
+
+PROOF_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Bank and fee proof</title>
+<script src="https://secure.nmi.com/token/Collect.js" data-tokenization-key="%(key)s"
+        data-variant="inline"></script></head>
+<body style="font-family: sans-serif; max-width: 40rem; margin: 2rem auto">
+<h1>Bank and fee proof (sandbox, %(kind)s)</h1>
+<div id="f1" style="border:1px solid #ccc;height:2.6rem"></div>
+<div id="f2" style="border:1px solid #ccc;height:2.6rem"></div>
+<div id="f3" style="border:1px solid #ccc;height:2.6rem"></div>
+<script>
+const kind = "%(kind)s";
+const extra = JSON.parse('%(extra)s');
+window.made = []; window.lookups = []; window.checks = []; window.ready = false;
+window.timedOut = 0;
+const fields = kind === "bank"
+  ? {checkname: {selector: "#f1"}, checkaba: {selector: "#f2"}, checkaccount: {selector: "#f3"}}
+  : {ccnumber: {selector: "#f1"}, ccexp: {selector: "#f2"}, cvv: {selector: "#f3"}};
+CollectJS.configure(Object.assign({
+  variant: "inline", paymentType: kind === "bank" ? "ck" : "cc", fields,
+  fieldsAvailableCallback: () => { window.ready = true; },
+  timeoutDuration: 20000, timeoutCallback: () => { window.timedOut += 1; },
+  validationCallback: (f, ok, m) => { window.checks.push([f, ok, m]); },
+  lookUpCallback: (card) => { window.lookups.push(card); },
+  callback: (r) => { window.made.push({tokenType: r.tokenType, token: r.token,
+                                       card: r.card || null, check: r.check || null}); },
+}, extra));
+window.nextToken = () => new Promise((resolve, reject) => {
+  const n = window.made.length, t0 = window.timedOut;
+  CollectJS.startPaymentRequest();
+  const tick = setInterval(() => {
+    if (window.made.length > n) { clearInterval(tick); resolve(window.made[n]); }
+    else if (window.timedOut > t0) { clearInterval(tick); reject(new Error("timeout")); }
+  }, 100);
+});
+</script></body></html>"""
+
+
+def sandbox_account():
+    """The platform's sandbox account, read in this process from `.env`.
+    Anything but NMI's sandbox host stops the run before a call is made."""
+    sys.path.insert(0, str(ROOT))
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    import django
+
+    django.setup()
+    from apps.billing import gateway as gw
+
+    account = gw.platform_account()
+    if (account.environment != "sandbox"
+            or not account.base_url.startswith("https://sandbox.nmi.com/")
+            or not account.query_url.startswith("https://sandbox.nmi.com/")):
+        sys.exit("--bank-fees runs on NMI's sandbox only: NMI_ENVIRONMENT must be sandbox.")
+    return account
+
+
+def serve_proof_pages(public_key: str):
+    """This run's own pages, from memory, on 127.0.0.1 only."""
+    import html
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    pages = {"/bank": ("bank", {}), "/card": ("card", {}), "/card-priced": ("card", PRICED)}
+
+    class Pages(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/favicon.ico":           # none, and no 404 in the console
+                self.send_response(204)
+                self.end_headers()
+                return
+            found = pages.get(self.path.split("?")[0])
+            if not found:
+                self.send_error(404)
+                return
+            kind, extra = found
+            body = (PROOF_PAGE % {"key": html.escape(public_key), "kind": kind,
+                                  "extra": json.dumps(extra)}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", BANK_PORT), Pages)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def v5(account, method: str, path: str, body=None):
+    """One v5 call on the sandbox: (status, answer). The key goes only in the
+    header, and any answer text is scrubbed of it."""
+    import requests
+
+    answer = requests.request(method, account.base_url + path, timeout=30,
+                              headers={"Authorization": account.private_key,
+                                       "Content-Type": "application/json",
+                                       "Accept": "application/json"},
+                              data=json.dumps(body) if body is not None else None)
+    try:
+        payload = answer.json() if answer.text else None
+    except ValueError:
+        payload = {"text": account.scrub(answer.text[:300])}
+    return answer.status_code, payload
+
+
+def query(account, **params):
+    """The classic Query API (read-only) on the sandbox: the parsed XML."""
+    import xml.etree.ElementTree as ET
+
+    import requests
+
+    answer = requests.post(account.query_url, timeout=60,
+                           data={"security_key": account.private_key, **params})
+    return ET.fromstring(answer.text)
+
+
+#: What the Query API says of a transaction, for these proofs.
+QUERY_FIELDS = ("transaction_id", "transaction_type", "condition", "order_id", "sec_code",
+                "account_holder_type", "account_type", "check_account", "check_aba",
+                "check_name", "cc_type", "cc_number", "surcharge", "convenience_fee",
+                "original_transaction_id", "customerid")
+
+
+def query_facts(node) -> dict:
+    facts = {k: node.findtext(k) for k in QUERY_FIELDS if node.find(k) is not None}
+    facts["actions"] = [{k: a.findtext(k) for k in ("action_type", "amount", "date", "success",
+                                                       "response_text")}
+                        for a in node.findall("action")]
+    return facts
+
+
+def query_one(account, transaction_id: str) -> dict:
+    root = query(account, transaction_id=transaction_id)
+    node = root.find("transaction")
+    if node is None:
+        return {"error": (root.findtext("error_response") or "not found").strip()}
+    return query_facts(node)
+
+
+def picked(payload, *, keys=("id", "response", "response_code", "response_text", "status",
+                            "amount", "error_code", "message", "details", "type")) -> dict:
+    """The answer's own words that matter here, plus every key anywhere in it
+    that names a surcharge, a fee, a SEC code, an account type or a check."""
+    if not isinstance(payload, dict):
+        return {"answer": payload}
+    out = {k: payload[k] for k in keys if k in payload}
+    hits = {}
+
+    def walk(obj, path):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                here = f"{path}.{k}" if path else k
+                if any(w in k for w in ("surcharge", "fee", "sec_code", "account_type",
+                                        "holder", "check", "card_type", "category")):
+                    hits[here] = v
+                walk(v, here)
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                walk(v, f"{path}[{i}]")
+
+    walk(payload, "")
+    if hits:
+        out["named"] = hits
+    return out
+
+
+def fill_frame(page, element: str, value: str) -> None:
+    """Type into Collect.js's frame for one field (its iframe is
+    `#CollectJSInline<field>`), waiting for it to load."""
+    frame = page.frame_locator(f"#CollectJSInline{element}")
+    for _ in range(120):
+        for selector in (f"#{element}", "input"):
+            box = frame.locator(selector).first
+            try:
+                if box.count() and box.is_visible():
+                    box.fill(value, timeout=5000)
+                    box.blur()
+                    return
+            except Exception:
+                pass
+        page.wait_for_timeout(500)
+    raise RuntimeError(f"Collect.js's {element} field never appeared.")
+
+
+def open_proof_page(browser, path: str):
+    page = browser.new_page()
+    console = []
+    page.on("console", lambda m: console.append(f"{m.type}: {m.text[:300]}"))
+    page.on("pageerror", lambda e: console.append(f"pageerror: {str(e)[:300]}"))
+    page.goto(BANK_BASE + path, wait_until="domcontentloaded", timeout=90000)
+    page.wait_for_function("window.ready === true", timeout=60000)
+    return page, console
+
+
+def bank_token(page) -> dict:
+    for element, value in zip(("checkname", "checkaba", "checkaccount"), TEST_BANK):
+        fill_frame(page, element, value)
+    page.wait_for_timeout(500)
+    return page.evaluate("() => window.nextToken()")
+
+
+def card_token(page, number: str, cvv: str) -> dict:
+    """The card typed in, what lookUpCallback said once the number was valid,
+    and the token response."""
+    before = page.evaluate("() => window.lookups.length")
+    fill_frame(page, "ccnumber", number)
+    lookup = None
+    for _ in range(30):
+        if page.evaluate("() => window.lookups.length") > before:
+            lookup = page.evaluate("() => window.lookups[window.lookups.length - 1]")
+            break
+        page.wait_for_timeout(500)
+    fill_frame(page, "ccexp", TEST_CARD[1])
+    fill_frame(page, "cvv", cvv)
+    page.wait_for_timeout(500)
+    made = page.evaluate("() => window.nextToken()")
+    return {"lookup": lookup, "token": made}
+
+
+def no_token(made: dict) -> dict:
+    """A token response without the token itself, for printing."""
+    return {k: v for k, v in made.items() if k != "token"}
+
+
+def ref_for(label: str) -> str:
+    import uuid
+
+    return f"proof-{label}-{uuid.uuid4().hex[:8]}"
+
+
+def sale_body(amount: str, reference: str, *, token=None, vault_id=None, top=None,
+              details=None, order=None) -> dict:
+    body = {"amount": amount, "currency": "USD",
+            "order_details": {"id": reference, **(order or {})},
+            "merchant_defined_fields": {"field_1": reference}, **(top or {})}
+    if token is not None:
+        body["payment_details"] = {"payment_token": token, **(details or {})}
+    else:
+        body["customer_vault"] = {"id": vault_id}
+    return body
+
+
+def bank_section(account, browser, steps) -> dict:
+    """Bank account tokens, sales with and without a SEC code, the vault."""
+    import random
+
+    out = {}
+    page, console = open_proof_page(browser, "/bank")
+    try:
+        first = bank_token(page)
+        out["token_response"] = no_token(first)
+        tokens = [first["token"]] + [bank_token(page)["token"] for _ in range(6)]
+    finally:
+        page.close()
+    out["console_on_bank_page"] = console
+    base = random.randint(2000, 3999)
+
+    def amount(k):
+        return f"{(base + 37 * k) // 100}.{(base + 37 * k) % 100:02d}"
+
+    # 1. No SEC code.
+    ref = ref_for("ach")
+    status, answer = v5(account, "POST", "/payments/sale",
+                        sale_body(amount(0), ref, token=tokens[0]))
+    out["sale_no_sec_code"] = {"http": status, **picked(answer)}
+    steps.append(("bank sale, no SEC code", status))
+
+    # 2. WEB: each place a SEC code might go, until one is accepted.
+    places = [("payment_details.sec_code", lambda code: {"details": {"sec_code": code}}),
+              ("top-level sec_code", lambda code: {"top": {"sec_code": code}})]
+    tried, accepted = [], None
+    for name, where in places:
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount(1), ref_for("web"), token=tokens[1], **where("WEB")))
+        tried.append({"where": name, "http": status, **picked(answer)})
+        if status < 300 and isinstance(answer, dict) and answer.get("id"):
+            accepted = (name, where)
+            break
+    out["sale_web"] = tried
+    steps.append(("bank sale, WEB", tried[-1]["http"]))
+
+    # 3. CCD where WEB was accepted; with the account holder as a business if refused.
+    ccd = []
+    if accepted:
+        name, where = accepted
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount(2), ref_for("ccd"), token=tokens[2], **where("CCD")))
+        ccd.append({"where": name, "http": status, **picked(answer)})
+        if not (status < 300 and isinstance(answer, dict) and answer.get("id")):
+            spot = where("CCD")
+            for part in spot.values():
+                part["account_holder_type"] = "business"
+            status, answer = v5(account, "POST", "/payments/sale",
+                                sale_body(amount(3), ref_for("ccd"), token=tokens[3], **spot))
+            ccd.append({"where": name + " with account_holder_type business",
+                        "http": status, **picked(answer)})
+    out["sale_ccd"] = ccd
+    steps.append(("bank sale, CCD", ccd[-1]["http"] if ccd else None))
+
+    # Each approved bank sale as the Query API reports it.
+    approved = [r for r in [out["sale_no_sec_code"], *tried, *ccd] if r.get("id")]
+    out["query_read_back"] = {r["id"]: query_one(account, str(r["id"])) for r in approved}
+
+    # 4. The Customer Vault: stored from a token, charged, charged with a SEC code, deleted.
+    status, answer = v5(account, "POST", "/customers",
+                        {"billing": {"first_name": "Sandbox", "last_name": "Proof",
+                                     "payment_details": {"payment_token": tokens[4]}}})
+    vault = {"stored": {"http": status, **picked(answer, keys=("id", "message", "details")),
+                        "billing": (answer or {}).get("billing") if isinstance(answer, dict)
+                        else None}}
+    vault_id = str(answer.get("id", "")) if isinstance(answer, dict) else ""
+    steps.append(("bank account stored in the vault", status))
+    if vault_id:
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount(4), ref_for("vault"), vault_id=vault_id))
+        vault["sale"] = {"http": status, **picked(answer)}
+        steps.append(("sale on the vault record", status))
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount(5), ref_for("vault-ccd"), vault_id=vault_id,
+                                      top={"sec_code": "CCD"}))
+        vault["sale_with_top_level_ccd"] = {"http": status, **picked(answer)}
+        body = sale_body(amount(6), ref_for("vault-ccd"), vault_id=vault_id)
+        body["payment_details"] = {"sec_code": "CCD"}
+        status, answer = v5(account, "POST", "/payments/sale", body)
+        vault["sale_with_payment_details_ccd"] = {"http": status, **picked(answer)}
+        for key in ("sale", "sale_with_top_level_ccd", "sale_with_payment_details_ccd"):
+            if vault[key].get("id"):
+                vault[key]["query"] = query_one(account, str(vault[key]["id"]))
+        status, _ = v5(account, "DELETE", f"/customers/{vault_id}")
+        vault["deleted"] = status
+    # A record stored as a business account with CCD, then charged as it is.
+    status, answer = v5(account, "POST", "/customers",
+                        {"billing": {"first_name": "Sandbox", "last_name": "Proof",
+                                     "payment_details": {"payment_token": tokens[6],
+                                                         "sec_code": "CCD",
+                                                         "account_holder_type": "business"}}})
+    ccd_vault = {"stored": {"http": status, **picked(answer, keys=("id", "message", "details"))}}
+    ccd_id = str(answer.get("id", "")) if isinstance(answer, dict) and status < 300 else ""
+    if ccd_id:
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount(7), ref_for("vault-ccd"), vault_id=ccd_id))
+        ccd_vault["sale"] = {"http": status, **picked(answer)}
+        if ccd_vault["sale"].get("id"):
+            ccd_vault["sale"]["query"] = query_one(account, str(ccd_vault["sale"]["id"]))
+        ccd_vault["deleted"] = v5(account, "DELETE", f"/customers/{ccd_id}")[0]
+    vault["stored_as_ccd"] = ccd_vault
+    out["vault"] = vault
+
+    # 5. The sandbox's amount trigger, on a bank sale.
+    status, answer = v5(account, "POST", "/payments/sale",
+                        sale_body("0.50", ref_for("ach-low"), token=tokens[5]))
+    out["sale_under_one_dollar"] = {"http": status, **picked(answer)}
+    return out
+
+
+def returns_section(account) -> dict:
+    """Returns: which action names the Query API takes, every bank
+    transaction on the account, and how a date window reports an action made
+    today on a sale older than seven days."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+
+    def stamp(t):
+        return t.strftime("%Y%m%d%H%M%S")
+
+    since = stamp(now - timedelta(days=90))
+    every = len(query(account, start_date=since).findall("transaction"))
+    out = {"transactions_in_90_days_with_no_filter": every, "action_type_filter": {}}
+    # A name the Query API does not know may be ignored (every transaction
+    # back) rather than refused, so each count is read against `every`.
+    for name in ("check_return", "check_late_return", "return", "chargeback", "refund",
+                 "not_an_action_type"):
+        root = query(account, action_type=name, start_date=since)
+        error = (root.findtext("error_response") or "").strip()
+        found = root.findall("transaction")
+        kinds = sorted({a.findtext("action_type") or "" for n in found
+                        for a in n.findall("action")})
+        out["action_type_filter"][name] = error or {"found": len(found),
+                                                    "action_types_on_them": kinds}
+    root = query(account, transaction_type="ck", start_date=stamp(now - timedelta(days=90)))
+    checks = [query_facts(n) for n in root.findall("transaction")]
+    out["bank_transactions_on_the_account"] = {
+        "count": len(checks),
+        "conditions": sorted({c.get("condition") or "" for c in checks}),
+        "action_types": sorted({a["action_type"] or "" for c in checks for a in c["actions"]}),
+    }
+
+    # A settled card sale from 8 to 45 days ago with nothing refunded (a v5
+    # refund is a transaction of its own, naming the sale as its original),
+    # given a $0.01 refund now; then today's window is asked for it.
+    listed = [query_facts(n) for n in query(
+        account, start_date=stamp(now - timedelta(days=45))).findall("transaction")]
+    refunded = {t.get("original_transaction_id") for t in listed} | {
+        t["transaction_id"] for t in listed
+        if {"refund", "void", "credit"} & {a["action_type"] for a in t["actions"]}}
+    # The sandbox settles nothing (2026-11-14): every approved sale stays
+    # pendingsettlement and no settle action is ever listed, so a return,
+    # which follows settlement, never comes.
+    approved = [t for t in listed if any(a["action_type"] == "sale" and a["success"] == "1"
+                                         for a in t["actions"])]
+    out["settlement_in_45_days"] = {
+        "approved_sales": len(approved),
+        "their_conditions": sorted({t.get("condition") or "" for t in approved}),
+        "settle_actions": sum(a["action_type"] == "settle" for t in listed for a in t["actions"]),
+        "oldest_sale": min((a["date"] for t in approved for a in t["actions"]
+                            if a["action_type"] == "sale"), default=""),
+    }
+    cutoff = stamp(now - timedelta(days=8))
+    old = None
+    for t in approved:
+        sale = [a for a in t["actions"] if a["action_type"] == "sale"]
+        if (t.get("transaction_type") == "cc"
+                and t.get("condition") in ("complete", "pendingsettlement")
+                and sale[0]["date"] < cutoff and t["transaction_id"] not in refunded):
+            old = t
+            break
+    if old is None:
+        out["old_sale"] = "no unrefunded card sale from 8 to 45 days ago on the sandbox"
+        return out
+    status, answer = v5(account, "POST", f"/payments/{old['transaction_id']}/refund",
+                        {"amount": "0.01"})
+    refund = {"http": status, **picked(answer)}
+    time.sleep(5)
+    window = query(account, start_date=stamp(now - timedelta(hours=2)),
+                   end_date=stamp(datetime.now(timezone.utc) + timedelta(minutes=5)))
+    listed = [query_facts(n) for n in window.findall("transaction")]
+    as_itself = [t for t in listed if t.get("transaction_id") == old["transaction_id"]]
+    as_new = [t for t in listed if t.get("original_transaction_id") == old["transaction_id"]
+              or (refund.get("id") and t.get("transaction_id") == str(refund["id"]))]
+    out["old_sale"] = {
+        "transaction_id": old["transaction_id"],
+        "sale_dated": next((a["date"] for a in old["actions"] if a["action_type"] == "sale"), ""),
+        "refund_today": refund,
+        "todays_window_lists_the_old_transaction": bool(as_itself),
+        "its_actions_in_todays_window": as_itself[0]["actions"] if as_itself else [],
+        "refund_listed_as_its_own_transaction": as_new[:1],
+    }
+    return out
+
+
+def card_section(account, browser, steps) -> dict:
+    """The category Collect.js reports for test cards, with and without the
+    priced settings; then where a surcharge goes on a v5 sale."""
+    import random
+
+    out = {}
+    for path, label in (("/card", "as the app configures it"),
+                        ("/card-priced", "with price, currency and country")):
+        rows, errors, other = [], [], []
+        # A page of its own for each card: a second number on one page is
+        # looked up against the token Collect.js has just made afresh, which
+        # answers empty or with the card before.
+        for name, number, cvv in CATEGORY_CARDS:
+            page, console = open_proof_page(browser, path)
+            try:
+                got = card_token(page, number, cvv)
+            finally:
+                page.close()
+            rows.append({"card": name, "lookUpCallback": got["lookup"],
+                         "token_response": no_token(got["token"])})
+            errors.append(sum(APPLE_PAY_ERROR in m for m in console))
+            other += [m for m in console if APPLE_PAY_ERROR not in m]
+        out[label] = {"cards": rows, "apple_pay_errors_per_page": errors,
+                      "other_console": sorted(set(other))}
+    page, _ = open_proof_page(browser, "/card-priced")
+    try:
+        surcharge_tokens = [card_token(page, TEST_CARD[0], TEST_CARD[2])["token"]["token"]
+                            for _ in range(4)]
+    finally:
+        page.close()
+    steps.append(("category for test cards", len(CATEGORY_CARDS)))
+
+    # Where a surcharge is accepted and reported.
+    base = random.randint(1000, 1899)
+    tries = [
+        ("no surcharge (control)", {}, 0),
+        ("top-level surcharge, a string", {"top": {"surcharge": "0.30"}}, 30),
+        ("order_details.surcharge, a string", {"order": {"surcharge": "0.30"}}, 30),
+        ("top-level surcharge, a number", {"top": {"surcharge": 0.30}}, 30),
+    ]
+    sales = []
+    for k, (name, where, extra_cents) in enumerate(tries):
+        cents = base + 41 * k + extra_cents
+        amount = f"{cents // 100}.{cents % 100:02d}"
+        status, answer = v5(account, "POST", "/payments/sale",
+                            sale_body(amount, ref_for("fee"), token=surcharge_tokens[k], **where))
+        row = {"where": name, "amount_sent": amount, "http": status, **picked(answer)}
+        if row.get("id"):
+            got_status, got = v5(account, "GET", f"/payments/{row['id']}")
+            row["v5_read_back"] = {"http": got_status, **picked(got)}
+            row["query_read_back"] = query_one(account, str(row["id"]))
+            row["refunded"] = v5(account, "POST", f"/payments/{row['id']}/refund",
+                                 {"amount": amount})[0]
+        sales.append(row)
+        steps.append((f"card sale, {name}", status))
+    out["surcharge_sales"] = sales
+    return out
+
+
+def bank_fees() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    account = sandbox_account()
+    server = serve_proof_pages(account.public_key)
+    steps = []
+    result = {"environment": account.environment, "api": account.base_url}
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            try:
+                result["bank"] = bank_section(account, browser, steps)
+                result["cards"] = card_section(account, browser, steps)
+            finally:
+                browser.close()
+        result["returns"] = returns_section(account)
+    finally:
+        server.shutdown()
+    result["steps"] = steps
+    result["ok"] = all(s[1] is not None for s in steps) and bool(
+        result["bank"].get("token_response", {}).get("check"))
     return result
 
 
@@ -762,7 +1339,9 @@ def run_mode():
         if host not in ("secure.nmi.com", "secure.vaultixpay.com"):
             sys.exit("--form-host takes secure.nmi.com or secure.vaultixpay.com")
         PROOF_ENV["NMI_SANDBOX_CARD_FORM_HOST"] = host
-    if "--link-collect" in sys.argv:
+    if "--bank-fees" in sys.argv:
+        result = bank_fees()
+    elif "--link-collect" in sys.argv:
         host = sys.argv[sys.argv.index("--link-collect") + 1]
         if host not in ("secure.nmi.com", "secure.vaultixpay.com"):
             sys.exit("--link-collect takes secure.nmi.com or secure.vaultixpay.com")
