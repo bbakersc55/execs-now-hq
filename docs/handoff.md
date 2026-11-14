@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-14 UTC**, after Release 42. **The next session starts at
-"2026-11-14: Release 42, the Operations Command Center's engines" just
-below**; then "2026-11-13, later: the plans engine (P11)"; then
+2026-11-14 UTC**, after Release 43. **The next session starts at
+"2026-11-14, evening: Release 43, SOP sections and the card form's words"
+just below**; then "2026-11-14: Release 42, the Operations Command Center's
+engines"; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
 "2026-11-12, late: where things stand"; then
 "2026-11-12: Release 40, Command Centers"; then
@@ -30,6 +31,41 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-14, evening: Release 43, SOP sections and the card form's words
+
+- **Release 43 is live:** `main` at `88a84a5`. One migration,
+  `sops 0002_sop_layout_and_training`, applied by the runbook sequence:
+  - backup `execsnowhq_prod_20261114_222411` (the owner's run-now);
+  - pushed 22:25:53;
+  - applied 22:28:03–11, `OK`;
+  - web serving about 2 min 24 s after the push.
+
+  Worker and `mcp` are up too. Recorded in the runbook ("Observed at
+  Release 43"). The migration's one write numbers existing SOPs (OPS-01 …)
+  in its new column; the owner's "release" approved it. The numbers it gave
+  production's SOPs were not read (a production shell read waits on the
+  owner's ask).
+- **It carried:**
+  - SOPs in eleven sections, a brain dump, training material per SOP and a
+    per-SOP Notebook pack; an accepted process map lands on its SOP at once;
+    the four Operations tools improved (`b50cea0`, `docs/p10_sop_studio.md`);
+  - the card form's words (`88a84a5`, `docs/p4_billing.md`, "2026-11-14:
+    "Field is empty""): each Collect.js box says what it needs beside it,
+    in plain words, once left or after Pay; Collect.js's own text is never
+    shown; the banner is only for real failures; Pay works again at once
+    instead of after Collect.js's 15 s hold;
+  - bank payments and card fees proved on NMI's sandbox, and the Apple Pay
+    console error quieted (`2da72ff`, `docs/p4_billing.md` §1.5);
+  - two tests and the demo seed no longer depend on the hour or the weekday
+    (`24743a0`).
+- **On release:** nothing to set in Railway, and no new scheduled job.
+- **Open:**
+  - NMI's Payment Component (the sandbox and NMI's own host) keeps its own
+    messages beside each box; it gives no way to change the words.
+  - The card form on the live Vaultix host was not opened in a browser.
+  - The two HRIS prompts (part 1, security foundation; part 2, records and
+    checklists) have not reached a session yet.
 
 ## 2026-11-14: Release 42, the Operations Command Center's engines
 

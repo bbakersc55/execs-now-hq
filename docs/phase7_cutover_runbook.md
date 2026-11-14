@@ -896,6 +896,23 @@ applied by me 00:01:52–02:13, all eighteen `OK` (`aiconnect 0002`, `centers
 `enhq-site` SKIPPED (no change under `site/`). **Push to web serving: about
 2 min 12 s.** Card payments stay paused by the platform owner's switch.
 
+**Observed at Release 43 (2026-11-14 UTC, one migration,
+`sops 0002_sop_layout_and_training`: new columns with database defaults, one
+new table, two unique constraints, and one write that numbers existing SOPs
+in a new column, which the owner's "release" approved; `88a84a5`: SOPs in
+eleven sections, the card form's words, the sandbox proofs):** R1: the owner
+ran the backup by hand: `execsnowhq_prod_20261114_222411.sql.gz`, 16.0 MB,
+landed 22:24:14. R2: `main` fast-forwarded `d403a92..88a84a5`, pushed
+22:25:53. R3: worker `66e74ced` `WAITING` 22:27:52, listing exactly
+`sops.0002`. R4: applied by me 22:28:03–11, `OK`. R5: `migrations current`
+22:28:26, running 22:28:30. R5b: no new scheduled job. R6a: `mcp` `a285a290`
+SUCCESS by itself, `/healthz` `ok`. R6: web `f20da588` SUCCESS by itself,
+gunicorn listening 22:28:17; `/healthz` 200, and the served bundle carries
+"Enter your card number" and no "Field is empty". `enhq-site` SKIPPED (no
+change under `site/`). **Push to web serving: about 2 min 24 s.** Not
+checked: the numbers the write gave production's SOPs (a production shell
+read waits on the owner's ask).
+
 ---
 
 ## Part A — the owner's steps, in order
