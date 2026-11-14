@@ -48,21 +48,23 @@ CHANGEOVER_MAP = """flowchart TD
 
 CHANGEOVER_STEPS = [
     {"text": "Run the last part of the order and stop the header at the top of its stroke.",
-     "role": "Header line lead", "warning": ""},
+     "role": "Header line lead", "when": "When the board shows the next job is due on the header.",
+     "warning": ""},
     {"text": "Lock out the header and hang your tag on it.", "role": "Machinist",
      "warning": "Never reach into the die area until your own lock is on the disconnect."},
     {"text": "Pull the dies and the punch and set them on the cart, in order.",
      "role": "Machinist", "warning": ""},
     {"text": "Clean the die block and check each die against the wear gauge.",
      "role": "Machinist", "warning": ""},
-    {"text": "If a die is worn past the gauge, swap in a reground set and write it in the "
-             "die log.", "role": "Machinist", "warning": ""},
+    {"text": "Swap in a reground set and write it in the die log.", "role": "Machinist",
+     "when": "If a die is worn past the gauge.", "warning": ""},
     {"text": "Set the new dies to the setup sheet for the next job: depth, stroke and feed.",
      "role": "Header line lead", "warning": "Use the sheet for this part number, not memory."},
     {"text": "Run five first pieces and take them to quality.", "role": "Machinist",
      "warning": ""},
-    {"text": "Quality checks the first pieces against the drawing; adjust and rerun until they "
-             "pass.", "role": "Quality inspector", "warning": ""},
+    {"text": "Quality checks the first pieces against the drawing.", "role": "Quality inspector",
+     "when": "If a first piece fails, adjust to the setup sheet and run five more.",
+     "warning": ""},
     {"text": "Release the run on the board and remove your lock last.",
      "role": "Header line lead", "warning": ""},
 ]
@@ -80,6 +82,45 @@ RECEIVING_V2 = [RECEIVING_V1[0],
                 {"text": "Check the mill certificate matches the heat numbers on the coils "
                          "before anything is unloaded.", "role": "Quality inspector",
                  "warning": "No certificate, no unloading: call purchasing."}] + RECEIVING_V1[1:]
+
+CHANGEOVER_MORE = {
+    "review_months": 6,
+    "definitions": [
+        {"term": "Header", "definition": "The cold-heading machine that forms the bolt heads."},
+        {"term": "First pieces", "definition": "The first five parts of a run, checked by quality "
+                                               "before the run is released."},
+        {"term": "Setup sheet", "definition": "The card for each part number: die depth, stroke "
+                                              "and feed."},
+        {"term": "Lockout", "definition": "Your own lock and tag on the header's disconnect, so it "
+                                          "can't start while you work."},
+    ],
+    "related": [
+        {"kind": "link", "title": "Setup sheets binder, on the header line's board"},
+        {"kind": "link", "title": "Die log, kept by maintenance"},
+        {"kind": "link", "title": "Lockout procedure (plant safety manual, section 4)"},
+    ],
+    "training": "A machinist does three changeovers alongside the header line lead before "
+                "doing one alone, and signs the lockout card. Everyone on the line takes the "
+                "quiz below once a year.",
+    "metrics": "Changeover time, from the last part to the first good part, logged on the "
+               "board each time; the target is under 45 minutes. First-piece rejects and the "
+               "rework rate on the scorecard. Elmer reviews the log every Friday.",
+}
+
+RECEIVING_MORE = {
+    "review_months": 12,
+    "definitions": [
+        {"term": "Heat number", "definition": "The mill's number for one melt of steel, stamped "
+                                              "on the coil tag and the mill certificate."},
+        {"term": "Mill certificate", "definition": "The mill's test report for a heat: grade, "
+                                                   "chemistry and strength."},
+        {"term": "PO", "definition": "Purchase order."},
+    ],
+    "training": "Receiving is trained on the forklift and the floor cradle before working the "
+                "dock alone.",
+    "metrics": "Deliveries received the same day, and coils without a traceable heat number "
+               "(the target is none). Petunia checks the receiving log each Monday.",
+}
 
 QUOTE_STEPS = [
     {"text": "Read the drawing and list the material, the size and the finish.",
@@ -112,7 +153,39 @@ QUOTE_REVISED = {
          "role": "Purchasing lead", "warning": ""},
     ],
     "category": "Sales",
+    "review_months": 6,
+    "definitions": [{"term": "Quote board", "definition": "The board by purchasing where every "
+                                                          "request is a card, from New to Sent."},
+                    {"term": "Job log", "definition": "Elmer's record of every job run: setup "
+                                                      "and run times by part number."}],
+    "map": "flowchart TD\n  a([Request arrives]) --> b[Log it on the quote board]\n"
+           "  b --> c[Price the steel from this week's sheet]\n  c --> d{A past job in the log?}\n"
+           "  d -->|Yes| e[Use its setup and run times]\n  d -->|No| f[Ask the header line lead]\n"
+           "  e --> g[Add the header line's wait]\n  f --> g\n  g --> h([Send within two days])",
+    "related": [{"kind": "link", "title": "This week's steel supplier sheet", "url": ""},
+                {"kind": "link", "title": "The job log", "url": ""}],
+    "training": "Daffy and a stand-in each quote two jobs with the job log before quoting alone.",
+    "metrics": "Days from request to quote sent, from the quote board; the target is two "
+               "working days. Quotes that promised header time twice: none.",
 }
+
+#: A process map Claude drew for the quote, waiting to be accepted (no AI in the seed).
+QUOTE_MAP = ("flowchart TD\n  a([Request arrives]) --> b[Log it on the quote board]\n"
+             "  b --> c[Price the steel]\n  c --> d{A past job in the log?}\n"
+             "  d -->|Yes| e[Use its times]\n  d -->|No| f[Ask the header line lead]\n"
+             "  e --> g[Add the header line's wait]\n  f --> g\n  g --> h([Send the quote])")
+
+#: The changeover's training material: one of each kind (2026-11-14).
+TRAINING = [
+    ("quiz", "Changeover quiz: ten questions", "quiz.pdf"),
+    ("flashcards", "Changeover flashcards", "flashcards.csv"),
+    ("slides", "Changeover training deck", "slides.pdf"),
+    ("video", "Video overview: a changeover start to finish",
+     "https://drive.google.com/file/d/acme-changeover-video-overview/view"),
+    ("audio", "Audio overview: the five things that go wrong",
+     "https://drive.google.com/file/d/acme-changeover-audio-overview/view"),
+    ("other", "Lockout card to sign", "lockout-card.pdf"),
+]
 
 
 def _crew(world, company):
@@ -139,6 +212,47 @@ def _ack(sop, version, member, day, hour, late=False):
 
     SopAck.objects.create(tenant_id=sop.tenant_id, sop=sop, version=version, membership=member,
                           user=member.user, acknowledged_at=moment(day, hour, 10), late=late)
+
+
+def _training(sop, owner) -> None:
+    """One training item of each kind on the changeover: small real files for
+    the quiz, flashcards, deck and lockout card, and Drive links (placeholders
+    that don't open) for the video and audio overviews."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.esign import pdf as letterhead
+    from apps.sops import services
+
+    pages = {
+        "quiz.pdf": ("Changeover quiz", "<ol><li>Whose lock goes on the disconnect first?</li>"
+                     "<li>How many first pieces go to quality?</li><li>Where do the setup "
+                     "numbers come from?</li><li>When is a die swapped?</li><li>Who releases "
+                     "the run?</li></ol><p>Answers: your own; five; the setup sheet for the "
+                     "part number; when it is worn past the gauge; the header line lead.</p>"),
+        "slides.pdf": ("Changeover training deck", "<h2>1. Why it matters</h2><p>Under 45 "
+                       "minutes, first pieces right.</p><h2>2. Who does what</h2><p>Lead, "
+                       "machinist, quality.</p><h2>3. The steps</h2><p>Lock out, pull, "
+                       "clean, check, set, first pieces, release.</p>"),
+        "lockout-card.pdf": ("Lockout card", "<p>I have been shown the header's lockout and "
+                             "will put my own lock on the disconnect before reaching into the "
+                             "die area.</p><p>Name: ________ Date: ________</p>"),
+    }
+    for kind, title, ref in TRAINING:
+        if ref.startswith("https://"):
+            services.add_training(sop, actor=owner, kind=kind, title=title, url=ref)
+            continue
+        if ref.endswith(".csv"):
+            content = ("Question,Answer\nFirst pieces to quality,Five\nWho locks out first,"
+                       "You, with your own lock\nSetup numbers come from,The setup sheet\n"
+                       "Target changeover time,Under 45 minutes\n").encode()
+            kind_type = "text/csv"
+        else:
+            heading, body = pages[ref]
+            content = letterhead._render(sop.company, prepared_by=owner.full_name,
+                                         day=sop.created_at.date(), title=heading, body=body)
+            kind_type = "application/pdf"
+        services.add_training(sop, actor=owner, kind=kind, title=title,
+                              upload=SimpleUploadedFile(ref, content, content_type=kind_type))
 
 
 def sops(world) -> dict:
@@ -174,12 +288,14 @@ def sops(world) -> dict:
             "steps": CHANGEOVER_STEPS, "category": "Production",
             "owner": str(by_name["Elmer Fudd"].user_id),
             "review_date": (today + timedelta(days=80)).isoformat(),
-            "process_map": CHANGEOVER_MAP,
+            "process_map": CHANGEOVER_MAP, **CHANGEOVER_MORE,
             "kpis": [str(k.pk) for k in (rework, on_time) if k is not None]})
     with at(moment(published, 9, 0)):
         v1 = services.publish(changeover, actor=owner, change_note="First version.")
     readers = ["Wiley Coyote", "Marvin Martian", "Elmer Fudd", "Yosemite Sam", "Porky Pig",
                "Tweety Bird", "Foghorn Leghorn"]
+    with at(moment(published + timedelta(days=1), 16, 0)):
+        _training(changeover, owner)
     for i, name in enumerate(readers):
         late = name == "Foghorn Leghorn"
         day = published + timedelta(days=9 if late else i % 4)
@@ -201,7 +317,9 @@ def sops(world) -> dict:
             "roles": [{"name": "Receiving", "does": "Checks, unloads and tags"},
                       {"name": "Quality inspector", "does": "Checks the mill certificate"}],
             "steps": RECEIVING_V1, "category": "Receiving",
-            "owner": str(by_name["Petunia Pig"].user_id),
+            "owner": str(by_name["Petunia Pig"].user_id), **RECEIVING_MORE,
+            "related": [{"kind": "sop", "ref": str(changeover.pk)},
+                        {"kind": "link", "title": "The purchase order, in the purchasing system"}],
             "review_date": (today + timedelta(days=150)).isoformat()})
     with at(moment(first, 9, 0)):
         r1 = services.publish(receiving, actor=owner)
@@ -262,5 +380,12 @@ def sops(world) -> dict:
             payload=QUOTE_REVISED,
             why="From the transcript and the notebook summary: the setup-time wait and the "
                 "double-booked header time.")
+    with at(moment(today - timedelta(days=2), 13, 24)):
+        BrainstormProposal.objects.create(
+            tenant_id=company.tenant_id, brainstorm=storm, kind=BrainstormProposal.Kind.MAP,
+            payload={"map": QUOTE_MAP},
+            why="From the revised steps: the job log first, the header line lead only when "
+                "there is no past job.")
     return {"SOPs": 3, "Acme portal people": len(people),
+            "training items": changeover.training_assets.count(),
             "versions": SopVersion.objects.filter(sop__company=company).count()}

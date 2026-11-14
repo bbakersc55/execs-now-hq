@@ -2261,6 +2261,17 @@ class SopAckFactory(TenantScopedFactory):
     acknowledged_at = factory.LazyFunction(timezone.now)
 
 
+class SopTrainingAssetFactory(TenantScopedFactory):
+    class Meta:
+        model = "sops.SopTrainingAsset"
+
+    tenant = factory.SubFactory(TenantFactory)
+    sop = factory.SubFactory(SopFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "video"
+    title = "Walkthrough"
+    url = "https://drive.google.com/file/d/walkthrough/view"
+
+
 class SopAttachmentFactory(TenantScopedFactory):
     class Meta:
         model = "sops.SopAttachment"

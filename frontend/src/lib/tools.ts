@@ -17,12 +17,15 @@ export interface ToolField {
   format?: Format; columns?: ToolField[]; max_lines?: number; help?: string;
 }
 export interface ToolSection { title: string; fields: ToolField[] }
+/** `says` is a sentence with {result_key} placeholders (2026-11-14, E3). */
 export interface ToolResult { key: string; label: string; formula: string; format?: Format;
-  note?: string }
+  note?: string; says?: string }
 export interface ToolView { type: "org_chart" | "cadence"; table?: string; name?: string;
-  parent?: string; person?: string; agenda?: string }
+  parent?: string; person?: string; agenda?: string; department?: string; checks?: string[] }
+/** `how_to`: the "How to use this" steps; `sample`: what "Load sample values" puts in. */
 export interface ToolDefinition {
   sections: ToolSection[]; results?: ToolResult[]; views?: ToolView[]; actions?: string[];
+  how_to?: string[]; sample?: RunValues;
 }
 
 export interface ToolSummary { ref: string; name: string; description: string; shipped: boolean;
@@ -34,13 +37,20 @@ export type RowValues = Record<string, unknown> & { _flag?: boolean };
 export type RunValues = Record<string, unknown>;
 
 export interface Cell { value: unknown; text: string; error: string }
+/** A view as the server drew it: the org chart's SVG, the same one the PDF prints. */
+export interface ViewDrawing { type: string; svg?: string | null; width?: number; height?: number;
+  label?: string }
 export interface Evaluation {
   values: RunValues;
   computed: Record<string, Cell>;
   tables: Record<string, Record<string, Cell>[]>;
   results: { key: string; label: string; format: Format; value: unknown; text: string;
-    error: string; note: string; numeric: boolean }[];
+    error: string; note: string; numeric: boolean; says?: string }[];
+  views?: ViewDrawing[];
 }
+
+/** A company's team as an attendee: chosen as `entry` ("Team: Sales"), read as `shown`. */
+export interface TeamChoice { name: string; entry: string; shown: string; members: string[] }
 
 export interface RunSummary {
   id: string; name: string; tool_name: string; tool_key: string; tool_id: string | null;
@@ -48,7 +58,7 @@ export interface RunSummary {
   shared_with_client: boolean; updated_at: string; may_edit: boolean;
 }
 export interface RunFull extends RunSummary {
-  definition: ToolDefinition; values: RunValues; evaluation: Evaluation;
+  definition: ToolDefinition; values: RunValues; evaluation: Evaluation; teams?: TeamChoice[];
   choices?: { people: string[]; kpis: { id: string; name: string; cadence: string }[];
     sop_sources: { id: string; label: string }[]; has_plan: boolean };
 }
@@ -59,4 +69,21 @@ export interface CalendarPreview {
   events: { name: string; cadence: string; day: string; first: string; time: string;
     minutes: number; rrule: string; attendees: string[]; agenda: string[]; note: string }[];
   connected: boolean; demo: boolean;
+}
+
+/** True when any field or table has something in it. */
+export function hasValues(values: RunValues | null | undefined): boolean {
+  return Object.entries(values ?? {}).some(([, v]) => (Array.isArray(v) ? v.length > 0
+    : v !== null && v !== undefined && String(v).trim() !== ""));
+}
+
+/** An attendee as a person reads it: a team spelled out as its people. */
+export function attendeeShown(item: string, teams: TeamChoice[]): string {
+  const m = /^\s*team\s*:\s*(.+?)\s*$/i.exec(item);
+  const team = m ? teams.find((t) => t.name.toLowerCase() === m[1].toLowerCase()) : undefined;
+  return team ? team.shown : item;
+}
+
+export function svgSource(svg: string) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }

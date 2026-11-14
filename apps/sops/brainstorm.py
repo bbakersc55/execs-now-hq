@@ -64,15 +64,35 @@ sources don't support; say what you'd need to know. Never use a named management
 system's own terms."""
 
 TASKS = {
-    DRAFT: """Draft the SOP from everything above. Reply with JSON only:
-{"title": "...", "purpose": "...", "applies_when": "...",
+    DRAFT: """Draft the SOP from everything above, filling each of its sections. Reply with
+JSON only:
+{"title": "...", "category": "...", "review_months": 12,
+ "purpose": "...", "applies_when": "...",
+ "definitions": [{"term": "...", "definition": "..."}],
  "roles": [{"name": "...", "does": "..."}],
- "steps": [{"text": "...", "role": "...", "warning": "..."}],
- "category": "...", "why": "..."}
+ "steps": [{"text": "...", "role": "...", "when": "...", "warning": "..."}],
+ "map": "flowchart TD\\n  ...",
+ "related": [{"title": "...", "url": ""}],
+ "training": "...", "metrics": "...", "why": "..."}
+- "category" is one or two words (Shipping, Quality, Sales…); "review_months" is how
+  often the owner should review it: 3, 6 or 12.
+- "applies_when" is the scope: who it applies to, what starts it, where it ends.
+- "definitions" are the terms and acronyms a new person would need explained (none is
+  fine).
+- "roles" are each role and what it is responsible for here.
 - steps are in order, one action each, written as instructions ("Count the bins.");
-  "role" names who does it (one of the roles, or ""); "warning" is a safety or quality
-  caution for that step, or "".
+  "role" names who does it (one of the roles, or ""); "when" is the step's trigger or
+  its if/then ("If the gauge reads over 3 mm, …"), or ""; "warning" is a safety or
+  quality caution for that step, or "".
+- "map" is the process map in this small language: a step is id[text], a decision is
+  id{text?}, a start or an end is id([text]); an arrow is a --> b, with a label as
+  a -->|Yes| b; one statement per line, starting with flowchart TD; under 30 boxes.
+- "related" are the forms, documents, links and other procedures the sources mention;
+  "url" only when a source gives one.
+- "training" is what someone must learn or show before doing it alone; "metrics" is how
+  you know it is working and who watches it.
 - If an SOP is given above, revise it: keep what the sources don't contradict.
+- Never invent facts: leave a section empty ("" or []) when the sources say nothing.
 - "why" is one plain sentence on what you based it on.""",
     MAP: """Draw the process map of the SOP's steps (or, with no SOP yet, the process
 discussed above) as a flowchart in this small language, and reply with JSON only:
@@ -198,18 +218,35 @@ def add_sop(brainstorm, sop, *, actor):
 
 
 def _sop_text(record) -> str:
+    """One SOP as plain text, in the eleven sections' terms: for Claude, the
+    plans engine and the AI apps' `read_sop`."""
+    from .services import review_label
+
     lines = [f"Title: {record['title']}"]
-    for key, label in (("purpose", "Purpose"), ("applies_when", "When it applies"),
-                       ("category", "Category"), ("owner", "Owner")):
+    for key, label in (("number", "SOP number"), ("category", "Category"), ("owner", "Owner"),
+                       ("effective_date", "Effective date"), ("review_date", "Next review"),
+                       ("purpose", "Purpose"), ("applies_when", "Scope")):
         if record.get(key):
             lines.append(f"{label}: {record[key]}")
+    if record.get("review_months"):
+        lines.append(f"Review frequency: {review_label(record['review_months'])}")
+    if record.get("definitions"):
+        lines.append("Definitions: " + "; ".join(f"{d['term']}: {d.get('definition', '')}"
+                                                for d in record["definitions"]))
     if record.get("roles"):
-        lines.append("Roles: " + "; ".join(f"{r['name']} ({r.get('does', '')})"
-                                           for r in record["roles"]))
+        lines.append("Roles and responsibilities: " + "; ".join(
+            f"{r['name']} ({r.get('does', '')})" for r in record["roles"]))
     for i, step in enumerate(record.get("steps") or [], start=1):
+        when = f"{step['when']} " if step.get("when") else ""
         extra = f" [{step['role']}]" if step.get("role") else ""
         warn = f" Warning: {step['warning']}" if step.get("warning") else ""
-        lines.append(f"{i}. {step['text']}{extra}{warn}")
+        lines.append(f"{i}. {when}{step['text']}{extra}{warn}")
+    if record.get("related"):
+        lines.append("Related: " + "; ".join(r.get("title", "") for r in record["related"]))
+    for key, label in (("training", "Training requirements"),
+                       ("metrics", "Performance metrics and monitoring")):
+        if record.get(key):
+            lines.append(f"{label}: {record[key]}")
     if record.get("process_map"):
         lines.append("Process map:\n" + record["process_map"])
     return "\n".join(lines)
@@ -426,7 +463,8 @@ def _json(text):
 
 
 def _clean_draft(data) -> dict:
-    from .services import _clean_roles
+    """Claude's draft, or a person's edit of it, cut to what each section holds."""
+    from .services import _clean_definitions, _clean_roles
 
     steps = []
     for row in data.get("steps") or []:
@@ -435,12 +473,34 @@ def _clean_draft(data) -> dict:
         if isinstance(row, dict) and str(row.get("text") or "").strip():
             steps.append({"text": str(row["text"]).strip()[:2000],
                           "role": " ".join(str(row.get("role") or "").split())[:80],
+                          "when": str(row.get("when") or "").strip()[:600],
                           "warning": str(row.get("warning") or "").strip()[:600]})
+    related = []
+    for row in data.get("related") or []:
+        if isinstance(row, str):
+            row = {"title": row}
+        if isinstance(row, dict):
+            title = " ".join(str(row.get("title") or "").split())[:200]
+            url = str(row.get("url") or "").strip()[:1000]
+            if url and not re.match(r"^https?://\S+$", url):
+                url = ""
+            if title or url:
+                related.append({"kind": "link", "title": title or url, "url": url})
+    months = data.get("review_months")
+    months = int(months) if isinstance(months, (int, float)) and 1 <= months <= 60 else None
+    flowchart = str(data.get("map") or data.get("process_map") or "").strip()[:12000]
+    if flowchart and flow.check(flowchart):
+        flowchart = ""                       # a map that can't be drawn is left out
     return {"title": " ".join(str(data.get("title") or "").split())[:200],
+            "category": " ".join(str(data.get("category") or "").split())[:80],
+            "review_months": months,
             "purpose": str(data.get("purpose") or "").strip()[:6000],
             "applies_when": str(data.get("applies_when") or "").strip()[:3000],
+            "definitions": _clean_definitions(data.get("definitions")),
             "roles": _clean_roles(data.get("roles")), "steps": steps[:60],
-            "category": " ".join(str(data.get("category") or "").split())[:80]}
+            "map": flowchart, "related": related[:30],
+            "training": str(data.get("training") or "").strip()[:6000],
+            "metrics": str(data.get("metrics") or "").strip()[:6000]}
 
 
 @transaction.atomic
@@ -504,6 +564,38 @@ def act(brainstorm, kind, *, actor) -> BrainstormProposal:
     return proposal
 
 
+# ------------------------------------------------------------------ the brain dump
+
+def brain_dump(sop, *, actor) -> Brainstorm:
+    """The SOP's brainstorm, the one under its brain dump box: its newest
+    open one, or a new one (2026-11-14). Nothing is spent here."""
+    found = sop.brainstorms.filter(archived_at__isnull=True).order_by("-updated_at").first()
+    return found or start(sop.company, actor=actor, title=sop.title, sop=sop)
+
+
+def brain_dump_price(sop, text, *, actor) -> dict:
+    """The price of filling the SOP from the box, before anything is spent:
+    the sources already dropped in, the text typed, the draft's output."""
+    storm = brain_dump(sop, actor=actor)
+    return {**price(storm, "draft", str(text or "")[:MAX_PASTE]),
+            "refused": refusal(sop.company.tenant), "brainstorm": str(storm.pk)}
+
+
+def brain_dump_fill(sop, text, *, actor) -> Brainstorm:
+    """The typed text becomes a source, then Claude drafts the SOP from all of
+    it: a proposal to accept, edit or discard, nothing applied."""
+    storm = brain_dump(sop, actor=actor)
+    text = str(text or "").strip()
+    if not text and not storm.sources.exists() and not storm.messages.exists():
+        raise BrainstormRefused("Type, paste or drop something in first.", 409)
+    if text:
+        add_pasted(storm, title=f"Brain dump, {timezone.localdate():%B %-d}", text=text,
+                   actor=actor)
+    act(storm, "draft", actor=actor)
+    storm.refresh_from_db()
+    return storm
+
+
 # ------------------------------------------------------------------ deciding
 
 def diff(sop, payload) -> dict:
@@ -515,13 +607,22 @@ def diff(sop, payload) -> dict:
         return {}
     now = snapshot(sop)
     fields = {}
-    for key in ("title", "purpose", "applies_when", "category"):
+    for key in ("title", "purpose", "applies_when", "category", "training", "metrics"):
         if payload.get(key) and payload[key] != (now.get(key) or ""):
             fields[key] = {"from": now.get(key) or "", "to": payload[key]}
-    old_roles = [r["name"] for r in now.get("roles") or []]
-    new_roles = [r["name"] for r in payload.get("roles") or []]
-    if payload.get("roles") and old_roles != new_roles:
-        fields["roles"] = {"from": ", ".join(old_roles), "to": ", ".join(new_roles)}
+    if payload.get("review_months") and payload["review_months"] != now.get("review_months"):
+        from .services import review_label
+
+        fields["review_months"] = {"from": review_label(now.get("review_months")),
+                                   "to": review_label(payload["review_months"])}
+    for key, name in (("roles", "name"), ("definitions", "term"), ("related", "title")):
+        old_rows = [r.get(name, "") for r in now.get(key) or []]
+        new_rows = [r.get(name, "") for r in payload.get(key) or []]
+        if payload.get(key) and old_rows != new_rows:
+            fields[key] = {"from": ", ".join(old_rows), "to": ", ".join(new_rows)}
+    if payload.get("map") and payload["map"] != (now.get("process_map") or ""):
+        fields["process_map"] = {"from": "A flowchart" if now.get("process_map") else "",
+                                 "to": "A new flowchart"}
     old = [s["text"] for s in now.get("steps") or []]
     new = [s["text"] for s in payload.get("steps") or []]
     steps = []
@@ -601,7 +702,18 @@ def accept(brainstorm, proposal_id, *, actor, role, edits=None) -> BrainstormPro
             raise BrainstormRefused("The draft needs at least one step.")
         sop = _sop_of(brainstorm, actor)
         keep = {s["text"]: s.get("images", []) for s in sop.steps}
-        services.update(sop, {**{k: v for k, v in payload.items() if v or k == "steps"},
+        # What the draft fills; a section it left empty keeps what is there.
+        changes = {k: v for k, v in payload.items() if (v or k == "steps") and k != "map"}
+        if payload.get("map"):
+            changes["process_map"] = payload["map"]
+        if payload.get("related"):
+            # Links Claude found are added to the related items already there.
+            have = {(r.get("kind"), r.get("ref") or r.get("url") or r.get("title"))
+                    for r in sop.related}
+            changes["related"] = sop.related + [
+                r for r in payload["related"]
+                if ("link", r.get("url") or r.get("title")) not in have]
+        services.update(sop, {**changes,
                               "steps": [{**s, "images": keep.get(s["text"], [])}
                                         for s in payload["steps"]]}, actor=actor)
         proposal.payload = payload
@@ -720,6 +832,44 @@ def _link_measures(brainstorm, proposal, edits, *, actor) -> list:
 
 # ------------------------------------------------------------------ for the screens
 
+def landed(brainstorm, proposal) -> dict | None:
+    """Where an accepted proposal went, in words, with the link (2026-11-14):
+    "Bryan accepted the map and couldn't find it" is never the answer again."""
+    from apps.crm.models import Task
+
+    from .models import Sop
+
+    result = proposal.result or {}
+    sop = Sop.objects.filter(pk=result.get("sop")).first() if result.get("sop") \
+        else brainstorm.sop
+    if proposal.kind == BrainstormProposal.Kind.CHECKLIST:
+        tasks = list(Task.all_objects.filter(pk__in=result.get("tasks") or [])
+                     .select_related("project", "goal"))
+        if not tasks:
+            return None
+        home = tasks[0].project or tasks[0].goal
+        where = f" under “{home.title}”" if home is not None else ""
+        href = (f"/work/projects/{home.pk}" if tasks[0].project_id else
+                f"/work/goals/{home.pk}") if home is not None else f"/tasks/{tasks[0].pk}"
+        return {"text": f"{len(tasks)} task{'s' if len(tasks) != 1 else ''} made{where}, "
+                        "marked “From an SOP checklist”.",
+                "href": href, "link": "See the tasks"}
+    if sop is None:
+        return None
+    if proposal.kind == BrainstormProposal.Kind.DRAFT:
+        return {"text": f"Drafted into the SOP “{sop.title}”: every section it filled is "
+                        "there now.", "href": f"/sops/{sop.pk}", "link": "Open the SOP"}
+    if proposal.kind == BrainstormProposal.Kind.MAP:
+        return {"text": f"The process map is now the flowchart of the SOP “{sop.title}”.",
+                "href": f"/sops/{sop.pk}#flowchart", "link": "See the flowchart"}
+    linked = {str(k) for k in result.get("kpis") or []}
+    names = [link.kpi.name for link in sop.kpi_links.select_related("kpi")
+             if str(link.kpi_id) in linked]
+    return {"text": f"Linked to the SOP “{sop.title}”, under its performance metrics"
+                    + (f": {', '.join(names)}." if names else "."),
+            "href": f"/sops/{sop.pk}#metrics", "link": "See the metrics"}
+
+
 def represent(brainstorm) -> dict:
     from .media import status as media_status
 
@@ -732,6 +882,8 @@ def represent(brainstorm) -> dict:
                "cost_usd": str(p.ai_call.cost_usd) if p.ai_call_id else None}
         if p.kind == BrainstormProposal.Kind.DRAFT and p.state == BrainstormProposal.State.PROPOSED:
             row["diff"] = diff(sop, p.payload)
+        if p.state == BrainstormProposal.State.ACCEPTED:
+            row["landed"] = landed(brainstorm, p)
         proposals.append(row)
     return {
         "id": str(brainstorm.pk), "title": brainstorm.title, "tier": brainstorm.tier,

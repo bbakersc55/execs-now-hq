@@ -1,7 +1,11 @@
 """A run on the practice's letterhead (P12): PDF, through the e-signature's
 letterhead (`apps.esign.pdf`), and Word, with the practice's name, the
 company and the date at the top. The meeting cadence's agendas are a Word
-document of their own."""
+document of their own.
+
+The org chart is the screen's own drawing (`orgchart`): in the PDF as SVG,
+scaled down to the page's width and never up; in Word as a PNG of the same
+layout. Each result's sentence follows its value in both."""
 
 from __future__ import annotations
 
@@ -12,13 +16,18 @@ from html import escape
 from django.utils import timezone
 
 from . import definition as D
-from .services import events_of
+from . import orgchart
+from .services import definition_for, events_of
+
+#: The letterhead's page is US Letter with 48px margins: 816 - 96 across.
+PAGE_WIDTH = 720
 
 _TABLE_CSS = ("<style>table.run{width:100%;border-collapse:collapse;font-size:10px;margin:6px 0 14px}"
               "table.run th,table.run td{border:1px solid #DDE1E6;padding:3px 5px;text-align:left;"
               "vertical-align:top}table.run th{background:#F4F6F8}.cards{margin:8px 0}"
               ".card{margin:2px 0}.card b{display:inline-block;min-width:220px}"
-              "ul.org{margin:0 0 0 14px;padding:0}</style>")
+              ".card .says{display:block;color:#3A4150;font-size:11px;margin:0 0 4px}"
+              ".chart{margin:6px 0 14px}.chart svg{max-width:100%;height:auto}</style>")
 
 
 def _cell(value) -> str:
@@ -35,37 +44,29 @@ def _rows(run, evaluation, key, table):
                 else _cell(row.get(c["key"]))) for c in table["columns"]]
 
 
+def _colours(run):
+    from apps.crm.services.email_layout import branding
+
+    brand = branding(run.company.tenant)
+    return brand.header_color, brand.accent_color
+
+
 def _org_html(run, view) -> str:
-    rows = run.values.get(view["table"]) or []
-    names = {(r.get(view["name"]) or "").strip(): r for r in rows if r.get(view["name"])}
-
-    def children(parent):
-        return [r for r in rows if (r.get(view["parent"]) or "").strip() == parent
-                and (r.get(view["name"]) or "").strip()]
-
-    roots = [r for r in rows if (r.get(view["name"]) or "").strip()
-             and (r.get(view["parent"]) or "").strip() not in names]
-
-    def branch(row, depth=0):
-        if depth > 12:
-            return ""
-        name = (row.get(view["name"]) or "").strip()
-        who = (row.get(view["person"]) or "").strip() or "Open"
-        kids = "".join(branch(c, depth + 1) for c in children(name))
-        return f"<li><b>{escape(name)}</b>: {escape(who)}" + (
-            f"<ul class='org'>{kids}</ul>" if kids else "") + "</li>"
-
-    return "<h2>The chart</h2><ul class='org'>" + "".join(branch(r) for r in roots) + "</ul>"
+    header, accent = _colours(run)
+    drawn = orgchart.svg(run.values.get(view.get("table")) or [], view, header=header,
+                         accent=accent, width=PAGE_WIDTH)
+    return f"<h2>The chart</h2><div class='chart'>{drawn}</div>" if drawn else ""
 
 
 def body_html(run, evaluation=None) -> str:
-    evaluation = evaluation or D.evaluate(run.definition, run.values)
+    evaluation = evaluation or D.evaluate(definition_for(run), run.values)
     out = [_TABLE_CSS, f"<p class='intro'>{escape(run.tool_name)}, {escape(run.company.name)}, "
                        f"{run.run_date:%B %-d, %Y}.</p>"]
     if evaluation["results"]:
         out.append("<h2>Results</h2><div class='cards'>")
-        out += [f"<div class='card'><b>{escape(r['label'])}</b> {escape(r['text'])}</div>"
-                for r in evaluation["results"]]
+        out += [f"<div class='card'><b>{escape(r['label'])}</b> {escape(r['text'])}"
+                + (f"<span class='says'>{escape(r['says'])}</span>" if r.get("says") else "")
+                + "</div>" for r in evaluation["results"]]
         out.append("</div>")
     for view in run.definition.get("views") or []:
         if view.get("type") == "org_chart":
@@ -119,7 +120,9 @@ def _new_document():
 
 
 def docx(run) -> bytes:
-    evaluation = D.evaluate(run.definition, run.values)
+    from docx.shared import Inches
+
+    evaluation = D.evaluate(definition_for(run), run.values)
     document = _new_document()
     _docx_head(document, run, run.name)
     document.add_paragraph(f"{run.tool_name}, {run.company.name}, {run.run_date:%B %-d, %Y}.")
@@ -127,6 +130,18 @@ def docx(run) -> bytes:
         document.add_heading("Results", level=1)
         for r in evaluation["results"]:
             document.add_paragraph(f"{r['label']}: {r['text']}")
+            if r.get("says"):
+                document.add_paragraph(r["says"]).runs[0].italic = True
+    for view in run.definition.get("views") or []:
+        if view.get("type") != "org_chart":
+            continue
+        header, accent = _colours(run)
+        rows = run.values.get(view.get("table")) or []
+        picture = orgchart.png(rows, view, header=header, accent=accent)
+        if picture:
+            document.add_heading("The chart", level=1)
+            wide = orgchart.layout(rows, view).width / 96
+            document.add_picture(io.BytesIO(picture), width=Inches(min(6.5, wide)))
     for section in run.definition.get("sections") or []:
         document.add_heading(section["title"], level=1)
         for field in section.get("fields") or []:

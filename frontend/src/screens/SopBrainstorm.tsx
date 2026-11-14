@@ -63,6 +63,12 @@ function BrainstormPage({ b }: { b: Brainstorm }) {
   });
   const waiting = b.proposals.filter((p) => p.state === "proposed");
   const decided = b.proposals.filter((p) => p.state !== "proposed");
+  const [justLanded, setJustLanded] = useState<Proposal | null>(null);
+  const decidedOne = (next: Brainstorm, id: string) => {
+    set(next);
+    const p = next.proposals.find((x) => x.id === id);
+    setJustLanded(p && p.state === "accepted" && p.landed ? p : null);
+  };
   return (
     <div className="sop-page sop-brainstorm">
       <PageHead title={b.title}
@@ -105,10 +111,15 @@ function BrainstormPage({ b }: { b: Brainstorm }) {
               {send.isPending ? "Asking Claude…" : `Send (${about(chat?.estimate_usd)})`}</button>
           </section>
           <Actions b={b} onDone={set} onError={setError} />
+          {justLanded?.landed && (
+            <div role="status" className="sop-landed">
+              <Banner kind="ok">{justLanded.landed.text}{" "}
+                <Link to={justLanded.landed.href}>{justLanded.landed.link}</Link></Banner>
+            </div>)}
           {waiting.length > 0 && (
             <section aria-label="Waiting for you" className="sop-proposals">
               <h3>Waiting for you</h3>
-              {waiting.map((p) => <ProposalCard key={p.id} b={b} p={p} onDone={set} />)}
+              {waiting.map((p) => <ProposalCard key={p.id} b={b} p={p} onDone={(next) => decidedOne(next, p.id)} />)}
             </section>)}
           {decided.length > 0 && (
             <Card title="Decided">
@@ -116,7 +127,9 @@ function BrainstormPage({ b }: { b: Brainstorm }) {
                 {decided.map((p) => (
                   <li key={p.id}>{p.label}: <Pill kind={p.state === "accepted" ? "ok" : ""}>
                     {p.state === "accepted" ? "Accepted" : "Discarded"}</Pill>
-                    {p.decided_by && <span className="small muted"> by {p.decided_by}</span>}</li>))}
+                    {p.decided_by && <span className="small muted"> by {p.decided_by}</span>}
+                    {p.landed && <div className="small">{p.landed.text}{" "}
+                      <Link to={p.landed.href}>{p.landed.link}</Link></div>}</li>))}
               </ul>
             </Card>)}
         </div>
@@ -155,6 +168,14 @@ function Actions({ b, onDone, onError }: { b: Brainstorm; onDone: (b: Brainstorm
 
 // ------------------------------------------------------------------ proposals
 
+/** A diff's field, by the section it fills. */
+const DIFF_LABEL: Record<string, string> = {
+  title: "Title", purpose: "Purpose", applies_when: "Scope", category: "Category",
+  training: "Training requirements", metrics: "Performance metrics", review_months: "Review frequency",
+  roles: "Roles and responsibilities", definitions: "Definitions", related: "Related documents",
+  process_map: "Flowchart",
+};
+
 function DraftBody({ p, edit, setEdit, editing }: {
   p: Proposal; edit: DraftPayload; setEdit: (d: DraftPayload) => void; editing: boolean;
 }) {
@@ -167,7 +188,9 @@ function DraftBody({ p, edit, setEdit, editing }: {
       <div className="sop-draft-edit">
         <label>Title<input value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></label>
         <label>Purpose<textarea rows={3} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></label>
-        <label>When it applies<textarea rows={2} value={edit.applies_when} onChange={(e) => setEdit({ ...edit, applies_when: e.target.value })} /></label>
+        <label>Scope<textarea rows={2} value={edit.applies_when} onChange={(e) => setEdit({ ...edit, applies_when: e.target.value })} /></label>
+        <label>Training requirements<textarea rows={2} value={edit.training ?? ""} onChange={(e) => setEdit({ ...edit, training: e.target.value })} /></label>
+        <label>Performance metrics and monitoring<textarea rows={2} value={edit.metrics ?? ""} onChange={(e) => setEdit({ ...edit, metrics: e.target.value })} /></label>
         <ol>
           {edit.steps.map((s, i) => (
             <li key={i}><textarea aria-label={`Proposed step ${i + 1}`} rows={2} value={s.text}
@@ -182,7 +205,7 @@ function DraftBody({ p, edit, setEdit, editing }: {
       <div className="sop-diff" aria-label="What would change">
         {Object.entries(fields).map(([key, change]) => (
           <div key={key} className="sop-diff-field">
-            <div className="small muted">{key.replace("_", " ")}</div>
+            <div className="small muted">{DIFF_LABEL[key] ?? key.replace("_", " ")}</div>
             {change.from && <div className="sop-del">− {change.from}</div>}
             <div className="sop-add">+ {change.to}</div>
           </div>))}
@@ -198,7 +221,12 @@ function DraftBody({ p, edit, setEdit, editing }: {
     <div className="sop-draft-view">
       <p><strong>{payload.title}</strong></p>
       {payload.purpose && <p><span className="small muted">Purpose:</span> {payload.purpose}</p>}
-      {payload.applies_when && <p><span className="small muted">When it applies:</span> {payload.applies_when}</p>}
+      {payload.applies_when && <p><span className="small muted">Scope:</span> {payload.applies_when}</p>}
+      {(payload.definitions ?? []).length > 0 && <p><span className="small muted">Definitions:</span> {payload.definitions!.map((d) => d.term).join(", ")}</p>}
+      {payload.map && <p><span className="small muted">Flowchart:</span> included</p>}
+      {(payload.related ?? []).length > 0 && <p><span className="small muted">Related:</span> {payload.related!.map((r) => r.title).join(", ")}</p>}
+      {payload.training && <p><span className="small muted">Training:</span> {payload.training}</p>}
+      {payload.metrics && <p><span className="small muted">Metrics:</span> {payload.metrics}</p>}
       {payload.roles?.length > 0 && <p><span className="small muted">Roles:</span> {payload.roles.map((r) => r.name).join(", ")}</p>}
       <ol>{payload.steps.map((s, i) => <li key={i}>{s.text}{s.role && <span className="small muted"> ({s.role})</span>}
         {s.warning && <div className="sop-warn">{s.warning}</div>}</li>)}</ol>
@@ -224,7 +252,11 @@ function MapBody({ text, setText }: { text: string; setText: (t: string) => void
   );
 }
 
-function ProposalCard({ b, p, onDone }: { b: Brainstorm; p: Proposal; onDone: (b: Brainstorm) => void }) {
+/** One waiting proposal: accept (with edits) or discard. Accepting changes
+ *  the SOP, so the SOP's own page is refetched at once (2026-11-14: a map
+ *  accepted here used to be missing there until a reload). */
+export function ProposalCard({ b, p, onDone }: { b: Brainstorm; p: Proposal; onDone: (b: Brainstorm) => void }) {
+  const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<DraftPayload>(() => ({ ...(p.payload as unknown as DraftPayload) }));
   const [map, setMap] = useState(String(p.payload.map ?? ""));
@@ -237,7 +269,11 @@ function ProposalCard({ b, p, onDone }: { b: Brainstorm; p: Proposal; onDone: (b
   const decide = useMutation({
     mutationFn: ({ decision, edits }: { decision: "accept" | "discard"; edits?: object }) =>
       api.post<Brainstorm>(`/api/sops/brainstorms/${b.id}/proposals/${p.id}/${decision}/`, { edits }),
-    onSuccess: onDone,
+    onSuccess: (next) => {
+      if (next.sop) qc.invalidateQueries({ queryKey: ["sop", next.sop.id] });
+      qc.invalidateQueries({ queryKey: ["sops"] });
+      onDone(next);
+    },
   });
   const toggle = (i: number) => setChosen(chosen.includes(i) ? chosen.filter((x) => x !== i) : [...chosen, i]);
   function accept() {

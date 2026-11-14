@@ -537,3 +537,274 @@ def test_runs_for_the_practice_itself(on):
     assert get(sc, "owner", f"{RUNS}?company=practice").status_code == 404
     assert date.fromisoformat(run["run_date"]) == timezone.localdate()
     assert ToolRun.all_objects.get(pk=run["id"]).company.is_practice
+
+
+# ------------------------------------------------------------------ 2026-11-14 (E): the org chart drawn
+
+SEATS = [
+    {"seat": "Owner", "department": "Leadership", "person": "Olive Owner", "knows": "Yes",
+     "wants": "Yes", "has_time": "Yes"},
+    {"seat": "Plant manager", "department": "Production", "reports_to": "Owner",
+     "person": "Max Manager", "knows": "Yes", "wants": "No", "has_time": "Yes"},
+    {"seat": "Quality lead", "department": "Quality", "reports_to": "Plant manager",
+     "person": ""},
+    {"seat": "Board adviser", "department": "Advisers", "person": "Ada Adviser"}]
+ORG_VIEW = shipped.SHIPPED["ops_org_chart"]["definition"]["views"][0]
+
+
+def test_the_org_chart_draws_a_box_a_seat_in_the_practices_colours():
+    from apps.tools import orgchart
+
+    svg = orgchart.svg(SEATS, ORG_VIEW, header="#22446A", accent="#D9480F")
+    assert svg.startswith("<svg") and "<script" not in svg
+    assert svg.count('<g class="seat') == 4
+    assert svg.count('class="band"') == 4 and 'fill="#22446A"' in svg
+    # The person's name or Open, and the department, beneath the band.
+    for text in ("Olive Owner", "Max Manager", "Leadership", "Production", "Quality", ">Open<"):
+        assert text in svg, text
+    # An open seat: dashed, in the accent colour. A seat with a no: red, marked.
+    open_seat = svg.split('data-seat="Quality lead"')[1].split("</g>")[0]
+    assert 'stroke-dasharray' in open_seat and 'stroke="#D9480F"' in open_seat
+    assert 'fill="#D9480F" font-weight="700">Open<' in open_seat
+    no_seat = svg.split('data-seat="Plant manager"')[1].split("</g>")[0]
+    assert f'stroke="{orgchart.NO}"' in no_seat and ">A no<" in no_seat
+    assert ">A no<" not in svg.split('data-seat="Owner"')[1].split("</g>")[0]
+    # Two top seats, side by side; each child under its own seat, lower down.
+    chart = orgchart.layout(SEATS, ORG_VIEW)
+    assert [s.title for s in chart.roots] == ["Owner", "Board adviser"]
+    owner, plant, quality, adviser = chart.seats
+    assert owner.y == adviser.y < plant.y < quality.y and adviser.x > owner.x
+    assert plant.parent == owner.index and quality.parent == plant.index
+    assert 'class="link"' in svg      # the elbow lines
+
+
+def test_a_reporting_loop_or_a_seat_reporting_to_itself_still_draws():
+    from apps.tools import orgchart
+
+    rows = [{"seat": "A", "reports_to": "B"}, {"seat": "B", "reports_to": "A"},
+            {"seat": "C", "reports_to": "C"}, {"seat": "D", "reports_to": "c"},
+            {"seat": "E", "reports_to": "Nobody here"}]
+    chart = orgchart.layout(rows, ORG_VIEW)
+    assert [s.title for s in chart.roots] == ["A", "C", "E"]
+    assert {s.title: s.depth for s in chart.seats} == {"A": 0, "B": 1, "C": 0, "D": 1, "E": 0}
+    assert orgchart.svg(rows, ORG_VIEW).count('<g class="seat') == 5
+    assert orgchart.png(rows, ORG_VIEW)[:4] == b"\x89PNG"
+    deep = [{"seat": f"S{i}", "reports_to": f"S{i - 1}" if i else ""} for i in range(200)]
+    assert orgchart.layout(deep, ORG_VIEW).seats[-1].depth == 199
+    assert orgchart.svg([], ORG_VIEW) == "" and orgchart.png([], ORG_VIEW) == b""
+
+
+def test_the_chart_reaches_the_screen_and_the_pdf_scaled_to_the_page(on):
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    from apps.tools import exports
+
+    sc = on
+    tenant = sc["tenant"]
+    tenant.email_header_color, tenant.email_accent_color = "#22446A", "#D9480F"
+    tenant.save(update_fields=["email_header_color", "email_accent_color"])
+    run = start(sc, "ops_org_chart")
+    wide = SEATS + [{"seat": f"Crew {i}", "department": "Floor", "reports_to": "Quality lead",
+                     "person": f"Crew member {i}"} for i in range(6)]
+    saved = save_values(sc, run, {"seats": wide})
+    drawn = saved["evaluation"]["views"][0]
+    assert drawn["type"] == "org_chart" and drawn["width"] > exports.PAGE_WIDTH
+    assert 'fill="#22446A"' in drawn["svg"] and drawn["label"].startswith("Org chart: 10 seats")
+    # The same drawing as the form is filled in, before anything is saved.
+    live = post(client(sc, "ff"), f"{TOOLS}evaluate/", {"definition": saved["definition"],
+                                                        "values": {"seats": SEATS}}).json()
+    assert live["views"][0]["svg"].count('<g class="seat') == 4
+    # The PDF: the chart fits the page's width, scaled down, never up.
+    model = ToolRun.all_objects.get(pk=run["id"])
+    html = exports.body_html(model)
+    assert f'viewBox="0 0 {drawn["width"]} ' in html and 'width="720"' in html
+    small = exports._org_html(ToolRun(definition=model.definition, values={"seats": SEATS[:1]},
+                                      company=model.company, tenant=tenant), ORG_VIEW)
+    assert 'width="236"' in small            # one box and its margins, as drawn
+    pdf = client(sc, "ff").get(f"{RUNS}{run['id']}/files/pdf/")
+    text = "".join(p.extract_text() for p in PdfReader(BytesIO(pdf.content)).pages)
+    assert "Quality lead" in text and "Crew member 5" in text and "A no" in text
+    # Word carries the same chart as a picture.
+    import zipfile
+
+    word = client(sc, "ff").get(f"{RUNS}{run['id']}/files/docx/")
+    media = [n for n in zipfile.ZipFile(BytesIO(word.content)).namelist()
+             if n.startswith("word/media/")]
+    assert len(media) == 1 and media[0].endswith(".png")
+
+
+def test_the_shipped_org_chart_has_a_department_on_each_seat():
+    columns = [c["key"] for c in shipped.SHIPPED["ops_org_chart"]["definition"]["sections"][0]
+               ["fields"][0]["columns"]]
+    assert columns[:3] == ["seat", "department", "reports_to"]
+
+
+# ------------------------------------------------------------------ attendees: people and whole teams
+
+def test_a_team_among_the_attendees_is_spelled_out_everywhere(on):
+    from docx import Document
+
+    sc = on
+    run = start(sc, "ops_meetings")
+    assert {"name": "Sales", "entry": "Team: Sales", "members": ["Sam Sales"],
+            "shown": "Sales team (Sam Sales)"} in run["teams"]
+    ops = next(t for t in run["teams"] if t["name"] == "Operations")
+    assert "Mia Member" in ops["members"] and "Sam Sales" not in ops["members"]
+    save_values(sc, run, {"meetings": [
+        {"name": "Weekly sales huddle", "cadence": "Weekly", "day": "Tuesday", "time": "08:00",
+         "minutes": 30, "start": "2026-11-09",
+         "attendees": ["Team: Sales", "Mia Member", "Team: Nobody we know"]}],
+        "agenda": [{"meeting": "Weekly sales huddle", "section": "The pipeline", "minutes": 30}]})
+    stored = ToolRun.all_objects.get(pk=run["id"]).values["meetings"][0]["attendees"]
+    assert stored == ["Team: Sales", "Mia Member", "Team: Nobody we know"]   # strings, as typed
+    event = get(sc, "ff", f"{RUNS}{run['id']}/files/calendar/").json()["events"][0]
+    assert event["attendees"] == ["Sales team (Sam Sales)", "Mia Member", "Team: Nobody we know"]
+    assert event["note"].startswith("Who attends: Sales team (Sam Sales), Mia Member, ")
+    ics = client(sc, "ff").get(f"{RUNS}{run['id']}/files/ics/").content.decode()
+    assert "Who attends: Sales team (Sam Sales)\\, Mia Member" in ics
+    from io import BytesIO
+
+    agenda = Document(BytesIO(client(sc, "ff").get(f"{RUNS}{run['id']}/files/agenda/").content))
+    lines = [p.text for p in agenda.paragraphs]
+    assert "Who attends: Sales team (Sam Sales), Mia Member, Team: Nobody we know" in lines
+
+
+def test_a_team_named_as_a_team_and_the_default_team_read_plainly():
+    assert services.team_shown("Customer service team", ["Ana Ruiz"]) == \
+        "Customer service team (Ana Ruiz)"
+    assert services.team_shown("Everyone", ["Ana Ruiz", "Bo Chen"], is_default=True) == \
+        "Everyone (Ana Ruiz, Bo Chen)"
+    assert services.team_shown("Shipping", []) == "Shipping team"
+    teams = [{"name": "Shipping", "entry": "Team: Shipping",
+              "shown": "Shipping team (Ana Ruiz, Bo Chen)", "members": ["Ana Ruiz", "Bo Chen"]}]
+    assert services.attendees_shown(["team:  shipping", "Bo Chen"], teams) == [
+        "Shipping team (Ana Ruiz, Bo Chen)", "Bo Chen"]
+
+
+# ------------------------------------------------------------------ how to use, samples, sentences
+
+@pytest.mark.parametrize("key", list(shipped.SHIPPED))
+def test_each_shipped_tool_says_how_to_use_it_and_has_a_full_sample(key):
+    definition = shipped.SHIPPED[key]["definition"]
+    assert 3 <= len(definition["how_to"]) <= 4
+    assert all(r.get("says") for r in definition["results"])
+    sample = definition["sample"]
+    for field_key, field in D.scalars(definition).items():
+        if field.get("type") != "computed":
+            assert field_key in sample, field_key
+    for table_key, table in D.tables(definition).items():
+        assert sample[table_key], table_key
+        for column in table["columns"]:
+            if column.get("type") != "computed":
+                assert any(row.get(column["key"]) not in (None, "")
+                           for row in sample[table_key]), (table_key, column["key"])
+    out = D.evaluate(definition, sample)
+    assert not [r for r in out["results"] if r["error"]]
+    assert not [c for rows in out["tables"].values() for row in rows for c in row.values()
+                if c["error"]]
+    for r in out["results"]:
+        assert r["says"] and "{" not in r["says"] and r["text"] in r["says"], r["key"]
+
+
+def test_the_capacity_model_says_plainly_how_to_run_it():
+    steps = " ".join(shipped.SHIPPED["ops_capacity"]["definition"]["how_to"]).lower()
+    for words in ("fill in the roles", "fill in the work", "which role", "read the gap",
+                  "what-ifs"):
+        assert words in steps, words
+    r, _ = results("ops_capacity", shipped.SHIPPED["ops_capacity"]["definition"]["sample"])
+    assert r["tightest"]["says"].startswith("Production is the most stretched role")
+    assert r["gap_hours"]["says"].startswith("So the team is 19.5 hours a week short")
+
+
+def test_a_sentence_is_left_out_when_a_result_it_names_has_no_value():
+    r, _ = results("ops_bottleneck", {"steps": []})
+    assert r["constraint"]["says"] == "" and r["waiting"]["says"].startswith("Work spends 0")
+    definition = {"sections": [{"title": "S", "fields": [
+        {"key": "a", "label": "A", "type": "number"},
+        {"key": "b", "label": "B", "type": "number"}]}],
+        "results": [{"key": "ratio", "label": "Ratio", "formula": "a / b",
+                     "says": "The ratio is {ratio}."},
+                    {"key": "both", "label": "Both", "formula": "a + b",
+                     "says": "{both} in all, at a ratio of {ratio}."}]}
+    out = D.evaluate(definition, {"a": 6, "b": 0})
+    assert [x["says"] for x in out["results"]] == ["", ""]
+    out = D.evaluate(definition, {"a": 6, "b": 3})
+    assert [x["says"] for x in out["results"]] == ["The ratio is 2.", "9 in all, at a ratio of 2."]
+
+
+def test_how_to_sample_and_sentences_are_checked_in_a_definition():
+    base = {"sections": [{"title": "S", "fields": [
+        {"key": "a", "label": "A", "type": "number"},
+        {"key": "kind", "label": "Kind", "type": "choice", "options": ["One", "Two"]},
+        {"key": "rows", "label": "Rows", "type": "table", "columns": [
+            {"key": "x", "label": "X", "type": "number"},
+            {"key": "y", "label": "Y", "type": "computed", "formula": "x * 2"}]}]}],
+        "results": [{"key": "total", "label": "Total", "formula": "a + sum(rows.y)",
+                     "says": "In all, {total}."}],
+        "how_to": ["Put a number in A.", "Add rows.", "Read the total."],
+        "sample": {"a": 2, "kind": "One", "rows": [{"x": 1}, {"x": "2.5", "_flag": True}]}}
+    assert D.check(base) == []
+
+    def problem(**change):
+        return D.check({**base, **change})
+
+    bad = problem(results=[{"key": "total", "label": "Total", "formula": "a",
+                            "says": "In all, {totl}."}])
+    assert bad[0]["where"] == "results.0" and "no result called “totl”" in bad[0]["message"]
+    assert "isn't a result's" in problem(results=[{"key": "t", "label": "T", "formula": "a",
+                                                   "says": "Odd } brace"}])[0]["message"]
+    for how_to in (["Only one."], ["1", "2", "3", "4", "5"], ["Fine.", "", "Fine."], "Text"):
+        assert problem(how_to=how_to)[0]["where"] == "how_to", how_to
+    for sample, words in (({"b": 1}, "isn't a field"), ({"a": "lots"}, "isn't a number"),
+                          ({"kind": "Three"}, "isn't one of its choices"),
+                          ({"rows": [{"z": 1}]}, "no column called “z”"),
+                          ({"rows": [{"y": 4}]}, "no column called “y”"),
+                          ([1, 2], "set of values")):
+        found = problem(sample=sample)
+        assert found and words in found[0]["message"], sample
+    # The editor's own check refuses a bad sentence over the API, too.
+    assert D.check({**base, "how_to": []}) == [] and D.check({**base, "sample": {}}) == []
+
+
+def test_an_older_run_takes_how_to_sample_and_sentences_from_the_shipped_tool(on):
+    sc = on
+    run = start(sc, "ops_org_chart")
+    model = ToolRun.all_objects.get(pk=run["id"])
+    old = json.loads(json.dumps(model.definition))
+    for key in ("how_to", "sample"):
+        old.pop(key)
+    for r in old["results"]:
+        r.pop("says")
+    old["results"].pop()                                   # an older run had two cards
+    old["sections"][0]["fields"][0]["columns"] = [         # and no department
+        c for c in old["sections"][0]["fields"][0]["columns"] if c["key"] != "department"]
+    old["views"] = [{k: v for k, v in old["views"][0].items()
+                     if k not in ("department", "checks")}]
+    model.definition = old
+    model.save(update_fields=["definition"])
+    save_values(sc, run, {"seats": SEATS})
+    seen = get(sc, "ff", f"{RUNS}{run['id']}/").json()
+    assert seen["definition"]["how_to"] == shipped.SHIPPED["ops_org_chart"]["definition"]["how_to"]
+    assert all("department" not in row for row in seen["definition"]["sample"]["seats"])
+    assert [r["says"] for r in seen["evaluation"]["results"]] == [
+        "The company has 4 seats on the chart.", "Seats nobody is in yet: Quality lead."]
+    assert "Department" not in json.dumps(seen["definition"]["sections"])
+    # What the screen sends back to be worked out as it is typed still checks.
+    live = post(client(sc, "ff"), f"{TOOLS}evaluate/", {"definition": seen["definition"],
+                                                        "values": {"seats": SEATS}})
+    assert live.status_code == 200, live.content
+    # The snapshot itself never changed, and the chart still draws without departments.
+    assert "how_to" not in ToolRun.all_objects.get(pk=run["id"]).definition
+    assert ">Leadership<" not in seen["evaluation"]["views"][0]["svg"]
+    assert seen["evaluation"]["views"][0]["svg"].count('<g class="seat') == 4
+
+
+def test_a_samples_dates_are_the_runs_date(on):
+    sc = on
+    run = start(sc, "ops_meetings")
+    today = timezone.localdate().isoformat()
+    assert {m["start"] for m in run["definition"]["sample"]["meetings"]} == {today}
+    assert shipped.SHIPPED["ops_meetings"]["definition"]["sample"]["meetings"][0]["start"] \
+        == "2026-11-16"

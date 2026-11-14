@@ -326,12 +326,22 @@ DOCUMENTS = {
         "SOP",
         "Standard operating procedure",
         "Prepared for {Company} by {FractionalName}, {PracticeName}, on {Today}\n\n"
+        "# Overview\nThe SOP's number, the day it takes effect, who owns it and how often "
+        "they review it.\n\n"
         "# Purpose\nWhat this procedure is for, and what goes wrong without it.\n\n"
-        "# Roles\nWho does each part, and who owns the procedure.\n\n"
-        "# Steps\n1. \n2. \n3. \n\n"
-        "# Measures\nThe number that says it is working, and where it is on the "
-        "scorecard.\n\n"
-        "# Review date\nWhen the owner reads this again and updates it.",
+        "# Scope\nWho it applies to, what starts it, and where it ends.\n\n"
+        "# Definitions and acronyms\nThe words and abbreviations a new person would need "
+        "explained.\n\n"
+        "# Roles and responsibilities\nEach role, and what it is responsible for.\n\n"
+        "# Procedure steps\n1. \n2. \n3. \n\n"
+        "# Flowchart\nThe process map: the steps, the decisions and where it loops.\n\n"
+        "# Related documents and resources\nForms, documents, links and other SOPs used "
+        "with this one.\n\n"
+        "# Training requirements\nWhat someone must learn or show before doing it "
+        "alone.\n\n"
+        "# Performance metrics and monitoring\nThe number that says it is working, where it "
+        "is on the scorecard, and who watches it.\n\n"
+        "# Revision history\nFilled in from the published versions.",
     ),
     "ops_weekly_note": (
         "Weekly note",

@@ -496,8 +496,23 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         assert quote.status == "draft"
         storm = Brainstorm.objects.get(sop=quote)
         assert storm.sources.count() == 2 and storm.messages.count() == 4
-        waiting = storm.proposals.get(state=BrainstormProposal.State.PROPOSED)
-        assert waiting.kind == "draft" and not waiting.ai_call_id
+        waiting = {p.kind: p for p in storm.proposals.filter(
+            state=BrainstormProposal.State.PROPOSED)}
+        assert set(waiting) == {"draft", "map"}
+        assert not any(p.ai_call_id for p in waiting.values())
+        # 2026-11-14: the eleven sections, numbers, and one training item of each kind.
+        assert (changeover.number, receiving.number, quote.number) == ("PRD-01", "RCV-01",
+                                                                       "SAL-01")
+        assert changeover.effective_date is not None and changeover.review_months == 6
+        assert len(changeover.definitions) == 4 and changeover.training and changeover.metrics
+        assert any(s.get("when") for s in changeover.steps)
+        assert receiving.related[0] == {"kind": "sop", "title": "Header line changeover",
+                                        "ref": str(changeover.pk)}
+        assert sorted(changeover.training_assets.values_list("kind", flat=True)) == sorted(
+            ["quiz", "flashcards", "slides", "video", "audio", "other"])
+        assert changeover.training_assets.filter(file__isnull=False).count() == 4
+        assert not sop_services.unpublished_changes(changeover)
+        assert waiting["draft"].payload["definitions"] and waiting["draft"].payload["map"]
         from apps.tenancy.models import AiCall
 
         assert not AiCall.objects.filter(purpose__startswith="sop_").exists()
@@ -993,8 +1008,19 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
     assert found["constraint"]["value"] == "Head and thread"
     org = {r["key"]: r for r in by_tool["ops_org_chart"]["evaluation"]["results"]}
     assert org["open"]["value"] == ["Quality lead", "Second-shift supervisor"]
-    assert len(owner_api.get(f"/api/tool-runs/{by_tool['ops_meetings']['id']}/files/calendar/")
-               .json()["events"]) == 4
+    events = owner_api.get(f"/api/tool-runs/{by_tool['ops_meetings']['id']}/files/calendar/") \
+        .json()["events"]
+    assert len(events) == 4
+    # 2026-11-14 (E): seats with departments, drawn; a meeting with a whole
+    # team, spelled out; every tool with its how-to, sample and sentences.
+    chart = by_tool["ops_org_chart"]["evaluation"]["views"][0]["svg"]
+    assert chart.count('class="seat') == 5 and "Purchasing" in chart and ">Open<" in chart
+    review = next(e for e in events if e["name"] == "Monthly review")
+    assert review["attendees"][0].startswith("Everyone (") and "Wiley Coyote" in \
+        review["attendees"][0] and review["attendees"][1] == "Daffy Duckworth"
+    for run in by_tool.values():
+        assert len(run["definition"]["how_to"]) in (3, 4) and run["definition"]["sample"]
+        assert all(r["says"] for r in run["evaluation"]["results"]), run["tool_key"]
     shelf = owner_api.get("/api/tools/").json()
     assert "Client health check" in [t["name"] for t in shelf["tools"] if not t["shipped"]]
     shared = wiley_api.get("/api/tool-runs/?company=mine").json()["runs"]

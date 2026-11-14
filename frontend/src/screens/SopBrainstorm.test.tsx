@@ -194,4 +194,28 @@ describe("SOP brainstorm (P10)", () => {
     await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({ tier: "deep" }));
     expect(await screen.findByRole("radio", { name: "Deep" })).toBeChecked();
   });
+  it("accepting a process map says where it went, with the link (the map Bryan couldn't find)", async () => {
+    const user = userEvent.setup();
+    const MAP: Proposal = { id: "p-map", kind: "map", label: "The process map", state: "proposed",
+      payload: { map: "flowchart TD\n  a([Start]) --> b[Count]" }, why: "From the steps.", result: {},
+      decided_by: "", cost_usd: "0.0500" };
+    const fetchMock = mockApi({
+      "GET /api/sops/brainstorms/b1/": aBrainstorm({ proposals: [MAP] }),
+      "POST /api/sops/brainstorms/b1/price/": prices,
+      "POST /api/sops/map/": { svg: "<svg xmlns='http://www.w3.org/2000/svg'></svg>", errors: [] },
+      "POST /api/sops/brainstorms/b1/proposals/p-map/accept/": aBrainstorm({ proposals: [{ ...MAP,
+        state: "accepted", result: { sop: "s1" }, decided_by: "John Carter",
+        landed: { text: "The process map is now the flowchart of the SOP “Receiving an order”.",
+          href: "/sops/s1#flowchart", link: "See the flowchart" } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<SopBrainstormScreen />, route);
+    const card = await screen.findByRole("region", { name: "The process map proposed" });
+    await user.click(within(card).getByRole("button", { name: "Accept" }));
+    const said = await screen.findByRole("status");
+    expect(said).toHaveTextContent("The process map is now the flowchart of the SOP “Receiving an order”.");
+    expect(within(said).getByRole("link", { name: "See the flowchart" })).toHaveAttribute("href", "/sops/s1#flowchart");
+    // And it stays said under Decided.
+    expect(screen.getAllByRole("link", { name: "See the flowchart" })).toHaveLength(2);
+  });
 });

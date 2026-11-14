@@ -14,6 +14,13 @@ POST   /api/sops/<id>/attachments/              an image or a PDF (multipart "fi
 GET    /api/sops/<id>/attachments/<aid>/        the file
 DELETE /api/sops/<id>/attachments/<aid>/
 GET    /api/sops/<id>/files/<pdf|docx>/?version=n
+POST   /api/sops/<id>/training/                 {kind, title, file | url}: training material
+GET    /api/sops/<id>/training/<aid>/           the file (the SOP's audience too)
+DELETE /api/sops/<id>/training/<aid>/
+GET    /api/sops/<id>/pack/                     the Notebook pack for this SOP (zip)
+POST   /api/sops/<id>/brain-dump/               the brainstorm under a draft's brain dump
+POST   /api/sops/<id>/brain-dump/price/         {text}: the price first
+POST   /api/sops/<id>/brain-dump/fill/          {text}: Claude drafts every section, a proposal
 POST   /api/sops/map/                           {text} -> {svg, errors}; {steps} -> {text}
 
 GET    /api/sops/brainstorms/?company=
@@ -52,7 +59,7 @@ from apps.tenancy.models import CLIENT_ROLES, Role, TENANT_ROLES
 from . import access as A
 from . import brainstorm as B
 from . import exports, flow, media, pack, services
-from .models import Brainstorm, Sop, SopAttachment, SopVersion
+from .models import Brainstorm, Sop, SopAttachment, SopTrainingAsset, SopVersion
 
 
 class Base(APIView):
@@ -254,6 +261,92 @@ class AttachmentView(Base):
         except services.SopRefused as exc:
             return _refused(exc)
         return Response(status=204)
+
+
+class TrainingView(Base):
+    """An SOP's training material (2026-11-14): the practice adds and removes
+    it; the SOP's audience opens it with the SOP."""
+
+    def post(self, request, pk):
+        sop, access = A.sop_for(request, pk)
+        if not access.drafts:
+            return Response({"detail": "The practice adds training material."}, status=403)
+        if sop.status == Sop.Status.ARCHIVED:
+            return Response({"detail": "Restore it first."}, status=409)
+        try:
+            services.add_training(sop, actor=request.user, kind=request.data.get("kind"),
+                                  title=request.data.get("title"),
+                                  upload=request.FILES.get("file"),
+                                  url=request.data.get("url") or "")
+        except services.SopRefused as exc:
+            return _refused(exc)
+        return Response({"training_assets": services.training_rows(sop)}, status=201)
+
+
+class TrainingAssetView(Base):
+    def get(self, request, pk, aid):
+        from apps.tenancy import storage
+
+        sop, access = A.sop_for(request, pk)
+        asset = SopTrainingAsset.objects.filter(sop=sop, pk=aid).select_related("file").first() \
+            if A._is_uuid(aid) else None
+        if asset is None or asset.file is None:
+            raise Http404
+        try:
+            content = storage.read(asset.file)
+        except storage.StorageError as exc:
+            return Response({"detail": f"The file couldn't be read just now: {exc}"},
+                            status=503)
+        name = asset.file.object_key.rsplit("/", 1)[-1] or "file"
+        return _file(content, asset.file.content_type or "application/octet-stream", name,
+                     inline=asset.file.content_type.startswith(("video/", "audio/", "image/",
+                                                                "application/pdf")))
+
+    def delete(self, request, pk, aid):
+        sop, access = A.sop_for(request, pk)
+        if not access.drafts:
+            return Response({"detail": "The practice removes training material."}, status=403)
+        try:
+            services.remove_training(sop, aid, actor=request.user)
+        except services.SopRefused as exc:
+            return _refused(exc)
+        return Response({"training_assets": services.training_rows(sop)})
+
+
+class SopPackView(Base):
+    """The Notebook pack for one SOP: the practice owner and associates."""
+
+    def get(self, request, pk):
+        sop, access = A.sop_for(request, pk)
+        if access.is_client or not access.publishes:
+            raise Http404
+        content, _ = pack.sop_build(sop, actor=request.user)
+        return _file(content, "application/zip", pack.sop_filename(sop))
+
+
+class BrainDumpView(Base):
+    """The brain dump at the top of a new or draft SOP: its brainstorm, the
+    price, then the fill (2026-11-14)."""
+
+    def post(self, request, pk, step=None):
+        sop, access = A.sop_for(request, pk)
+        if access.is_client or not access.drafts:
+            raise Http404
+        if sop.status != Sop.Status.DRAFT:
+            return Response({"detail": "The brain dump is for a draft."}, status=409)
+        try:
+            if step is None:
+                storm = B.brain_dump(sop, actor=request.user)
+            elif step == "price":
+                return Response(B.brain_dump_price(sop, request.data.get("text"),
+                                                   actor=request.user))
+            elif step == "fill":
+                storm = B.brain_dump_fill(sop, request.data.get("text"), actor=request.user)
+            else:
+                raise Http404
+        except REFUSALS as exc:
+            return _refused(exc)
+        return Response(B.represent(storm), status=201)
 
 
 class SopFileView(Base):

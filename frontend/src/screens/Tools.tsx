@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Modal, PageHead } from "../components/shell";
@@ -7,11 +7,14 @@ import { Banner, Card, Empty, Pill } from "../components/ui";
 import { api, Me } from "../lib/api";
 import { about } from "../lib/plans";
 import {
-  CalendarPreview, Evaluation, FIELD_TYPE_LABEL, FieldType, FORMATS, INPUT_TYPES, RowValues,
-  RunFull, RunSummary, RunValues, Shelf, ToolDefinition, ToolField, ToolFull,
+  attendeeShown, CalendarPreview, Evaluation, FIELD_TYPE_LABEL, FieldType, FORMATS, hasValues,
+  INPUT_TYPES, RowValues, RunFull, RunSummary, RunValues, Shelf, svgSource, TeamChoice,
+  ToolDefinition, ToolField, ToolFull, ViewDrawing,
 } from "../lib/tools";
 
 const STAFF = ["FF", "CF", "VA"];
+const NONE: string[] = [];
+const NO_TEAMS: TeamChoice[] = [];
 const HORIZONS: [string, string][] = [["quarter", "This quarter"], ["month", "This month"],
   ["year", "This year"], ["week", "This week"], ["picture", "Three-year picture"]];
 
@@ -39,9 +42,71 @@ function useEvaluation(definition: ToolDefinition | null, values: RunValues, ini
 
 // ------------------------------------------------------------------ the form
 
+/** The company's people and teams, for "a person" and "people" fields. */
+const Choices = createContext<{ people: string[]; teams: TeamChoice[] }>({ people: [], teams: [] });
+
+/** Several names, as chips: the company's people, its teams ("Team: Sales") and
+ *  free text. Enter, a comma, leaving the field or picking from the list adds
+ *  one; the value stays a list of strings. */
+function Chips({ value, onChange, label }: {
+  value: string[]; onChange: (v: string[]) => void; label: string;
+}) {
+  const { people, teams } = useContext(Choices);
+  const [draft, setDraft] = useState("");
+  const options = useMemo(() => [...teams.map((t) => t.entry), ...people], [people, teams]);
+  const known = (text: string) => options.find((o) => o.toLowerCase() === text.toLowerCase());
+  const commit = (parts: string[], rest = "") => {
+    const next = [...value];
+    for (const part of parts) {
+      const text = part.trim();
+      if (!text) continue;
+      const item = known(text) ?? text;
+      if (!next.some((v) => v.toLowerCase() === item.toLowerCase())) next.push(item);
+    }
+    if (next.length !== value.length) onChange(next);
+    setDraft(rest);
+  };
+  return (
+    <div className="tl-chips">
+      {value.map((v, i) => {
+        const team = teams.find((t) => t.entry.toLowerCase() === v.toLowerCase());
+        return (
+          <span key={`${v}-${i}`} className={`tl-chip${team ? " team" : ""}`} title={team?.shown}>
+            {v}
+            <button type="button" className="tl-chip-x" aria-label={`Remove ${v} from ${label}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onChange(value.filter((_, j) => j !== i))}>×</button>
+          </span>
+        );
+      })}
+      <input aria-label={label} list="tl-attendees" value={draft}
+        placeholder={value.length ? "Add another" : "A name or a team"}
+        onChange={(e) => {
+          const text = e.target.value;
+          if (text.includes(",")) {
+            const bits = text.split(",");
+            commit(bits.slice(0, -1), bits[bits.length - 1]);
+            return;
+          }
+          // Picked from the list (not typed): add it at once.
+          const how = (e.nativeEvent as InputEvent).inputType;
+          if ((how === undefined || how === "insertReplacementText") && known(text.trim())) {
+            commit([text]);
+            return;
+          }
+          setDraft(text);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit([draft]); }
+          else if (e.key === "Backspace" && !draft && value.length) onChange(value.slice(0, -1));
+        }}
+        onBlur={() => commit([draft])} />
+    </div>
+  );
+}
+
 function Input({ field, value, onChange, label }: {
-  field: ToolField; value: unknown; onChange?: (v: unknown) => void; people?: string[];
-  label: string;
+  field: ToolField; value: unknown; onChange?: (v: unknown) => void; label: string;
 }) {
   const read = !onChange;
   const text = Array.isArray(value) ? value.join(", ") : value === null || value === undefined
@@ -68,16 +133,16 @@ function Input({ field, value, onChange, label }: {
       return <input aria-label={label} list="tl-people" value={text}
         onChange={(e) => set(e.target.value)} />;
     case "people":
-      return <input aria-label={label} list="tl-people" value={text} placeholder="Names, with commas"
-        onChange={(e) => set(e.target.value.split(",").map((x) => x.trim()).filter(Boolean))} />;
+      return <Chips label={label} onChange={set}
+        value={Array.isArray(value) ? (value as unknown[]).map(String) : []} />;
     default:
       return <input aria-label={label} value={text} onChange={(e) => set(e.target.value)} />;
   }
 }
 
-function TableField({ field, rows, cells, onChange, people }: {
+function TableField({ field, rows, cells, onChange }: {
   field: ToolField; rows: RowValues[]; cells: Evaluation["tables"][string] | undefined;
-  onChange?: (rows: RowValues[]) => void; people: string[];
+  onChange?: (rows: RowValues[]) => void;
 }) {
   const columns = field.columns ?? [];
   const setCell = (i: number, key: string, v: unknown) =>
@@ -101,7 +166,7 @@ function TableField({ field, rows, cells, onChange, people }: {
                   return <td key={c.key} className="tl-computed" title={cell?.error || ""}>
                     {cell?.error ? <span className="tl-error">{cell.error}</span> : cell?.text ?? "–"}</td>;
                 }
-                return <td key={c.key}><Input field={c} value={row[c.key]} people={people}
+                return <td key={c.key}><Input field={c} value={row[c.key]}
                   label={`${c.label}, row ${i + 1}`}
                   onChange={onChange ? (v) => setCell(i, c.key, v) : undefined} /></td>;
               })}
@@ -117,37 +182,68 @@ function TableField({ field, rows, cells, onChange, people }: {
   );
 }
 
-function OrgChart({ rows, name, parent, person }: {
-  rows: RowValues[]; name: string; parent: string; person: string;
-}) {
-  const names = new Set(rows.map((r) => String(r[name] ?? "").trim()).filter(Boolean));
-  const kids = (p: string) => rows.filter((r) => String(r[parent] ?? "").trim() === p
-    && String(r[name] ?? "").trim());
-  const roots = rows.filter((r) => String(r[name] ?? "").trim()
-    && !names.has(String(r[parent] ?? "").trim()));
-  const node = (r: RowValues, depth: number): ReactNode => {
-    const seat = String(r[name] ?? "").trim();
-    const who = String(r[person] ?? "").trim();
-    const no = ["knows", "wants", "has_time"].some((k) => r[k] === "No");
-    return (
-      <li key={`${seat}-${depth}`}>
-        <div className={`tl-seat${who ? "" : " open"}${no ? " no" : ""}`}>
-          <strong>{seat}</strong><span>{who || "Open"}</span>
-          {no && <span className="tl-no">A no</span>}
-        </div>
-        {depth < 8 && kids(seat).length > 0 && <ul>{kids(seat).map((k) => node(k, depth + 1))}</ul>}
-      </li>
-    );
+const ZOOM = { min: 0.25, max: 2.5, step: 1.25 };
+
+/** The org chart as the server drew it (the PDF prints the same drawing):
+ *  zoom in and out, Fit to the width, and drag or scroll to move around. */
+function OrgChart({ drawing }: { drawing?: ViewDrawing }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const fitted = useRef(false);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const width = drawing?.width ?? 0;
+  const height = drawing?.height ?? 0;
+  const fit = () => {
+    const room = (box.current?.clientWidth ?? 0) - 2;
+    setZoom(room > 0 && width > 0 ? Math.max(ZOOM.min, Math.min(1, room / width)) : 1);
   };
+  useEffect(() => {
+    if (drawing?.svg && !fitted.current) { fitted.current = true; fit(); }
+  }, [drawing?.svg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const by = (factor: number) =>
+    setZoom((z) => Math.min(ZOOM.max, Math.max(ZOOM.min, Math.round(z * factor * 100) / 100)));
+  const stop = () => { drag.current = null; };
   return (
     <section className="tl-org" aria-label="The chart">
-      <h3>The chart</h3>
-      <ul className="tl-tree">{roots.map((r) => node(r, 0))}</ul>
+      <div className="tl-org-head">
+        <h3>The chart</h3>
+        {drawing?.svg && (
+          <div className="tl-zoom" role="group" aria-label="Zoom the chart">
+            <button type="button" className="small" aria-label="Zoom out" disabled={zoom <= ZOOM.min}
+              onClick={() => by(1 / ZOOM.step)}>−</button>
+            <span className="small muted" aria-live="polite">{Math.round(zoom * 100)}%</span>
+            <button type="button" className="small" aria-label="Zoom in" disabled={zoom >= ZOOM.max}
+              onClick={() => by(ZOOM.step)}>+</button>
+            <button type="button" className="small" onClick={fit}>Fit</button>
+          </div>
+        )}
+      </div>
+      {drawing?.svg ? <>
+        <div ref={box} className="tl-org-canvas" tabIndex={0}
+          onPointerDown={(e) => {
+            const el = box.current;
+            if (!el || e.pointerType === "touch") return;
+            drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+            el.setPointerCapture?.(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const el = box.current;
+            const d = drag.current;
+            if (!el || !d) return;
+            el.scrollLeft = d.left - (e.clientX - d.x);
+            el.scrollTop = d.top - (e.clientY - d.y);
+          }}
+          onPointerUp={stop} onPointerCancel={stop}>
+          <img src={svgSource(drawing.svg)} alt={drawing.label ?? "The org chart"} draggable={false}
+            width={Math.round(width * zoom)} height={Math.round(height * zoom)} />
+        </div>
+        <p className="small muted tl-org-hint">Drag or scroll to move around the chart.</p>
+      </> : <p className="small muted">{drawing?.label ?? "The chart draws itself as seats are added."}</p>}
     </section>
   );
 }
 
-function Cadence({ rows, agenda }: { rows: RowValues[]; agenda: RowValues[] }) {
+function Cadence({ rows, agenda, teams }: { rows: RowValues[]; agenda: RowValues[]; teams: TeamChoice[] }) {
   return (
     <section className="tl-cadence" aria-label="The cadence on one page">
       <h3>The cadence</h3>
@@ -161,7 +257,7 @@ function Cadence({ rows, agenda }: { rows: RowValues[]; agenda: RowValues[] }) {
               <div className="small muted">{String(m.cadence ?? "")} · {String(m.day ?? "")} {String(m.time ?? "")}
                 {" "}· {String(m.minutes ?? "")} min</div>
               {Array.isArray(m.attendees) && m.attendees.length > 0 && (
-                <div className="small">{(m.attendees as string[]).join(", ")}</div>)}
+                <div className="small">{(m.attendees as string[]).map((a) => attendeeShown(String(a), teams)).join(", ")}</div>)}
               <ol className="small">{sections.map((s, j) => (
                 <li key={j}>{String(s.section ?? "")} <span className="muted">({String(s.minutes ?? 0)} min)</span></li>))}</ol>
             </div>
@@ -172,32 +268,82 @@ function Cadence({ rows, agenda }: { rows: RowValues[]; agenda: RowValues[] }) {
   );
 }
 
-/** A run's worksheet: results first, its views, then its sections. Read
- *  only when `onChange` is not given. */
-export function RunForm({ definition, values, evaluation, onChange, people = [] }: {
+/** "How to use this": the tool's steps, open while the run is empty, and
+ *  "Load sample values", which asks first when the run has values of its own.
+ *  Loaded values are the form's, unsaved, like anything typed. */
+function HowTo({ definition, values, onChange, onLoaded }: {
+  definition: ToolDefinition; values: RunValues; onChange?: (values: RunValues) => void;
+  onLoaded?: () => void;
+}) {
+  const steps = definition.how_to ?? [];
+  const sample = definition.sample;
+  const canLoad = !!onChange && hasValues(sample);
+  const [open, setOpen] = useState(() => !hasValues(values));
+  const [asking, setAsking] = useState(false);
+  if (steps.length === 0 && !canLoad) return null;
+  const load = () => {
+    onChange!(JSON.parse(JSON.stringify(sample)) as RunValues);
+    setAsking(false);
+    onLoaded?.();
+  };
+  return (
+    <section className="tl-howto" aria-label="How to use this">
+      <div className="tl-howto-head">
+        {steps.length > 0 && (
+          <button type="button" className="ghost tl-howto-toggle" aria-expanded={open}
+            aria-controls="tl-howto-steps" onClick={() => setOpen(!open)}>
+            <span aria-hidden="true">{open ? "▾" : "▸"}</span> How to use this</button>)}
+        {canLoad && !asking && (
+          <button type="button" className="small" onClick={() => (hasValues(values) ? setAsking(true) : load())}>
+            Load sample values</button>)}
+      </div>
+      {asking && (
+        <div className="tl-confirm" role="group" aria-label="Replace with the sample">
+          <span>Replace what's here with the sample?</span>
+          <button type="button" className="small primary" onClick={load}>Replace</button>
+          <button type="button" className="small" onClick={() => setAsking(false)}>Keep what's here</button>
+        </div>
+      )}
+      {open && steps.length > 0 && (
+        <ol id="tl-howto-steps" className="tl-howto-steps">{steps.map((step, i) => <li key={i}>{step}</li>)}</ol>)}
+    </section>
+  );
+}
+
+/** A run's worksheet: how to use it, results first, its views, then its
+ *  sections. Read only when `onChange` is not given. */
+export function RunForm({ definition, values, evaluation, onChange, people = [], teams = [], onSampleLoaded }: {
   definition: ToolDefinition; values: RunValues; evaluation?: Evaluation;
-  onChange?: (values: RunValues) => void; people?: string[];
+  onChange?: (values: RunValues) => void; people?: string[]; teams?: TeamChoice[];
+  onSampleLoaded?: () => void;
 }) {
   const rowsOf = (key: string) => (Array.isArray(values[key]) ? values[key] as RowValues[] : []);
+  const choices = useMemo(() => ({ people, teams }), [people, teams]);
   return (
+    <Choices.Provider value={choices}>
     <div className="tl-form">
       <datalist id="tl-people">{people.map((p) => <option key={p} value={p} />)}</datalist>
+      <datalist id="tl-attendees">
+        {teams.map((t) => <option key={t.entry} value={t.entry} label={t.shown} />)}
+        {people.map((p) => <option key={p} value={p} />)}
+      </datalist>
+      <HowTo definition={definition} values={values} onChange={onChange} onLoaded={onSampleLoaded} />
       {(definition.results ?? []).length > 0 && (
         <section className="tl-results" aria-label="Results">
           {(evaluation?.results ?? []).map((r) => (
             <div key={r.key || r.label} className="tl-result">
               <div className="tl-result-label">{r.label}</div>
               <div className="tl-result-value">{r.error ? <span className="tl-error">{r.error}</span> : r.text}</div>
+              {r.says && !r.error && <div className="tl-says">{r.says}</div>}
               {r.note && <div className="small muted">{r.note}</div>}
             </div>
           ))}
         </section>
       )}
-      {(definition.views ?? []).map((v, i) => v.type === "org_chart" && v.table ? (
-        <OrgChart key={i} rows={rowsOf(v.table)} name={v.name ?? "seat"} parent={v.parent ?? "reports_to"}
-          person={v.person ?? "person"} />
+      {(definition.views ?? []).map((v, i) => v.type === "org_chart" ? (
+        <OrgChart key={i} drawing={evaluation?.views?.[i]} />
       ) : v.type === "cadence" && v.table ? (
-        <Cadence key={i} rows={rowsOf(v.table)} agenda={rowsOf(v.agenda ?? "agenda")} />
+        <Cadence key={i} rows={rowsOf(v.table)} agenda={rowsOf(v.agenda ?? "agenda")} teams={teams} />
       ) : null)}
       {definition.sections.map((s, si) => (
         <section key={si} className="tl-section" aria-label={s.title}>
@@ -205,7 +351,7 @@ export function RunForm({ definition, values, evaluation, onChange, people = [] 
           {s.fields.map((f) => f.type === "table" ? (
             <div key={f.key} className="tl-field">
               <div className="tl-label">{f.label}</div>
-              <TableField field={f} rows={rowsOf(f.key)} cells={evaluation?.tables[f.key]} people={people}
+              <TableField field={f} rows={rowsOf(f.key)} cells={evaluation?.tables[f.key]}
                 onChange={onChange ? (rows) => onChange({ ...values, [f.key]: rows }) : undefined} />
             </div>
           ) : f.type === "computed" ? (
@@ -215,16 +361,24 @@ export function RunForm({ definition, values, evaluation, onChange, people = [] 
                 ? <span className="tl-error">{evaluation.computed[f.key].error}</span>
                 : <strong>{evaluation?.computed[f.key]?.text ?? "–"}</strong>}
             </div>
+          ) : f.type === "people" ? (
+            // Not a <label>: a click on its words would press the first chip's ×.
+            <div key={f.key} className="tl-field">
+              <span className="tl-label">{f.label}</span>
+              <Input field={f} value={values[f.key]} label={f.label}
+                onChange={onChange ? (v) => onChange({ ...values, [f.key]: v }) : undefined} />
+            </div>
           ) : (
             <label key={f.key} className="tl-field">
               <span className="tl-label">{f.label}</span>
-              <Input field={f} value={values[f.key]} people={people} label={f.label}
+              <Input field={f} value={values[f.key]} label={f.label}
                 onChange={onChange ? (v) => onChange({ ...values, [f.key]: v }) : undefined} />
             </label>
           ))}
         </section>
       ))}
     </div>
+    </Choices.Provider>
   );
 }
 
@@ -291,7 +445,8 @@ export function ToolRunScreen({ me }: { me: Me }) {
         </>}
       </div>
       <RunForm definition={run.definition} values={values} evaluation={evaluation ?? run.evaluation}
-        people={run.choices?.people ?? []} onChange={edit ? setValues : undefined} />
+        people={run.choices?.people ?? NONE} teams={run.teams ?? NO_TEAMS} onChange={edit ? setValues : undefined}
+        onSampleLoaded={() => setNote({ kind: "ok", text: "Sample values are in. Nothing is saved until you press Save." })} />
       {panel === "reading" && run.choices && (
         <ReadingPanel run={run} evaluation={evaluation ?? run.evaluation} onClose={() => setPanel(null)}
           onDone={(t) => { setPanel(null); done(t); }} />)}
@@ -668,6 +823,7 @@ export function ToolEditorScreen() {
   const [description, setDescription] = useState(proposal?.description ?? "");
   const [definition, setDefinition] = useState<ToolDefinition | null>(isNew ? (proposal?.definition ?? BLANK) : null);
   const [sample, setSample] = useState<RunValues>({});
+  const [howText, setHowText] = useState<string | null>(null);
   useEffect(() => {
     if (q.data && definition === null) {
       setDefinition(q.data.definition); setName(q.data.name); setDescription(q.data.description);
@@ -701,6 +857,14 @@ export function ToolEditorScreen() {
         <div className="tl-editor-form">
           <label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label>
           <label>What it is for<textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
+          <label>How to use this: three or four plain steps, one a line<textarea rows={4}
+            value={howText ?? (def.how_to ?? []).join("\n")} onChange={(e) => {
+              setHowText(e.target.value);
+              const steps = e.target.value.split("\n").map((x) => x.trim()).filter(Boolean);
+              const next: ToolDefinition = { ...def, how_to: steps };
+              if (!steps.length) delete next.how_to;
+              setDefinition(next);
+            }} /></label>
           {def.sections.map((s, si) => (
             <fieldset key={si} className="tl-fieldset">
               <legend><input aria-label={`Section ${si + 1} title`} value={s.title}
@@ -738,6 +902,9 @@ export function ToolEditorScreen() {
                   </div>
                   <label>Formula<input className="tl-formula" aria-label={`Formula for ${r.label}`} value={r.formula}
                     onChange={(e) => setR({ formula: e.target.value })} /></label>
+                  <label>What it says, in a sentence ({"{key}"} puts in a result's value)<input
+                    aria-label={`What ${r.label} says`} value={r.says ?? ""}
+                    onChange={(e) => setR({ says: e.target.value })} /></label>
                   {mine.map((e, i) => <div key={i} className="tl-error small">{e.message}</div>)}
                 </div>
               );
@@ -753,7 +920,18 @@ export function ToolEditorScreen() {
         </div>
         <div className="tl-editor-preview" aria-label="Preview with sample values">
           <h3>Preview</h3>
-          <p className="small muted">Type sample values to see it work. They are not saved.</p>
+          <p className="small muted">Type sample values to see it work. They are saved with the
+            tool only when you keep them as its sample.</p>
+          <div className="row tight">
+            <button className="small" disabled={!hasValues(sample)}
+              onClick={() => setDefinition({ ...def, sample: JSON.parse(JSON.stringify(sample)) as RunValues })}>
+              Keep these as the sample</button>
+            {def.sample && <button className="small ghost" onClick={() => {
+              const next = { ...def };
+              delete next.sample;
+              setDefinition(next);
+            }}>Remove the sample</button>}
+          </div>
           {errors.length === 0 && preview
             ? <RunForm definition={preview} values={sample} evaluation={evaluation} onChange={setSample} />
             : <Empty>Fix what is marked to see the preview.</Empty>}

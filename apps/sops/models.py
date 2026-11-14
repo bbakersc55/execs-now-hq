@@ -38,12 +38,32 @@ class Sop(TenantScopedModel):
 
     company = models.ForeignKey("crm.Company", on_delete=models.CASCADE, related_name="sops")
     title = models.CharField(max_length=200)
+    #: The overview (2026-11-14): the SOP's number in its company (OPS-01),
+    #: made from the category's prefix, editable, unique in the company.
+    number = models.CharField(max_length=20, blank=True, default="", db_default="")
+    #: True once a person typed the number: then it no longer follows the category.
+    number_by_hand = models.BooleanField(default=False, db_default=False)
+    effective_date = models.DateField(null=True, blank=True)
+    #: How often it is reviewed, in months (3, 6, 12, or any other): it sets
+    #: the next review date (`review_date`).
+    review_months = models.PositiveSmallIntegerField(null=True, blank=True)
     purpose = models.TextField(blank=True, default="", db_default="")
+    #: The scope: who it applies to, what starts it and where it ends.
     applies_when = models.TextField(blank=True, default="", db_default="")
-    #: [{"name": "Shipping lead", "does": "Owns the cut-off"}]
+    #: [{"term": "PO", "definition": "Purchase order"}]
+    definitions = models.JSONField(default=list, blank=True, db_default=[])
+    #: Roles and responsibilities: [{"name": "Shipping lead", "does": "Owns the cut-off"}]
     roles = models.JSONField(default=list, blank=True)
-    #: [{"text": "...", "role": "", "warning": "", "images": [attachment id]}]
+    #: [{"text": "...", "role": "", "when": "", "warning": "", "images": [attachment id]}];
+    #: "when" is the step's trigger or its if/then.
     steps = models.JSONField(default=list, blank=True)
+    #: Related documents and resources: [{"kind": "link" | "document" | "sop",
+    #: "title", "url" (a link), "ref" (a document's or an SOP's id)}]
+    related = models.JSONField(default=list, blank=True, db_default=[])
+    #: Training requirements and performance metrics, as text; the training
+    #: material is `SopTrainingAsset`, the linked KPIs `SopKpi`.
+    training = models.TextField(blank=True, default="", db_default="")
+    metrics = models.TextField(blank=True, default="", db_default="")
     #: The SOP template's other sections: [{"title": "...", "body": "..."}]
     sections = models.JSONField(default=list, blank=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -74,7 +94,10 @@ class Sop(TenantScopedModel):
         ordering = ["title"]
         indexes = [models.Index(fields=["company", "status"], name="sop_by_company")]
         constraints = [models.CheckConstraint(condition=~models.Q(title=""),
-                                              name="sop_has_a_title")]
+                                              name="sop_has_a_title"),
+                       models.UniqueConstraint(fields=["company", "number"],
+                                               condition=~models.Q(number=""),
+                                               name="sop_number_once_in_company")]
 
     def __str__(self):
         return self.title
@@ -169,6 +192,38 @@ class SopAttachment(TenantScopedModel):
     class Meta(TenantScopedModel.Meta):
         db_table = "sop_attachment"
         ordering = ["created_at"]
+
+
+class SopTrainingAsset(TenantScopedModel):
+    """Training material for an SOP (2026-11-14): an uploaded file or a link
+    (a file in the company's Google Drive, say), with a title. The SOP's
+    audience sees it with the SOP in the portal. Not part of a version: the
+    material can change without republishing the SOP."""
+
+    class Kind(models.TextChoices):
+        QUIZ = "quiz", "Quiz"
+        FLASHCARDS = "flashcards", "Flashcards"
+        SLIDES = "slides", "Slide deck"
+        VIDEO = "video", "Video"
+        AUDIO = "audio", "Audio"
+        OTHER = "other", "Other"
+
+    sop = models.ForeignKey(Sop, on_delete=models.CASCADE, related_name="training_assets")
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    title = models.CharField(max_length=200)
+    file = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
+                             on_delete=models.PROTECT, related_name="+")
+    url = models.CharField(max_length=1000, blank=True, default="", db_default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "sop_training_asset"
+        ordering = ["created_at"]
+        constraints = [models.CheckConstraint(
+            condition=(models.Q(file__isnull=False, url="")
+                       | (models.Q(file__isnull=True) & ~models.Q(url=""))),
+            name="sop_training_asset_file_or_link")]
 
 
 class SopComment(TenantScopedModel):

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -43,6 +43,32 @@ function aRun(over: Partial<RunFull> = {}): RunFull {
 }
 
 const runRoute = { path: "/tool-runs/:id", route: "/tool-runs/r1" };
+
+// 2026-11-14 (E): how to use a tool, its sample, the drawn org chart, teams as attendees.
+const HOW: Partial<ToolDefinition> = {
+  how_to: ["Name the process and add its steps.", "Put each step's capacity.", "Read the constraint."],
+  sample: { process: "Order to shipment", steps: [{ step: "Make the parts", capacity: 80 }] },
+};
+const SAYS: Evaluation = { ...EVAL, results: [{ ...EVAL.results[0],
+  says: "Form is the constraint: it holds up the whole process." }] };
+
+const ORG: ToolDefinition = {
+  sections: [{ title: "Seats", fields: [{ key: "seats", label: "Seats", type: "table", columns: [
+    { key: "seat", label: "Seat", type: "text" }, { key: "person", label: "Who is in it", type: "person" }] }] }],
+  results: [], views: [{ type: "org_chart", table: "seats", name: "seat", parent: "reports_to", person: "person" }],
+};
+const ORG_EVAL: Evaluation = { values: {}, computed: {}, tables: { seats: [{}] }, results: [],
+  views: [{ type: "org_chart", svg: "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='300'></svg>",
+    width: 800, height: 300, label: "Org chart: 1 seat, 0 open, 0 with a no." }] };
+
+const MEET: ToolDefinition = {
+  sections: [{ title: "Standing meetings", fields: [{ key: "meetings", label: "Meetings", type: "table",
+    columns: [{ key: "name", label: "Meeting", type: "text" },
+      { key: "attendees", label: "Who attends", type: "people" }] }] }],
+  results: [], views: [{ type: "cadence", table: "meetings", agenda: "agenda" }], actions: ["calendar"],
+};
+const TEAMS = [{ name: "Sales", entry: "Team: Sales", shown: "Sales team (Sam Sales, Sue Seller)",
+  members: ["Sam Sales", "Sue Seller"] }];
 
 describe("tools (P12)", () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -198,5 +224,113 @@ describe("tools (P12)", () => {
     expect(screen.queryByRole("button", { name: "Add them to my calendar" })).toBeNull();
     expect(screen.getByRole("link", { name: "Download a calendar file" }))
       .toHaveAttribute("href", "/api/tool-runs/r1/files/ics/");
+  });
+
+  it("How to use this: open on an empty run, shut on one with values, and each result says what it means", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/tool-runs/r1/": aRun({
+      definition: { ...DEF, ...HOW }, values: { process: "", steps: [] }, evaluation: SAYS }) }));
+    const first = renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    const toggle = await screen.findByRole("button", { name: /How to use this/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Put each step's capacity.")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Results" }))
+      .getByText("Form is the constraint: it holds up the whole process.")).toBeInTheDocument();
+    first.unmount();
+
+    vi.stubGlobal("fetch", mockApi({ "GET /api/tool-runs/r1/": aRun({ definition: { ...DEF, ...HOW } }) }));
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    const shut = await screen.findByRole("button", { name: /How to use this/ });
+    expect(shut).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Put each step's capacity.")).toBeNull();
+    await user.click(shut);
+    expect(screen.getByText("Put each step's capacity.")).toBeInTheDocument();
+  });
+
+  it("Load sample values fills an empty run at once, unsaved until Save", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const fetchMock = mockApi({ "GET /api/tool-runs/r1/": aRun({ definition: { ...DEF, ...HOW },
+      values: { process: "", steps: [] } }), "POST /api/tools/evaluate/": EVAL,
+      "PATCH /api/tool-runs/r1/": aRun() });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    await user.click(await screen.findByRole("button", { name: "Load sample values" }));
+    expect(screen.getByLabelText("Process")).toHaveValue("Order to shipment");
+    expect(screen.getByText(/Nothing is saved until you press Save/)).toBeInTheDocument();
+    expect(fetchMock.calls.some((c) => c.method === "PATCH")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock.calls.find((c) => c.method === "PATCH")?.body).toEqual({
+      values: HOW.sample }));
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("Load sample values asks inline first when the run has values", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    vi.stubGlobal("fetch", mockApi({ "GET /api/tool-runs/r1/": aRun({ definition: { ...DEF, ...HOW } }),
+      "POST /api/tools/evaluate/": EVAL }));
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    await user.click(await screen.findByRole("button", { name: "Load sample values" }));
+    const ask = screen.getByRole("group", { name: "Replace with the sample" });
+    expect(ask).toHaveTextContent("Replace what's here with the sample?");
+    await user.click(within(ask).getByRole("button", { name: "Keep what's here" }));
+    expect(screen.getByLabelText("Process")).toHaveValue("Order to shipment");
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Load sample values" }));
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(screen.getByLabelText("Step, row 1")).toHaveValue("Make the parts");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("the org chart is the server's drawing, with zoom in, zoom out and Fit", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", mockApi({ "GET /api/tool-runs/r1/": aRun({ definition: ORG,
+      values: { seats: [{ seat: "Owner", person: "Olive Owner" }] }, evaluation: ORG_EVAL }) }));
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    const chart = await screen.findByRole("region", { name: "The chart" });
+    const img = within(chart).getByRole("img", { name: "Org chart: 1 seat, 0 open, 0 with a no." });
+    expect(img.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
+    const zoom = within(chart).getByRole("group", { name: "Zoom the chart" });
+    expect(zoom).toHaveTextContent("100%");
+    await user.click(within(zoom).getByRole("button", { name: "Zoom in" }));
+    expect(zoom).toHaveTextContent("125%");
+    expect(img).toHaveAttribute("width", "1000");
+    await user.click(within(zoom).getByRole("button", { name: "Zoom out" }));
+    await user.click(within(zoom).getByRole("button", { name: "Zoom out" }));
+    expect(zoom).toHaveTextContent("80%");
+    expect(img).toHaveAttribute("width", "640");
+    await user.click(within(zoom).getByRole("button", { name: "Fit" }));
+    expect(zoom).toHaveTextContent("100%");
+  });
+
+  it("who attends takes several people and whole teams, as chips", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockApi({ "GET /api/tool-runs/r1/": aRun({ definition: MEET, teams: TEAMS,
+      values: { meetings: [{ name: "Weekly sales huddle", attendees: ["Mia Member"] }] },
+      evaluation: { values: {}, computed: {}, tables: { meetings: [{}] }, results: [] } }),
+      "POST /api/tools/evaluate/": { values: {}, computed: {}, tables: { meetings: [{}] }, results: [] },
+      "PATCH /api/tool-runs/r1/": () => ({ body: aRun({ definition: MEET, teams: TEAMS }) }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<ToolRunScreen me={aMe({ role: "FF" })} />, runRoute);
+    const who = await screen.findByLabelText("Who attends, row 1");
+    expect(document.querySelector("#tl-attendees option[value='Team: Sales']")).not.toBeNull();
+    expect(document.querySelector("#tl-attendees option[value='Marvin Martian']")).not.toBeNull();
+    // Picked from the list: added at once.
+    fireEvent.change(who, { target: { value: "Team: Sales" } });
+    expect(screen.getByRole("button", { name: "Remove Team: Sales from Who attends, row 1" })).toBeInTheDocument();
+    // Typed, with Enter: free text is fine too.
+    await user.type(who, "Bo Chen{Enter}");
+    expect(who).toHaveValue("");
+    const cadence = screen.getByRole("region", { name: "The cadence on one page" });
+    expect(cadence).toHaveTextContent("Mia Member, Sales team (Sam Sales, Sue Seller), Bo Chen");
+    await user.click(screen.getByRole("button", { name: "Remove Mia Member from Who attends, row 1" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect((fetchMock.calls.find((c) => c.method === "PATCH")?.body as {
+      values: { meetings: { attendees: string[] }[] } }).values.meetings[0].attendees)
+      .toEqual(["Team: Sales", "Bo Chen"]));
   });
 });

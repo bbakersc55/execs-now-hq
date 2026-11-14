@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SopsForKpi } from "../components/SopsForKpi";
 import { NoteDetail } from "./NoteDetail";
-import { SopFull, SopPortal, SopSummary } from "../lib/sops";
+import { DEFAULT_LAYOUT, SopFull, SopPortal, SopSummary } from "../lib/sops";
 import { aMe, aNote, NOTE_ID } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
 import { CompanySopsCard, SopScreen, SopsScreen, SopsShelfCard } from "./Sops";
@@ -13,7 +13,7 @@ const ACME = { id: "c1", name: "Acme Fasteners", is_practice: false };
 const STARK = { id: "c2", name: "Stark Tool & Die", is_practice: false };
 
 function row(over: Partial<SopSummary> = {}): SopSummary {
-  return { id: "s1", title: "Receiving an order", status: "published", category: "Shipping",
+  return { id: "s1", title: "Receiving an order", number: "", status: "published", category: "Shipping",
     version: 1, company: ACME, owner: "Marvin Martian", review_date: "2027-02-01",
     published_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:00:00Z", from_ai_app: false,
     reads: { asked: 12, read: 7 }, ...over };
@@ -37,6 +37,10 @@ function full(over: Partial<SopFull> = {}): SopFull {
     may: { drafts: true, publishes: true, sees_reads: true, reminds: true, is_client: false,
       publish: true, edit: true },
     hints: { purpose: "What this procedure is for." }, last_version: 0,
+    layout: DEFAULT_LAYOUT.map((x) => x.key === "purpose" ? { ...x, hint: "What this procedure is for." } : x),
+    number: "SHP-01", number_by_hand: false, effective_date: null, review_months: null,
+    review_label: "", definitions: [], related: [], training: "", metrics: "",
+    training_assets: [], revisions: [], brain_dump: null,
     choices: { owners: [{ id: "u1", name: "Marvin Martian", side: "client" }], teams: [],
       people: [], kpis: [{ id: "k1", name: "On-time shipments" }] },
     ...over,
@@ -54,6 +58,9 @@ function portal(over: Partial<SopPortal> = {}): SopPortal {
     roles: [{ name: "Receiver", does: "Checks it" }],
     steps: [{ text: "Count the cartons.", role: "Receiver", warning: "Lift with your legs.", images: ["a1"] }],
     sections: [], owner: "Marvin Martian", category: "Shipping", review_date: null, kpis: [],
+    layout: DEFAULT_LAYOUT, number: "SHP-01", effective_date: "2026-11-01", review_months: 12,
+    review_label: "Yearly", definitions: [], related: [], training: "", metrics: "",
+    training_assets: [], revisions: [{ date: "2026-11-01", version: 1, change: "First version.", author: "John Carter" }],
     map_svg: "<svg xmlns='http://www.w3.org/2000/svg'></svg>",
     attachments: [{ id: "a1", name: "carton.jpg", kind: "image", url: "/api/sops/s1/attachments/a1/" }],
     asked: true, read: false, read_at: null, read_version: null, read_by: "2026-11-08",
@@ -160,6 +167,7 @@ describe("the SOP studio (P10)", () => {
     const user = userEvent.setup();
     const fetchMock = mockApi({
       "GET /api/sops/s1/": full({ status: "published", version: 2, reads: READS,
+        revisions: [{ date: "2026-11-05", version: 2, change: "Added the scale.", author: "John Carter" }],
         versions: [{ number: 2, change_note: "Added the scale.", minor: false, published_at: "2026-11-05T10:00:00Z",
           published_by: "Bryan Baker", read_by: "2026-11-12" }] }),
       "POST /api/sops/s1/publish/": () => ({ body: full({ status: "published", version: 3, unpublished_changes: false }) }),

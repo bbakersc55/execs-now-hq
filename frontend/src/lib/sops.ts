@@ -12,12 +12,40 @@ export const STATUS_PILL: Record<SopStatus, string> = {
 
 export interface SopCompany { id: string; name: string; is_practice: boolean }
 export interface Role { name: string; does: string }
-export interface Step { text: string; role: string; warning: string; images: string[] }
+export interface Step { text: string; role: string; when?: string; warning: string; images: string[] }
+/** One of an SOP's sections, in the practice's order (2026-11-14). */
+export type SectionKey = "overview" | "purpose" | "scope" | "definitions" | "roles" | "steps"
+  | "flowchart" | "related" | "training" | "metrics" | "revisions" | "custom";
+export interface LayoutSection { key: SectionKey; title: string; hint: string }
+/** The shipped order and names, for an answer that carries no layout. */
+export const DEFAULT_LAYOUT: LayoutSection[] = ([
+  ["overview", "Overview"], ["purpose", "Purpose"], ["scope", "Scope"],
+  ["definitions", "Definitions and acronyms"], ["roles", "Roles and responsibilities"],
+  ["steps", "Procedure steps"], ["flowchart", "Flowchart"],
+  ["related", "Related documents and resources"], ["training", "Training requirements"],
+  ["metrics", "Performance metrics and monitoring"], ["revisions", "Revision history"],
+] as [SectionKey, string][]).map(([key, title]) => ({ key, title, hint: "" }));
+export interface Definition { term: string; definition: string }
+export interface Related { kind: "link" | "document" | "sop"; title: string; url?: string;
+  ref?: string; number?: string; href?: string | null }
+export interface Revision { date: string; version: number; change: string; author: string }
+export type TrainingKind = "quiz" | "flashcards" | "slides" | "video" | "audio" | "other";
+export interface TrainingAsset { id: string; kind: TrainingKind; label: string; title: string;
+  url: string; is_link: boolean; size: number | null }
+export const TRAINING_KINDS: [TrainingKind, string][] = [["quiz", "Quiz"],
+  ["flashcards", "Flashcards"], ["slides", "Slide deck"], ["video", "Video"], ["audio", "Audio"],
+  ["other", "Other"]];
+export const REVIEW_CHOICES: [number, string][] = [[3, "Quarterly"], [6, "Twice a year"],
+  [12, "Yearly"]];
+export function reviewLabel(months: number | null | undefined) {
+  if (!months) return "";
+  return REVIEW_CHOICES.find(([m]) => m === months)?.[1] ?? `Every ${months} months`;
+}
 export interface Section { title: string; body: string }
 export interface Attachment { id: string; name: string; kind: "image" | "pdf"; url: string }
 
 export interface SopSummary {
-  id: string; title: string; status: SopStatus; category: string; version: number;
+  id: string; title: string; number: string; status: SopStatus; category: string; version: number;
   company: SopCompany; owner: string; review_date: string | null;
   published_at: string | null; updated_at: string; from_ai_app: boolean;
   reads: { asked: number; read: number } | null;
@@ -40,7 +68,15 @@ export interface SopMay {
   is_client: boolean; publish?: boolean; edit?: boolean;
 }
 
-export interface SopFull extends SopSummary {
+/** The eleven sections' own fields (2026-11-14), on the working copy and a version. */
+export interface SopSections {
+  layout: LayoutSection[]; number: string; effective_date: string | null;
+  review_months: number | null; review_label: string; definitions: Definition[];
+  related: Related[]; training: string; metrics: string; training_assets: TrainingAsset[];
+  revisions: Revision[];
+}
+export interface SopFull extends SopSummary, SopSections {
+  number_by_hand: boolean; brain_dump: string | null;
   purpose: string; applies_when: string; roles: Role[]; steps: Step[]; sections: Section[];
   process_map: string; map_svg: string | null; owner_id: string | null; audience: Audience;
   teams: string[]; people: string[]; kpis: { id: string; name: string }[];
@@ -57,11 +93,13 @@ export interface SopFull extends SopSummary {
     teams: { id: string; name: string }[];
     people: { id: string; name: string }[];
     kpis: { id: string; name: string }[];
+    documents?: { id: string; title: string; state: string }[];
+    sops?: { id: string; title: string; number: string }[];
   };
 }
 
 /** What someone in the audience reads: the latest published version. */
-export interface SopPortal {
+export interface SopPortal extends SopSections {
   id: string; title: string; version: number; published_at: string; change_note: string;
   minor: boolean; purpose: string; applies_when: string; roles: Role[]; steps: Step[];
   sections: Section[]; owner: string; category: string; review_date: string | null;
@@ -83,13 +121,17 @@ export type ProposalKind = "draft" | "map" | "checklist" | "measures";
 
 export interface DraftPayload {
   title: string; purpose: string; applies_when: string; roles: Role[];
-  steps: { text: string; role: string; warning: string }[]; category: string;
+  steps: { text: string; role: string; when?: string; warning: string }[]; category: string;
+  review_months?: number | null; definitions?: Definition[]; map?: string;
+  related?: { kind: string; title: string; url?: string }[]; training?: string; metrics?: string;
 }
 
 export interface Proposal {
   id: string; kind: ProposalKind; label: string; state: "proposed" | "accepted" | "discarded";
   payload: Record<string, unknown>; why: string; result: Record<string, unknown>;
   decided_by: string; cost_usd: string | null;
+  /** Where an accepted proposal went, with the link (2026-11-14). */
+  landed?: { text: string; href: string; link: string } | null;
   diff?: { fields?: Record<string, { from: string; to: string }>;
     steps?: { change: "same" | "added" | "removed"; text: string }[] };
 }

@@ -2297,15 +2297,33 @@ table.ai-actions select { max-width: 13rem; }
 .tl-tool-card p { margin: 0; }
 .tl-runs { margin: 0; padding-left: 18px; font-size: 14px; }
 .tl-runs li { margin: 4px 0; overflow-wrap: anywhere; }
-.tl-org { background: #fff; border: 1px solid var(--sc-line, #E3E7EC); border-radius: 12px; padding: 12px 16px; overflow-x: auto; }
-.tl-tree, .tl-tree ul { list-style: none; margin: 0; padding-left: 18px; }
-.tl-tree > li { padding-left: 0; }
-.tl-tree li { margin: 6px 0; }
-.tl-seat { display: inline-flex; flex-direction: column; border: 1px solid var(--sc-line, #E3E7EC); border-left: 4px solid var(--navy, #0D2C54);
-           border-radius: 8px; padding: 6px 10px; background: #fff; min-width: 160px; }
-.tl-seat.open { border-left-color: var(--orange, #E87722); background: #FFF8EC; }
-.tl-seat.no { border-left-color: var(--sc-off, #C0392B); }
-.tl-no { font-size: 11px; font-weight: 700; color: var(--sc-off, #C0392B); }
+.tl-org { background: #fff; border: 1px solid var(--sc-line, #E3E7EC); border-radius: 12px; padding: 12px 16px; min-width: 0; }
+/* 2026-11-14 (E): the drawn org chart, zoomed and panned; how to use a tool; attendees as chips. */
+.tl-org-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tl-org-head h3 { margin: 0; }
+.tl-zoom { display: inline-flex; align-items: center; gap: 6px; }
+.tl-zoom button { min-width: 34px; }
+.tl-zoom span { min-width: 42px; text-align: center; }
+.tl-org-canvas { overflow: auto; max-height: 70vh; margin-top: 8px; border: 1px solid var(--sc-line-soft, #EEF1F4); border-radius: 8px;
+                 background: #fff; cursor: grab; user-select: none; touch-action: pan-x pan-y; }
+.tl-org-canvas:active { cursor: grabbing; }
+.tl-org-canvas:focus-visible { outline: 2px solid var(--orange, #E87722); outline-offset: 2px; }
+.tl-org-canvas img { display: block; max-width: none; }
+.tl-org-hint { margin: 4px 0 0; }
+.tl-howto { background: #fff; border: 1px solid var(--sc-line, #E3E7EC); border-radius: 12px; padding: 8px 14px; }
+.tl-howto-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tl-howto-toggle { font-weight: 700; padding-left: 0; }
+.tl-howto-steps { margin: 6px 0 4px; padding-left: 22px; font-size: 14px; line-height: 1.45; }
+.tl-howto-steps li { margin: 3px 0; }
+.tl-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 10px; border-radius: 8px;
+              background: #FFF8EC; font-size: 14px; }
+.tl-says { font-size: 13px; line-height: 1.4; margin-top: 4px; color: rgba(255,255,255,.92); }
+.tl-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 200px; }
+.tl-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border-radius: 999px; font-size: 12px;
+           background: #EEF1F4; white-space: nowrap; }
+.tl-chip.team { background: #E6EEF5; color: var(--navy, #0D2C54); font-weight: 600; }
+.tl-chip-x { border: 0; background: transparent; padding: 0 5px; min-height: 0; line-height: 1.2; font-size: 14px; cursor: pointer; }
+.tl-chips input { flex: 1 1 120px; min-width: 120px; }
 .tl-cadence { background: #fff; border: 1px solid var(--sc-line, #E3E7EC); border-radius: 12px; padding: 12px 16px; }
 .tl-cadence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 10px; }
 .tl-meeting { border: 1px solid var(--sc-line, #E3E7EC); border-radius: 10px; padding: 8px 10px; }
@@ -2399,6 +2417,31 @@ table.ai-actions select { max-width: 13rem; }
 .sop-step-images img { max-width: min(100%, 420px); height: auto; border: 1px solid var(--line); border-radius: 8px; }
 label.sop-file { position: relative; overflow: hidden; cursor: pointer; display: inline-flex; margin: 0; }
 label.sop-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+/* The SOP's eleven sections, the brain dump and training material (2026-11-14). */
+.sop-section { scroll-margin-top: 72px; }
+.sop-dump { border: 1px solid var(--line-strong); }
+.sop-dump-drop { border: 2px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 10px; display: grid; gap: 8px; }
+.sop-dump-drop.over { border-color: var(--orange); background: var(--orange-050); }
+.sop-dump-drop textarea { width: 100%; min-height: 160px; }
+.sop-step-when { width: 100%; font-size: 12px; margin-bottom: 4px; }
+.sop-when { font-size: 12px; font-weight: 600; color: var(--navy); }
+.sop-training { margin-top: 10px; }
+.sop-training h4 { margin: 0 0 6px; }
+.sop-training-add { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; margin-top: 8px; display: grid; gap: 8px; }
+.sop-training-list { list-style: none; padding: 0; display: grid; gap: 6px; }
+.sop-related { display: grid; gap: 6px; }
+.sop-revisions, .sop-roles-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sop-revisions th, .sop-revisions td, .sop-roles-table th, .sop-roles-table td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+.sop-overview, .sop-definitions { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.sop-overview > div, .sop-definitions > div { display: contents; }
+.sop-overview dt, .sop-definitions dt { font-weight: 600; }
+.sop-overview dd, .sop-definitions dd { margin: 0; }
+.sop-landed { margin: 8px 0; }
+@media (max-width: 640px) {
+  .sop-revisions, .sop-roles-table { font-size: 12px; }
+  .sop-overview, .sop-definitions { grid-template-columns: 1fr; }
+  .sop-overview dd, .sop-definitions dd { margin-bottom: 6px; }
+}
 .sop-map-edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 8px; }
 .sop-map-edit textarea { width: 100%; font-size: 12px; }
 .sop-map { min-width: 0; overflow-x: auto; text-align: center; }

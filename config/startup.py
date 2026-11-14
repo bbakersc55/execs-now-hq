@@ -82,6 +82,8 @@ NEEDS: tuple[Need, ...] = (
     Need("mcp.server.mcpserver", "mcp",
          "the MCP server AI apps connect to (the `mcp` service)"),
     Need("uvicorn", "uvicorn", "serves the MCP server (the `mcp` service)"),
+    Need("dateutil.relativedelta", "python-dateutil",
+         "an SOP's next review date from its review frequency, in months"),
 )
 
 

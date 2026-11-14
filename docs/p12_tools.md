@@ -1,4 +1,4 @@
-# P12 — the worksheet engine, four Operations tools and the tool builder (as built, 2026-11-13)
+# P12 — the worksheet engine, four Operations tools and the tool builder (as built, 2026-11-13; E, 2026-11-14)
 
 **Available while the practice has any Command Center on** (P8). With none,
 every tools route is 404 and no menu shows Tools. The plans engine's reach
@@ -13,6 +13,8 @@ rule decides who reaches a company (`apps.plans.access`).
   - **Result cards.**
   - **Optional views:** an org chart, or a cadence on one page.
   - **Optional actions:** calendar events, or import from an SOP.
+  - **Optional help (E):** "How to use this" steps (`how_to`), a sample to
+    load (`sample`), and on each result card a sentence (`says`).
 - **Formulas** (`apps/tools/formula.py`) use a small language that is parsed and
   evaluated in the app. Nothing is handed to Python's `eval`, and a name is
   only ever a field or a column.
@@ -87,8 +89,8 @@ rule decides who reaches a company (`apps.plans.access`).
      "what if we hire" count on each role.
 3. **Meeting cadence builder.**
    - **Each standing meeting:** how often (weekly, every two weeks, monthly,
-     quarterly), day, time, length, first date and who attends (the company's
-     people).
+     quarterly), day, time, length, first date and who attends: several of the
+     company's people and whole teams, as chips (E).
    - **Agendas** are in timed sections.
    - **It produces:**
      - the cadence on one page;
@@ -98,12 +100,13 @@ rule decides who reaches a company (`apps.plans.access`).
        (.ics) to download.
    - **On the demo** it shows the events it would make and makes none.
 4. **Org chart by seat.**
-   - **Seats first, people second:** each seat has a name, the seat it
-     reports to, up to five responsibilities (kept to five lines), and who is
-     in it (blank is open).
+   - **Seats first, people second:** each seat has a name, a department (E),
+     the seat it reports to, up to five responsibilities (kept to five lines),
+     and who is in it (blank is open).
    - **Three plain checks:** knows the job, wants the job, has the time and
      skill.
-   - **It produces** the chart, the open seats, and the seats with a no.
+   - **It produces** the chart (drawn top-down, E), the open seats, and the
+     seats with a no.
 
 ## The tool builder
 
@@ -124,6 +127,65 @@ rule decides who reaches a company (`apps.plans.access`).
   way. The shipped one never changes.
 - **A practice's own tools** (`practice_tool`) belong to it and never reach
   another practice (tested).
+
+## 2026-11-14: the chart drawn, teams as attendees, how to use each tool (E)
+
+Bryan could not tell how to run the Capacity model; the org chart was a
+nested list; a meeting's attendees were one line of names.
+
+- **E1, the org chart drawn** (`apps/tools/orgchart.py`):
+  - **A conventional top-down chart,** drawn on the server as SVG: a box a
+    seat, joined by elbow lines from the top seat down. Several top seats
+    sit side by side.
+  - **Each box** has a header band in the practice's header colour with the
+    seat's title in white; beneath it the person (or "Open") and the
+    department.
+  - **What stands out:** an open seat is dashed in the practice's accent
+    colour, with "Open" in that colour; a seat with any "No" has a red
+    outline and an "A no" marker.
+  - **One drawing everywhere:** every evaluation carries it (`views`, from
+    `services.worked_out`), so the screen redraws it as seats are typed; the
+    PDF prints the same SVG, scaled down to the page's width (never up); Word
+    has a PNG of the same layout.
+  - **On screen:** **Zoom out** (−), **Zoom in** (+) and **Fit**, with the
+    zoom shown as a percent; drag or scroll to move around. It opens fitted
+    to the width.
+  - **Department** is a new column of the shipped tool's seats.
+  - **It always ends:** a seat reporting to itself, to a seat that isn't
+    there, or round a loop is drawn as a top seat.
+- **E2, who attends:** a chips control. It offers the company's people and
+  its teams, shown as "Team: Sales", and takes free text.
+  - **What is kept** is still a list of strings ("Team: Sales" among them).
+  - **Wherever attendees are listed** (the cadence on one page, the calendar
+    preview, the agenda document, each event's notes and the .ics file), a
+    team is spelled out: "Sales team (Sam Sales, Sue Seller)".
+  - **The run** brings the company's teams with it (`teams`).
+- **E3, how to use, samples, sentences:**
+  - **A definition may carry** `how_to` (three or four plain steps),
+    `sample` (input values) and, on each result, `says` (a sentence with
+    `{result_key}` placeholders). `definition.check` checks all three.
+  - **The evaluation fills each sentence** with the results' texts. A
+    sentence one of whose results has no value or an error is left out,
+    never shown half-filled.
+  - **All four shipped tools** have all three. The Capacity model's steps
+    are: fill in the roles; fill in the work, with which role does it; read
+    the gap; try the what-ifs.
+  - **The run's screen:**
+    - a **How to use this** panel, open while the run is empty and folded
+      once it has values;
+    - **Load sample values**. On a run with values it first asks, in the
+      page, "Replace what's here with the sample?" (**Replace** / **Keep
+      what's here**). What it loads stays unsaved until **Save**.
+  - **Each result card** shows its sentence under its value; the PDF and
+    Word do too.
+  - **A run made before E** takes the how-to, sample and sentences of its
+    shipped tool by its key (`services.definition_for`). Only what fits the
+    snapshot is taken, and the snapshot itself never changes.
+  - **The form editor** edits the how-to (one step a line) and each result's
+    sentence. "Keep these as the sample" keeps the preview's values;
+    "Remove the sample" drops it.
+  - **The tool builder's prompt** asks Claude for all three.
+- **No migration:** definitions live in code and runs in JSON.
 
 ## Data (migrations, additive)
 
@@ -172,9 +234,64 @@ plan this week. It is in view at 1366×768 and near the top on a phone.
 10. **A run's values are saved with Save,** not on every keystroke. The
     results recalculate as you type.
 
+**Added with E (2026-11-14):**
+
+11. **A team is kept as "Team: <name>"** among the attendee strings. It is
+    matched to the company's live teams, ignoring case, whenever it is read.
+    - **Spelled out** as "Shipping team (Ana Ruiz, Bo Chen)". A team whose
+      name ends in "team", and the default team "Everyone", keep their
+      names: "Everyone (…)".
+    - **A team's people** are its client users whose sign-in isn't revoked,
+      by name or email. Being read each time, a later member shows in an old
+      run's agenda.
+    - **A "Team: …" the company hasn't** is shown as written.
+12. **The chips:**
+    - picking from the browser's list adds a name at once; typing adds it on
+      Enter, a comma or leaving the field;
+    - Backspace in an empty field removes the last;
+    - the same name twice is kept once;
+    - free text is fine.
+13. **The chart on screen is an `<img>` of the SVG,** as the SOP process map
+    is, so nothing in it can run.
+    - **Zoom** goes from 25% to 250% in steps of a quarter.
+    - **Fit** fits the width and never enlarges past 100%. The chart opens
+      fitted.
+    - **No mouse-wheel zoom:** it would fight the page's own scrolling.
+14. **The accent marks open seats; red (#C0392B) marks a no,** so the two
+    never look alike. A seat that is open and has a no is dashed and red. An
+    open seat's box is tinted with the accent.
+15. **Seats are matched by name, ignoring case.** Of two seats with the same
+    name, the first is the one reported to.
+16. **A long seat title** wraps to two lines in the band, then ends in "…";
+    a long name or department is cut to one line.
+17. **The PDF's width** is 720px, US Letter less the letterhead's margins.
+    **Word's picture** is at most 6.5 inches wide.
+18. **What is checked:**
+    - `how_to` is three or four steps when given, each up to 300 characters;
+    - `says` names results only (not fields), is up to 300 characters, and
+      has no brace outside a placeholder;
+    - `sample` has only the tool's own fields and columns, numbers that are
+      numbers and choices from the list. Blanks are allowed and not every
+      field need be filled; the shipped samples fill every input (tested).
+19. **An empty list counts as a value** in a sentence ("Seats nobody is in
+    yet: none."). The Capacity model's sentences keep the cards' own "a
+    minus means spare"; they don't change their words with the sign.
+20. **A sample's dates become the run's date** when the run is shown, so the
+    cadence's sample never starts in the past. The editor's preview keeps
+    the dates as written.
+21. **The how-to panel also shows in the editor's preview and in the
+    client's read-only view.** Load sample values shows only where the form
+    can be changed. A note after loading says nothing is saved until Save.
+22. **The sample's people** are made up or are roles ("The owner", "Jordan
+    Lee"), plainly placeholders.
+23. **The demo's whole team is Acme's default team, Everyone.** No new team
+    was made, since one would change what Acme's portal people see.
+24. **The MCP read of a run (`get_tool_run`)** is unchanged, without the
+    sentences.
+
 ## Proof
 
-- **`tests/test_tools.py`** has 37 tests:
+- **`tests/test_tools.py`** has 52 tests (37, and 15 for E):
   - the language: precedence, every function, the lazy `if`, division by
     zero, nine bad formulas including code-like ones;
   - the definition checks, and an error landing on its field;
@@ -201,18 +318,56 @@ plan this week. It is in view at 1366×768 and near the top on a phone.
   - the builder with a fake Claude (the price first, Deep, nothing saved,
     problems listed);
   - MCP scope;
-  - the EOS-term check, including GWC and Level 10.
-- **`frontend/src/screens/Tools.test.tsx`** has 7 tests: a run's results,
-  table and save; a KPI reading offering only numbers; the client's
-  read-only view; the shelf; the builder's price first and its proposal in
-  the editor; a bad formula marked where it is; and the demo's calendar.
-- **`tests/test_demo_seed.py`** checks the four Acme runs worked out, the
-  shelf, the calendar's four events, and what Wiley and Marvin see.
+  - the EOS-term check, including GWC and Level 10;
+  - **E:**
+    - the chart's SVG: a box a seat, header bands in the practice's colour,
+      Open and the department, open and no styled, two top seats side by
+      side;
+    - a loop, a seat reporting to itself and a 200-deep chain all end;
+    - the chart in the run, in live evaluation, in the PDF scaled to 720px
+      (its text read back) and as Word's picture;
+    - the department column;
+    - a team spelled out in the calendar preview, an event's notes, the .ics
+      file and the agenda document, while the stored value stays strings;
+    - how a team is spelled;
+    - each shipped tool's how-to, full sample (worked out with no errors)
+      and filled sentences;
+    - the Capacity model's how-to;
+    - a sentence left out when a result has no value;
+    - how-to, sample and sentence checks, a bad placeholder among them;
+    - an older run's snapshot taking all three from the shipped tool;
+    - a sample's dates on the run's date.
+- **`frontend/src/screens/Tools.test.tsx`** has 14 tests:
+  - a run's results, table and save;
+  - a KPI reading offering only numbers;
+  - the SOP brainstorm and SOP import (P10);
+  - the client's read-only view;
+  - the shelf;
+  - the builder's price first and its proposal in the editor;
+  - a bad formula marked where it is;
+  - the demo's calendar;
+  - **E:**
+    - How to use this, open on an empty run and folded on one with values,
+      and a result's sentence;
+    - Load sample values on an empty run, unsaved until Save;
+    - the inline ask on a run with values, both ways, never
+      `window.confirm`;
+    - the chart's Zoom in, Zoom out and Fit;
+    - a team and a typed name added as chips, spelled out in the cadence,
+      and saved as strings.
+- **`tests/test_demo_seed.py`** checks:
+  - the four Acme runs worked out, the shelf, the calendar's four events,
+    and what Wiley and Marvin see;
+  - **E:** the drawn chart with its departments; the monthly review's
+    "Everyone (…)" spelled out; every run with its how-to, sample and
+    sentences.
 
 ## The demo
 
 - **Acme Fasteners:** one run of each tool, from the reset's discovery weeks.
-  The org chart and the bottleneck finder are shared with Wiley.
+  The org chart and the bottleneck finder are shared with Wiley. The seats
+  have departments, and the monthly review is attended by the whole
+  "Everyone" team (E).
 - **Summit:** its own tool, "Client health check", with one run on the
   practice.
 - **No Claude in the seed.**

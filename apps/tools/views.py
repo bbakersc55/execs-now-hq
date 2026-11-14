@@ -9,7 +9,8 @@ PATCH  /api/tools/<id>/                     the owner edits the practice's tool
 POST   /api/tools/<ref>/duplicate/          a practice copy of any tool (owner)
 POST   /api/tools/<id>/archive/
 POST   /api/tools/validate/                 {definition}: every problem, with where
-POST   /api/tools/evaluate/                 {definition, values}: worked out, nothing saved
+POST   /api/tools/evaluate/                 {definition, values}: worked out (with the org
+                                            chart's drawing), nothing saved
 GET    /api/tools/builder/                  the price first
 POST   /api/tools/builder/                  {description}: Claude's proposal, checked, not saved
 GET    /api/tool-runs/?company=<id|practice|mine>
@@ -88,11 +89,17 @@ def _people(company) -> list[str]:
 
 
 def full(run, access) -> dict:
+    """The run worked out. Its definition is the snapshot as shown
+    (`services.definition_for`: how-to, sample and sentences of a shipped
+    tool, for a run older than them), with the sample's dates on the run's
+    date; `teams` are the company's, to choose and to spell out attendees."""
     from apps.scorecard.models import Kpi
 
     out = represent(run, access)
-    out.update({"definition": run.definition, "values": run.values,
-                "evaluation": D.evaluate(run.definition, run.values)})
+    definition = services.sample_on(services.definition_for(run), run.run_date)
+    out.update({"definition": definition, "values": run.values,
+                "evaluation": services.worked_out(definition, run.values, run.company.tenant),
+                "teams": services.teams_of(run.company)})
     if access.edits:
         out["choices"] = {
             "people": _people(run.company),
@@ -188,12 +195,13 @@ class ValidateView(Base):
 
 class EvaluateView(Base):
     def post(self, request):
-        _staff(request)
+        membership = _staff(request)
         definition = request.data.get("definition")
         errors = D.check(definition)
         if errors:
             return Response({"errors": errors}, status=400)
-        return Response(D.evaluate(definition, request.data.get("values") or {}))
+        return Response(services.worked_out(definition, request.data.get("values") or {},
+                                            membership.tenant))
 
 
 class BuilderView(Base):

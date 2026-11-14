@@ -3,9 +3,11 @@
 A definition is JSON:
 
     {"sections": [{"title": "...", "fields": [FIELD, ...]}],
-     "results": [{"key", "label", "formula", "format"}],
+     "results": [{"key", "label", "formula", "format", "note", "says"}],
      "views": [{"type": "org_chart", ...} | {"type": "cadence", ...}],
-     "actions": ["calendar", "import_sop"]}
+     "actions": ["calendar", "import_sop"],
+     "how_to": ["three or four plain steps"],
+     "sample": {a full set of input values, as a run keeps them}}
 
 A FIELD is {"key", "label", "type", ...}. Types: text, long_text, number,
 money, percent, date, choice (with "options"), person, people, table (with
@@ -16,6 +18,12 @@ from that row's columns, the worksheet's fields and other tables' columns.
 A run's values are {field key: value, table key: [{column key: value,
 "_flag": bool}, ...]}. `evaluate` returns every computed value with its text
 and any error, said in words.
+
+The three optional parts (2026-11-14, E3): `how_to` is the "How to use this"
+panel's steps; `sample` is what "Load sample values" puts in; a result's
+`says` is a sentence with {result_key} placeholders, filled with the results'
+texts. A sentence one of whose results has no value is left out, never shown
+half-filled.
 """
 
 from __future__ import annotations
@@ -34,6 +42,9 @@ KEY = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 MOST_SECTIONS, MOST_FIELDS, MOST_COLUMNS, MOST_RESULTS, MOST_ROWS = 12, 40, 16, 12, 200
 VIEW_TYPES = ("org_chart", "cadence")
 ACTIONS = ("calendar", "import_sop")
+HOW_TO_STEPS = (3, 4)
+MOST_STEP, MOST_SAYS = 300, 300
+_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 
 
 class DefinitionInvalid(ValueError):
@@ -131,6 +142,15 @@ def check(definition) -> list[dict]:
     for a in definition.get("actions") or []:
         if a not in ACTIONS:
             err("actions", f"“{a}” isn't an action the app has.")
+    errors += _check_how_to(definition.get("how_to"))
+    result_keys = {str(r.get("key") or "") for r in results if isinstance(r, dict)} - {""}
+    for r, result in enumerate(results):
+        if isinstance(result, dict) and result.get("says") not in (None, ""):
+            errors += _check_says(result["says"], f"results.{r}", result_keys,
+                                  str(result.get("label") or ""))
+    if errors:
+        return errors
+    errors += _check_sample(definition, definition.get("sample"))
     if errors:
         return errors
     # Every formula reads, and names only what the worksheet has.
@@ -154,6 +174,104 @@ def check(definition) -> list[dict]:
         errors += _check_formula(result.get("formula"), f"results.{r}", known | dotted,
                                  f"{result.get('label')}")
     return errors
+
+
+def _check_how_to(steps) -> list[dict]:
+    if steps in (None, [], ""):
+        return []
+    low, high = HOW_TO_STEPS
+    if not isinstance(steps, list) or not low <= len(steps) <= high \
+            or not all(isinstance(x, str) and x.strip() for x in steps):
+        return [{"where": "how_to", "message": "“How to use this” is three or four plain "
+                                               "steps, one a line."}]
+    if any(len(x) > MOST_STEP for x in steps):
+        return [{"where": "how_to", "message": f"Each step of “How to use this” is at most "
+                                               f"{MOST_STEP} characters."}]
+    return []
+
+
+def placeholders(text) -> list[str]:
+    return [m.strip() for m in _PLACEHOLDER.findall(str(text or ""))]
+
+
+def _check_says(text, where, result_keys, label) -> list[dict]:
+    label = label or "A result"
+    if not isinstance(text, str):
+        return [{"where": where, "message": f"{label}: what it says is a sentence."}]
+    if len(text) > MOST_SAYS:
+        return [{"where": where, "message": f"{label}: what it says is at most {MOST_SAYS} "
+                                            "characters."}]
+    if "{" in _PLACEHOLDER.sub("", text) or "}" in _PLACEHOLDER.sub("", text):
+        return [{"where": where, "message": f"{label}: a {{ or }} that isn't a result's "
+                                            "{key}."}]
+    for key in placeholders(text):
+        if key not in result_keys:
+            return [{"where": where, "message": f"{label}: there is no result called "
+                                                f"“{key}” to put in what it says."}]
+    return []
+
+
+def _check_value(field, value, where, label) -> list[dict]:
+    kind = field.get("type")
+    if value in (None, ""):
+        return []
+    if kind in NUMERIC:
+        try:
+            F._num(value)
+        except (F.EvalError, ValueError, ArithmeticError):
+            return [{"where": where, "message": f"The sample's {label} isn't a number."}]
+        if isinstance(value, (list, dict)):
+            return [{"where": where, "message": f"The sample's {label} isn't a number."}]
+    elif kind == "choice":
+        if str(value) not in [str(o) for o in field.get("options") or []]:
+            return [{"where": where, "message": f"The sample's {label} isn't one of its "
+                                                "choices."}]
+    elif kind == "people":
+        if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+            return [{"where": where, "message": f"The sample's {label} is a list of names."}]
+    elif isinstance(value, (list, dict)):
+        return [{"where": where, "message": f"The sample's {label} is a single value."}]
+    return []
+
+
+def _check_sample(definition, sample) -> list[dict]:
+    """A sample is a set of input values the worksheet has: no field it lacks,
+    numbers that are numbers, choices that are its choices."""
+    if sample in (None, {}):
+        return []
+    if not isinstance(sample, dict):
+        return [{"where": "sample", "message": "The sample is a set of values for the fields."}]
+    errors = []
+    fields, table_defs = scalars(definition), tables(definition)
+    for key, value in sample.items():
+        where = f"sample.{key}"
+        if key in table_defs:
+            table = table_defs[key]
+            if not isinstance(value, list) or len(value) > MOST_ROWS:
+                errors.append({"where": where, "message": f"The sample's {table['label']} is "
+                                                          f"a list of up to {MOST_ROWS} rows."})
+                continue
+            columns = {c["key"]: c for c in table["columns"] if c.get("type") != "computed"}
+            for i, row in enumerate(value):
+                if not isinstance(row, dict):
+                    errors.append({"where": f"{where}.{i}", "message": f"Each row of the "
+                                   f"sample's {table['label']} is a set of values."})
+                    continue
+                for ckey, cvalue in row.items():
+                    if ckey == "_flag":
+                        continue
+                    if ckey not in columns:
+                        errors.append({"where": f"{where}.{i}", "message": f"The sample's "
+                                       f"{table['label']} has no column called “{ckey}”."})
+                        continue
+                    errors += _check_value(columns[ckey], cvalue, f"{where}.{i}",
+                                           f"{columns[ckey].get('label') or ckey}, row {i + 1}")
+        elif key in fields and fields[key].get("type") != "computed":
+            errors += _check_value(fields[key], value, where, fields[key].get("label") or key)
+        else:
+            errors.append({"where": where, "message": f"The sample has a value for "
+                                                      f"“{key}”, which isn't a field."})
+    return errors[:20]
 
 
 def _check_formula(text, where, names, label) -> list[dict]:
@@ -245,6 +363,21 @@ def text_of(value, fmt="number") -> str:
     return text
 
 
+def says(template, results) -> str:
+    """A result's sentence, each {key} the text of that result. Empty when a
+    result it names has no value or an error: never half-filled."""
+    if not isinstance(template, str) or not template.strip():
+        return ""
+    found = {r["key"]: r for r in results if r.get("key")}
+    texts = {}
+    for key in placeholders(template):
+        r = found.get(key)
+        if r is None or r.get("error") or r.get("value") in (None, "") or r.get("text") == "–":
+            return ""
+        texts[key] = r["text"]
+    return _PLACEHOLDER.sub(lambda m: texts.get(m.group(1).strip(), ""), template).strip()
+
+
 def _plain(value):
     if isinstance(value, Decimal):
         return float(value)
@@ -330,6 +463,8 @@ def evaluate(definition, values) -> dict:
                         if not error else "–", "error": error,
                         "note": result.get("note", ""),
                         "numeric": isinstance(value, Decimal)})
+    for out, result in zip(results, definition.get("results") or []):
+        out["says"] = says(result.get("says"), results)
     computed = {key: {"value": _plain(env.get(key)),
                       "text": text_of(env.get(key), field.get("format", "number"))
                       if key not in errors else "–", "error": errors.get(key, "")}

@@ -288,3 +288,121 @@ def build(company, *, actor, runs=(), documents=()) -> tuple[bytes, list[str]]:
 def filename(company) -> str:
     stem = re.sub(r"[^A-Za-z0-9]+", "-", company.name).strip("-") or "company"
     return f"{stem}-notebook-pack-{timezone.localdate():%Y%m%d}.zip"
+
+# ------------------------------------------------------------------ one SOP's pack
+
+SOP_README = """# {title}: Notebook pack
+
+Built {day} by {who} at {practice}, for your own Gemini Notebook, to make this SOP's
+training material.
+
+## 1. Make the notebook
+Open notebooklm.google.com with your own Google account and choose **New notebook**.
+Name it "{title}".
+
+## 2. Upload the files
+Upload every file in this pack except this README and prompts.md: the SOP as a PDF and
+the sources it was brainstormed from. Nothing in it is mail, a note, or People data.
+
+## 3. Make the training material
+Open prompts.md. Each prompt makes one thing: a quiz, flashcards, a slide deck, a video
+overview, an audio overview. Paste a prompt into the notebook's chat, or use the
+notebook's own Studio buttons (Video overview, Audio overview) with the prompt as the
+instructions.
+
+## 4. Bring the results back
+Download or copy what the notebook made. In Execs NOW HQ, open the SOP, go to
+**Training requirements** and press **Add what the notebook made**: choose its kind,
+then upload the file (or paste a link to it, for example in the company's Google
+Drive) and give it a title. The people the SOP is published to see it with the SOP in
+the portal.
+
+The notebook is yours, under your own agreement with Google; this pack is a copy of
+what was in the app on {day} and doesn't update itself.
+"""
+
+#: The ready prompts for one SOP's training material.
+SOP_PROMPTS = [
+    ("Quiz", "Write a quiz of ten multiple-choice questions on the SOP \"{title}\", for "
+             "someone who is about to do it for the first time. Each question has four "
+             "answers, one right; give the answer key at the end with the step it comes from. "
+             "Ask about the steps, the warnings and the decisions, not about trivia."),
+    ("Flashcards", "Make 20 flashcards from the SOP \"{title}\": one side a question or a "
+                   "term, the other the answer in a sentence. Cover every definition, every "
+                   "role and every warning. Give them as a two-column table."),
+    ("Slide deck", "Outline a training slide deck of eight to twelve slides for the SOP "
+                   "\"{title}\": a title, then why it matters, who does what, the steps in "
+                   "order (one or two a slide), the warnings, how we know it is working, "
+                   "and a last slide of questions to check understanding. Give each slide a "
+                   "title, three to five bullets and a note for the presenter."),
+    ("Video overview", "Make a video overview of the SOP \"{title}\" for new staff, under "
+                       "five minutes: what it is for, who does each part, each step in "
+                       "order with its warning, and the one thing most often done wrong."),
+    ("Audio overview", "Make an audio overview of the SOP \"{title}\" as a short "
+                       "conversation between two people on the floor: why it matters, "
+                       "walking through the steps in order, and the mistakes to avoid. "
+                       "Keep it under eight minutes and plain."),
+]
+
+
+def sop_build(sop, *, actor) -> tuple[bytes, list[str]]:
+    """One SOP's pack: README, prompts, the SOP as a PDF, and its brainstorms'
+    sources. Never a note (so never a PIN-locked one), mail or People data."""
+    from apps.crm.services.email_layout import branding
+    from apps.tenancy import storage
+
+    from .models import BrainstormSource
+    from .services import _today, latest
+
+    files: list[tuple[str, bytes]] = []
+    n = [0]
+
+    def add(name, content):
+        files.append((f"{n[0]:02d} {name}", content if isinstance(content, bytes)
+                      else content.encode()))
+        n[0] += 1
+
+    brand = branding(sop.company.tenant)
+    day = f"{_today(sop.company):%B %-d, %Y}"
+    add("README.md", SOP_README.format(title=sop.title, day=day,
+                                       who=(actor.full_name or actor.email),
+                                       practice=brand.display_name or brand.practice_name or ""))
+    add("prompts.md", "\n\n".join(
+        [f"# Prompts for the training material of “{sop.title}”"]
+        + [f"## {i}. {title}\n\n{prompt.format(title=sop.title)}"
+           for i, (title, prompt) in enumerate(SOP_PROMPTS, start=1)]))
+    version = latest(sop) if sop.status == Sop.Status.PUBLISHED else None
+    add(f"SOP - {_safe(sop.title)}{'' if version else ' (draft)'}.pdf",
+        exports.pdf(sop, actor, version))
+    sources = BrainstormSource.objects.filter(
+        brainstorm__sop=sop, brainstorm__archived_at__isnull=True,
+        state=BrainstormSource.State.READY).exclude(kind=BrainstormSource.Kind.NOTE) \
+        .select_related("file").order_by("created_at")
+    for source in sources:
+        title = _safe(source.title)[:80] or source.get_kind_display()
+        if source.kind in (BrainstormSource.Kind.IMAGE, BrainstormSource.Kind.PDF) \
+                and source.file_id:
+            try:
+                content = storage.read(source.file)
+            except storage.StorageError:
+                continue
+            ext = "pdf" if source.kind == BrainstormSource.Kind.PDF else \
+                (source.content_type.split("/")[-1] or "png")
+            add(f"Source - {title}.{ext}", content)
+        elif source.text.strip():
+            add(f"Source - {title}.md", f"# {source.title}\n\n{source.text}")
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files:
+            zf.writestr(name, content)
+    names = [name for name, _ in files]
+    AuditEvent.all_objects.create(
+        tenant_id=sop.tenant_id, actor=actor, verb="sops.pack_built",
+        target_type="company", target_id=sop.company_id,
+        payload={"files": names, "sop": str(sop.pk), "title": sop.title})
+    return out.getvalue(), names
+
+
+def sop_filename(sop) -> str:
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", sop.title).strip("-") or "sop"
+    return f"{stem}-notebook-pack-{timezone.localdate():%Y%m%d}.zip"

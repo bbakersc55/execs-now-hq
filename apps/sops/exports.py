@@ -47,52 +47,131 @@ def _image_data(sop, attachment_id):
     return content, f"data:{a.file.content_type};base64,{base64.b64encode(content).decode()}"
 
 
+def _p(text) -> str:
+    return escape(str(text or "")).replace("\n", "<br>")
+
+
+def overview_rows(r) -> list[tuple[str, str]]:
+    """The overview's facts, as label and value, in order."""
+    from .services import review_label
+
+    rows = [("SOP number", r.get("number") or ""),
+            ("Effective date", _day(r.get("effective_date"))),
+            ("Owner", r.get("owner") or ""),
+            ("Review frequency", review_label(r.get("review_months"))),
+            ("Next review", _day(r.get("review_date"))),
+            ("Category", r.get("category") or "")]
+    return [(label, value) for label, value in rows if value]
+
+
+def _day(value) -> str:
+    from datetime import date
+
+    if not value:
+        return ""
+    try:
+        return f"{date.fromisoformat(str(value)[:10]):%B %-d, %Y}"
+    except ValueError:
+        return str(value)
+
+
 def body_html(sop, version=None) -> str:
+    from .services import layout_of, revisions, training_rows
+
     r = record_of(sop, version)
     out = [_CSS, "<div class='sop'>"]
-    meta = [bit for bit in (
-        f"Version {version.number}" if version else "Working copy",
-        f"Owner: {r['owner']}" if r.get("owner") else "",
-        f"Category: {r['category']}" if r.get("category") else "",
-        f"Review by {r['review_date']}" if r.get("review_date") else "") if bit]
-    out.append(f"<p class='intro'>{escape(' · '.join(meta))}</p>")
-    if r.get("purpose"):
-        out.append(f"<h2>Purpose</h2><p>{escape(r['purpose']).replace(chr(10), '<br>')}</p>")
-    if r.get("applies_when"):
-        out.append("<h2>When it applies</h2>"
-                   f"<p>{escape(r['applies_when']).replace(chr(10), '<br>')}</p>")
-    if r.get("roles"):
-        out.append("<h2>Roles</h2><table><tr><th>Role</th><th>What they do</th></tr>"
-                   + "".join(f"<tr><td>{escape(x['name'])}</td><td>{escape(x.get('does', ''))}"
-                             "</td></tr>" for x in r["roles"]) + "</table>")
-    if r.get("process_map"):
-        try:
-            drawn = flow.svg(r["process_map"], title="Process map")
-            out.append(f"<h2>Process map</h2><div class='map'>{drawn}</div>")
-        except flow.FlowError:
-            pass
-    out.append("<h2>Steps</h2><ol class='steps'>")
-    for step in r.get("steps") or []:
-        bits = [escape(step["text"]).replace("\n", "<br>")]
-        if step.get("role"):
-            bits.append(f"<div class='role'>{escape(step['role'])}</div>")
-        if step.get("warning"):
-            bits.append(f"<div class='warn'>{escape(step['warning'])}</div>")
-        for image in step.get("images") or []:
-            _, uri = _image_data(sop, image)
-            if uri:
-                bits.append(f"<img class='step' src='{uri}'>")
-        out.append(f"<li>{''.join(bits)}</li>")
-    out.append("</ol>")
-    if r.get("kpis"):
-        out.append("<h2>The numbers it should move</h2><ul>"
-                   + "".join(f"<li>{escape(k['name'])}</li>" for k in r["kpis"]) + "</ul>")
-    for section in r.get("sections") or []:
-        if section.get("body"):
-            out.append(f"<h2>{escape(section['title'])}</h2>"
-                       f"<p>{escape(section['body']).replace(chr(10), '<br>')}</p>")
+    out.append(f"<p class='intro'>{escape(f'Version {version.number}' if version else 'Working copy')}</p>")
+    for section in layout_of(sop.tenant_id):
+        key, title = section["key"], escape(section["title"])
+        if key == "overview":
+            rows = overview_rows(r)
+            out.append(f"<h2>{title}</h2>" + ("<table>" + "".join(
+                f"<tr><th>{escape(a)}</th><td>{escape(b)}</td></tr>" for a, b in rows)
+                + "</table>" if rows else "<p class='none'>Not filled in yet.</p>"))
+        elif key in ("purpose", "scope", "training", "metrics"):
+            field = {"scope": "applies_when"}.get(key, key)
+            text = r.get(field) or ""
+            extra = ""
+            if key == "training":
+                assets = training_rows(sop)
+                if assets:
+                    extra = "<ul>" + "".join(
+                        f"<li>{escape(a['label'])}: {escape(a['title'])}</li>" for a in assets) \
+                        + "</ul>"
+            if key == "metrics" and r.get("kpis"):
+                extra = "<p>The numbers it should move:</p><ul>" + "".join(
+                    f"<li>{escape(k['name'])}</li>" for k in r["kpis"]) + "</ul>"
+            out.append(f"<h2>{title}</h2>"
+                       + (f"<p>{_p(text)}</p>" if text else "")
+                       + extra + ("" if text or extra else "<p class='none'>None.</p>"))
+        elif key == "definitions":
+            rows = r.get("definitions") or []
+            out.append(f"<h2>{title}</h2>" + ("<table><tr><th>Term</th><th>Definition</th></tr>"
+                       + "".join(f"<tr><td>{escape(d['term'])}</td><td>{_p(d.get('definition'))}"
+                                 "</td></tr>" for d in rows) + "</table>"
+                       if rows else "<p class='none'>None.</p>"))
+        elif key == "roles":
+            rows = r.get("roles") or []
+            out.append(f"<h2>{title}</h2>" + ("<table><tr><th>Role</th><th>Responsibility</th>"
+                       "</tr>" + "".join(f"<tr><td>{escape(x['name'])}</td><td>"
+                                         f"{_p(x.get('does'))}</td></tr>" for x in rows)
+                       + "</table>" if rows else "<p class='none'>None.</p>"))
+        elif key == "steps":
+            out.append(f"<h2>{title}</h2><ol class='steps'>")
+            for step in r.get("steps") or []:
+                bits = []
+                if step.get("when"):
+                    bits.append(f"<div class='when'>{_p(step['when'])}</div>")
+                bits.append(_p(step["text"]))
+                if step.get("role"):
+                    bits.append(f"<div class='role'>{escape(step['role'])}</div>")
+                if step.get("warning"):
+                    bits.append(f"<div class='warn'>{escape(step['warning'])}</div>")
+                for image in step.get("images") or []:
+                    _, uri = _image_data(sop, image)
+                    if uri:
+                        bits.append(f"<img class='step' src='{uri}'>")
+                out.append(f"<li>{''.join(bits)}</li>")
+            out.append("</ol>")
+        elif key == "flowchart":
+            drawn = ""
+            if r.get("process_map"):
+                try:
+                    drawn = flow.svg(r["process_map"], title=section["title"])
+                except flow.FlowError:
+                    drawn = ""
+            out.append(f"<h2>{title}</h2>" + (f"<div class='map'>{drawn}</div>" if drawn
+                                              else "<p class='none'>No flowchart yet.</p>"))
+        elif key == "related":
+            rows = r.get("related") or []
+            out.append(f"<h2>{title}</h2>" + ("<ul>" + "".join(
+                f"<li>{escape(x['title'])}{_related_note(x)}</li>" for x in rows) + "</ul>"
+                if rows else "<p class='none'>None.</p>"))
+        elif key == "revisions":
+            rows = revisions(sop, up_to=version.number if version else None)
+            out.append(f"<h2>{title}</h2>" + ("<table><tr><th>Date</th><th>Version</th>"
+                       "<th>Description of change</th><th>Author</th></tr>" + "".join(
+                           f"<tr><td>{escape(_day(x['date']))}</td><td>{x['version']}</td>"
+                           f"<td>{_p(x['change'])}</td><td>{escape(x['author'])}</td></tr>"
+                           for x in rows) + "</table>"
+                       if rows else "<p class='none'>Not published yet.</p>"))
+        elif key == "custom":
+            body = next((s.get("body") for s in r.get("sections") or []
+                         if s.get("title") == section["title"]), "")
+            if body:
+                out.append(f"<h2>{title}</h2><p>{_p(body)}</p>")
     out.append("</div>")
     return "\n".join(out)
+
+
+def _related_note(x) -> str:
+    if x.get("kind") == "sop":
+        return f" <span class='role'>(SOP{' ' + escape(x['number']) if x.get('number') else ''})</span>"
+    if x.get("kind") == "document":
+        return " <span class='role'>(a document in Execs NOW HQ)</span>"
+    if x.get("url"):
+        return f" <span class='role'>{escape(x['url'])}</span>"
+    return ""
 
 
 def pdf(sop, actor, version=None) -> bytes:
@@ -120,55 +199,91 @@ def docx(sop, version=None) -> bytes:
         (brand.display_name or brand.practice_name or "") + \
         f"  ·  {sop.company.name}  ·  {day:%B %-d, %Y}"
     document.add_heading(r["title"], level=0)
-    meta = [bit for bit in (
-        f"Version {version.number}" if version else "Working copy",
-        f"Owner: {r['owner']}" if r.get("owner") else "",
-        f"Category: {r['category']}" if r.get("category") else "",
-        f"Review by {r['review_date']}" if r.get("review_date") else "") if bit]
-    document.add_paragraph(" · ".join(meta))
-    if r.get("purpose"):
-        document.add_heading("Purpose", level=1)
-        document.add_paragraph(r["purpose"])
-    if r.get("applies_when"):
-        document.add_heading("When it applies", level=1)
-        document.add_paragraph(r["applies_when"])
-    if r.get("roles"):
-        document.add_heading("Roles", level=1)
-        table = document.add_table(rows=1 + len(r["roles"]), cols=2)
-        table.style = "Table Grid"
-        table.rows[0].cells[0].text, table.rows[0].cells[1].text = "Role", "What they do"
-        for i, role in enumerate(r["roles"], start=1):
-            table.rows[i].cells[0].text = role["name"]
-            table.rows[i].cells[1].text = role.get("does", "")
-    if r.get("process_map"):
-        try:
-            picture = flow.png(r["process_map"])
-            document.add_heading("Process map", level=1)
-            document.add_picture(io.BytesIO(picture), width=Inches(6))
-        except flow.FlowError:
-            pass
-    document.add_heading("Steps", level=1)
-    for step in r.get("steps") or []:
-        paragraph = document.add_paragraph(step["text"], style="List Number")
-        if step.get("role"):
-            paragraph.add_run(f"  ({step['role']})").italic = True
-        if step.get("warning"):
-            document.add_paragraph(f"Watch out: {step['warning']}")
-        for image in step.get("images") or []:
-            content, _ = _image_data(sop, image)
-            if content:
+    document.add_paragraph(f"Version {version.number}" if version else "Working copy")
+    from .services import layout_of, revisions, training_rows
+
+    def table(head, rows):
+        t = document.add_table(rows=1 + len(rows), cols=len(head))
+        t.style = "Table Grid"
+        for j, h in enumerate(head):
+            t.rows[0].cells[j].text = h
+        for i, row in enumerate(rows, start=1):
+            for j, value in enumerate(row):
+                t.rows[i].cells[j].text = str(value or "")
+
+    def none(text="None."):
+        document.add_paragraph(text).italic = True
+
+    for section in layout_of(sop.tenant_id):
+        key, title = section["key"], section["title"]
+        if key == "custom":
+            body = next((x.get("body") for x in r.get("sections") or []
+                         if x.get("title") == title), "")
+            if body:
+                document.add_heading(title, level=1)
+                document.add_paragraph(body)
+            continue
+        document.add_heading(title, level=1)
+        if key == "overview":
+            rows = overview_rows(r)
+            table(["", ""], rows) if rows else none("Not filled in yet.")
+        elif key in ("purpose", "scope", "training", "metrics"):
+            text = r.get({"scope": "applies_when"}.get(key, key)) or ""
+            if text:
+                document.add_paragraph(text)
+            extra = []
+            if key == "training":
+                extra = [f"{a['label']}: {a['title']}" for a in training_rows(sop)]
+            if key == "metrics":
+                extra = [k["name"] for k in r.get("kpis") or []]
+            for line in extra:
+                document.add_paragraph(line, style="List Bullet")
+            if not text and not extra:
+                none()
+        elif key == "definitions":
+            rows = [(d["term"], d.get("definition", "")) for d in r.get("definitions") or []]
+            table(["Term", "Definition"], rows) if rows else none()
+        elif key == "roles":
+            rows = [(x["name"], x.get("does", "")) for x in r.get("roles") or []]
+            table(["Role", "Responsibility"], rows) if rows else none()
+        elif key == "steps":
+            for step in r.get("steps") or []:
+                if step.get("when"):
+                    document.add_paragraph(step["when"]).runs[0].bold = True
+                paragraph = document.add_paragraph(step["text"], style="List Number")
+                if step.get("role"):
+                    paragraph.add_run(f"  ({step['role']})").italic = True
+                if step.get("warning"):
+                    document.add_paragraph(f"Watch out: {step['warning']}")
+                for image in step.get("images") or []:
+                    content, _ = _image_data(sop, image)
+                    if content:
+                        try:
+                            document.add_picture(io.BytesIO(content), width=Inches(3.5))
+                        except Exception:  # noqa: BLE001  (a picture Word can't take is left out)
+                            pass
+        elif key == "flowchart":
+            drawn = False
+            if r.get("process_map"):
                 try:
-                    document.add_picture(io.BytesIO(content), width=Inches(3.5))
-                except Exception:  # noqa: BLE001  (a picture Word can't take is left out)
+                    document.add_picture(io.BytesIO(flow.png(r["process_map"])), width=Inches(6))
+                    drawn = True
+                except flow.FlowError:
                     pass
-    if r.get("kpis"):
-        document.add_heading("The numbers it should move", level=1)
-        for k in r["kpis"]:
-            document.add_paragraph(k["name"], style="List Bullet")
-    for section in r.get("sections") or []:
-        if section.get("body"):
-            document.add_heading(section["title"], level=1)
-            document.add_paragraph(section["body"])
+            if not drawn:
+                none("No flowchart yet.")
+        elif key == "related":
+            rows = r.get("related") or []
+            for x in rows:
+                document.add_paragraph(x["title"] + (f" ({x['url']})" if x.get("url") else ""),
+                                       style="List Bullet")
+            if not rows:
+                none()
+        elif key == "revisions":
+            rows = [(_day(x["date"]), x["version"], x["change"], x["author"])
+                    for x in revisions(sop, up_to=version.number if version else None)]
+            table(["Date", "Version", "Description of change", "Author"], rows) if rows \
+                else none("Not published yet.")
     out = io.BytesIO()
     document.save(out)
     return out.getvalue()

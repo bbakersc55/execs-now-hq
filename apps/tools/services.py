@@ -9,6 +9,11 @@ a run hands to the rest of the app.
 - **Hand-offs from a run:** tasks from its flagged rows; a computed value to a
   KPI as a reading "From a tool"; an item proposed to the company's plan; an
   SOP brainstorm with the run as its first source (P10).
+- **2026-11-14 (E):** a run made before the shipped tools had "How to use
+  this", a sample and result sentences takes them from the shipped tool by its
+  key (`definition_for`); the org chart's drawing comes with every evaluation
+  (`worked_out`); a meeting's attendees may name a whole team ("Team: Sales"),
+  which every list of attendees spells out (`teams_of`, `attendees_shown`).
 """
 
 from __future__ import annotations
@@ -176,6 +181,125 @@ def catalog(tenant_id) -> list[dict]:
     out += [{"ref": str(t.pk), "name": t.name, "description": t.description, "shipped": False,
              "source_key": t.source_key}
             for t in Tool.all_objects.filter(tenant_id=tenant_id, archived_at__isnull=True)]
+    return out
+
+
+# ------------------------------------------------------------------ what a run shows
+
+def definition_for(run) -> dict:
+    """The run's snapshot as it is shown. A run of a shipped tool made before
+    the tool had "How to use this", a sample or a sentence on a result takes
+    them from the shipped tool as it is now, by its key; the snapshot itself
+    never changes. Only what fits the snapshot is taken: a sentence naming a
+    result the snapshot hasn't is left out, and the sample keeps only the
+    snapshot's own fields."""
+    definition = run.definition or {}
+    current = (shipped.get(run.tool_key) or {}).get("definition") if run.tool_key else None
+    if not current:
+        return definition
+    out = copy.deepcopy(definition)
+    if not out.get("how_to") and current.get("how_to"):
+        out["how_to"] = list(current["how_to"])
+    if not out.get("sample") and current.get("sample"):
+        kept = D.clean_values(out, current["sample"])
+        out["sample"] = {k: v for k, v in kept.items() if k in current["sample"]}
+    keys = {r.get("key") for r in out.get("results") or [] if r.get("key")}
+    says = {r["key"]: r["says"] for r in current.get("results") or [] if r.get("says")}
+    for result in out.get("results") or []:
+        found = says.get(result.get("key"))
+        if not result.get("says") and found and set(D.placeholders(found)) <= keys:
+            result["says"] = found
+    return out
+
+
+def sample_on(definition, day) -> dict:
+    """The definition with its sample's dates set to `day` (the run's date), so a
+    sample's first meeting is never in the past."""
+    sample = definition.get("sample")
+    if not isinstance(sample, dict) or not sample:
+        return definition
+    out = dict(definition)
+    sample = copy.deepcopy(sample)
+    for key, field in D.scalars(definition).items():
+        if field.get("type") == "date" and sample.get(key):
+            sample[key] = day.isoformat()
+    for key, table in D.tables(definition).items():
+        dates = [c["key"] for c in table["columns"] if c.get("type") == "date"]
+        for row in sample.get(key) or []:
+            for column in dates:
+                if isinstance(row, dict) and row.get(column):
+                    row[column] = day.isoformat()
+    out["sample"] = sample
+    return out
+
+
+def worked_out(definition, values, tenant=None) -> dict:
+    """`definition.evaluate`, with each view's drawing: the org chart as SVG in
+    the practice's colours, the same one the PDF prints."""
+    from apps.crm.services.email_layout import branding
+
+    from . import orgchart
+
+    evaluation = D.evaluate(definition, values)
+    views = []
+    brand = None
+    for view in definition.get("views") or []:
+        if view.get("type") == "org_chart":
+            brand = brand or branding(tenant)
+            views.append(orgchart.drawing(evaluation["values"].get(view.get("table")) or [],
+                                          view, brand))
+        else:
+            views.append({"type": view.get("type")})
+    evaluation["views"] = views
+    return evaluation
+
+
+# ------------------------------------------------------------------ teams as attendees
+
+_TEAM = re.compile(r"^\s*team\s*:\s*(.+?)\s*$", re.I)
+
+
+def team_shown(name, members, is_default=False) -> str:
+    """A team spelled out: Shipping team (Ana Ruiz, Bo Chen). A team whose name
+    ends in "team", and the company's default team (Everyone), keep their
+    names as they are."""
+    label = name if is_default or name.lower().endswith("team") else f"{name} team"
+    return f"{label} ({', '.join(members)})" if members else label
+
+
+def teams_of(company) -> list[dict]:
+    """The company's live teams with their people, for choosing attendees and
+    for spelling a team out: [{name, entry: "Team: …", shown, members}]."""
+    from apps.work.models import ClientTeam, ClientTeamMember
+
+    if company is None or company.is_practice:
+        return []
+    teams = list(ClientTeam.all_objects.filter(tenant_id=company.tenant_id,
+                                               client_company=company,
+                                               archived_at__isnull=True).order_by("name"))
+    people = {t.pk: [] for t in teams}
+    for row in ClientTeamMember.all_objects.filter(
+            tenant_id=company.tenant_id, team__in=teams, membership__revoked_at__isnull=True,
+            membership__client_company=company).select_related("membership__user"):
+        user = row.membership.user
+        people[row.team_id].append((user.full_name or user.email or "").strip())
+    out = []
+    for team in teams:
+        members = sorted({n for n in people[team.pk] if n}, key=str.lower)
+        out.append({"name": team.name, "entry": f"Team: {team.name}", "members": members,
+                    "shown": team_shown(team.name, members, team.is_default)})
+    return out
+
+
+def attendees_shown(attendees, teams) -> list[str]:
+    """Each attendee as a person reads it: a team ("Team: Sales") spelled out
+    as its people; a name, or a team the company hasn't, as written."""
+    by_name = {t["name"].lower(): t for t in teams or []}
+    out = []
+    for item in attendees or []:
+        match = _TEAM.match(str(item))
+        team = by_name.get(match.group(1).lower()) if match else None
+        out.append(team["shown"] if team else str(item))
     return out
 
 
@@ -465,10 +589,14 @@ def _first_on(start: date, weekday: int, cadence: str) -> date:
 
 def events_of(run) -> list[dict]:
     """The recurring events the cadence makes: one per meeting with a day, a
-    time, a length and a first date."""
+    time, a length and a first date. A team among the attendees is spelled
+    out as its people."""
     if "calendar" not in (run.definition.get("actions") or []):
         raise ToolRefused("This tool doesn't make calendar events.", 409)
     agenda = [r for r in run.values.get("agenda") or []]
+    teams = teams_of(run.company) if any(
+        _TEAM.match(str(a)) for row in run.values.get("meetings") or []
+        for a in row.get("attendees") or []) else []
     out = []
     for row in run.values.get("meetings") or []:
         name, cadence, day = (row.get("name") or "").strip(), row.get("cadence"), row.get("day")
@@ -494,7 +622,7 @@ def events_of(run) -> list[dict]:
         for a in sections:
             lines.append(f"{clock:%-I:%M} {a.get('section') or ''} ({a.get('minutes') or 0} min)")
             clock += timedelta(minutes=int(float(a.get("minutes") or 0)))
-        attendees = row.get("attendees") or []
+        attendees = attendees_shown(row.get("attendees") or [], teams)
         note = (("Who attends: " + ", ".join(attendees) + "\n") if attendees else "") + \
             ("Agenda:\n" + "\n".join(lines) if lines else "")
         out.append({"name": name, "cadence": cadence, "day": day, "first": on.isoformat(),

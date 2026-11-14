@@ -20,20 +20,23 @@ import re
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.tenancy.models import AuditEvent, CLIENT_ROLES, Role, TENANT_ROLES
 
 from . import flow
+from . import layout as L
 from .access import audience_memberships
 from .models import (Sop, SopAck, SopAttachment, SopAudiencePerson, SopAudienceTeam,
-                     SopComment, SopKpi, SopVersion)
+                     SopComment, SopKpi, SopTrainingAsset, SopVersion)
 
 READ_WITHIN_DAYS = 7
 MAX_STEPS = 60
 MAX_ROLES = 20
 MAX_SECTIONS = 12
+MAX_DEFINITIONS = 40
+MAX_RELATED = 30
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
 PDF_TYPE = "application/pdf"
@@ -72,14 +75,14 @@ def _text(value, limit) -> str:
 
 # ------------------------------------------------------------------ the template
 
-FIELDS_BY_HEADING = {"purpose": "purpose", "roles": "roles", "steps": "steps",
-                     "measures": "kpis", "review date": "review_date",
-                     "when it applies": "applies_when", "scope": "applies_when"}
+#: A section's guidance, as the hint on the field it fills (the editor's names).
+HINT_FIELD = {"purpose": "purpose", "scope": "applies_when", "roles": "roles",
+              "steps": "steps", "metrics": "kpis", "overview": "review_date",
+              "definitions": "definitions", "related": "related", "training": "training",
+              "flowchart": "process_map"}
 
 
-def template(tenant_id) -> dict:
-    """The practice's copy of the SOP document template, or the Operations
-    Command Center's: {"hints": {field: guidance}, "sections": [{title, body}]}."""
+def _template_body(tenant_id) -> str:
     from apps.centers.content import operations
 
     body = operations.DOCUMENTS["ops_sop"][2]
@@ -92,16 +95,89 @@ def template(tenant_id) -> dict:
             body = own.body
     except (ImportError, LookupError, AttributeError):
         pass
-    hints, sections = {}, []
-    for block in re.split(r"(?m)^#\s+", body)[1:]:
-        heading, _, guidance = block.partition("\n")
-        heading, guidance = heading.strip(), guidance.strip()
-        key = FIELDS_BY_HEADING.get(heading.lower())
-        if key:
-            hints[key] = guidance if not re.fullmatch(r"[\d.\s]*", guidance) else ""
-        elif heading:
-            sections.append({"title": heading[:120], "body": "", "hint": guidance[:500]})
-    return {"hints": hints, "sections": sections[:MAX_SECTIONS]}
+    return body
+
+
+def layout_of(tenant_id) -> list[dict]:
+    """The SOP's sections in the practice's order and names (`apps.sops.layout`)."""
+    return L.resolve(_template_body(tenant_id))
+
+
+def template(tenant_id) -> dict:
+    """The practice's copy of the SOP document template, or the Operations
+    Command Center's: {"hints": {field: guidance}, "sections": [free-text
+    sections], "layout": [{key, title, hint}]}."""
+    shape = layout_of(tenant_id)
+    hints = {HINT_FIELD[s["key"]]: s["hint"] for s in shape if s["key"] in HINT_FIELD}
+    sections = [{"title": s["title"], "body": "", "hint": s["hint"]}
+                for s in shape if s["key"] == "custom"]
+    return {"hints": hints, "sections": sections[:MAX_SECTIONS], "layout": shape}
+
+
+# ------------------------------------------------------------------ the overview
+
+#: A category's prefix for the SOP number. Any other category takes its first
+#: three letters; none at all is "SOP".
+PREFIXES = {"operations": "OPS", "sales": "SAL", "safety": "SAF", "shipping": "SHP",
+            "receiving": "RCV", "quality": "QA", "production": "PRD", "maintenance": "MNT",
+            "finance": "FIN", "accounting": "ACC", "hiring": "HR", "people": "HR",
+            "human resources": "HR", "marketing": "MKT", "purchasing": "PUR",
+            "customer service": "CS", "it": "IT", "admin": "ADM", "administration": "ADM"}
+#: How often an SOP is reviewed: the three named choices; any other number
+#: of months is "Every N months".
+REVIEW_CHOICES = {3: "Quarterly", 6: "Twice a year", 12: "Yearly"}
+MAX_REVIEW_MONTHS = 60
+
+
+def prefix_of(category: str) -> str:
+    words = " ".join(str(category or "").lower().split())
+    if not words:
+        return "SOP"
+    if words in PREFIXES:
+        return PREFIXES[words]
+    letters = re.sub(r"[^a-z]", "", words)
+    return (letters[:3] or "SOP").upper()
+
+
+def _clean_number(value) -> str:
+    return re.sub(r"[^A-Z0-9-]", "", re.sub(r"\s+", "-", str(value or "").strip().upper()))[:20]
+
+
+def next_number(company, category, *, exclude=None) -> str:
+    """The company's next free number for the category's prefix: OPS-01, OPS-02…"""
+    prefix = prefix_of(category)
+    taken = set(Sop.objects.filter(company=company).exclude(pk=getattr(exclude, "pk", None))
+                .values_list("number", flat=True))
+    n = 1
+    for number in taken:
+        m = re.fullmatch(re.escape(prefix) + r"-(\d+)", number or "")
+        if m:
+            n = max(n, int(m.group(1)) + 1)
+    while f"{prefix}-{n:02d}" in taken:
+        n += 1
+    return f"{prefix}-{n:02d}"
+
+
+def review_label(months) -> str:
+    if not months:
+        return ""
+    return REVIEW_CHOICES.get(months, f"Every {months} months")
+
+
+def next_review(months, *, base, today):
+    """The next review: `months` after `base`, rolled on past today."""
+    from dateutil.relativedelta import relativedelta
+
+    if not months:
+        return None
+    day = base + relativedelta(months=months)
+    while day <= today:
+        day += relativedelta(months=months)
+    return day
+
+
+def prefix_of_number(number: str) -> str:
+    return (number or "").rsplit("-", 1)[0] if "-" in (number or "") else ""
 
 
 # ------------------------------------------------------------------ making and editing
@@ -112,10 +188,22 @@ def create(company, *, actor, title, data=None, from_ai_app=False) -> Sop:
     if not title:
         raise SopRefused("An SOP needs a title.")
     shape = template(company.tenant_id)
-    sop = Sop.objects.create(
-        tenant_id=company.tenant_id, company=company, title=title, created_by=actor,
-        updated_by=actor, from_ai_app=from_ai_app,
-        sections=[{"title": s["title"], "body": ""} for s in shape["sections"]])
+    category = _words((data or {}).get("category"), 80)
+    for attempt in range(5):
+        # The number is the company's next free one; two made at the same
+        # moment clash on the unique number, and the second takes the next.
+        try:
+            with transaction.atomic():
+                sop = Sop.objects.create(
+                    tenant_id=company.tenant_id, company=company, title=title,
+                    created_by=actor, updated_by=actor, from_ai_app=from_ai_app,
+                    category=category, number=next_number(company, category),
+                    sections=[{"title": s["title"], "body": ""} for s in shape["sections"]])
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise SopRefused("The SOP's number couldn't be given just now. Try again.",
+                                 409) from None
     if data:
         update(sop, data, actor=actor)
     _audit(sop, actor, "sops.created", title=sop.title, sop=str(sop.pk))
@@ -153,7 +241,52 @@ def _clean_steps(sop, value) -> list:
             continue
         chosen = [str(i) for i in (row.get("images") or []) if str(i) in images][:6]
         out.append({"text": text, "role": _words(row.get("role"), 80),
+                    "when": _text(row.get("when"), 600),
                     "warning": _text(row.get("warning"), 600), "images": chosen})
+    return out
+
+
+def _clean_definitions(value) -> list:
+    out = []
+    for row in (value or [])[:MAX_DEFINITIONS]:
+        if isinstance(row, dict) and _words(row.get("term"), 120):
+            out.append({"term": _words(row.get("term"), 120),
+                        "definition": _text(row.get("definition"), 1000)})
+    return out
+
+
+def _clean_related(sop, value) -> list:
+    """Links, documents in the app (the company's), and the company's other SOPs."""
+    from apps.esign.models import Document
+
+    out = []
+    for row in (value or [])[:MAX_RELATED]:
+        if not isinstance(row, dict):
+            continue
+        kind = row.get("kind") or "link"
+        ref = str(row.get("ref") or "")
+        if kind == "sop":
+            other = Sop.objects.filter(company=sop.company, pk=ref).exclude(pk=sop.pk) \
+                .first() if _uuid(ref) else None
+            if other is None:
+                raise SopRefused("A related SOP is one of this company's other SOPs.")
+            out.append({"kind": "sop", "title": other.title, "ref": str(other.pk)})
+        elif kind == "document":
+            document = Document.all_objects.filter(
+                tenant_id=sop.tenant_id, company=sop.company, pk=ref).first() \
+                if _uuid(ref) else None
+            if document is None:
+                raise SopRefused("A related document is one of this company's documents.")
+            out.append({"kind": "document", "title": document.title, "ref": str(document.pk)})
+        elif kind == "link":
+            url = str(row.get("url") or "").strip()[:1000]
+            title = _words(row.get("title"), 200)
+            if url and not re.match(r"^https?://\S+$", url):
+                raise SopRefused("A link starts with http:// or https://.")
+            if title or url:
+                out.append({"kind": "link", "title": title or url, "url": url})
+        else:
+            raise SopRefused("A related item is a link, a document or another SOP.")
     return out
 
 
@@ -185,7 +318,7 @@ def owner_choices(company) -> list:
     return out
 
 
-def _date(value):
+def _date(value, what="review date"):
     from datetime import date
 
     if value in (None, ""):
@@ -193,7 +326,7 @@ def _date(value):
     try:
         return date.fromisoformat(str(value)[:10])
     except ValueError:
-        raise SopRefused("The review date is a date.") from None
+        raise SopRefused(f"The {what} is a date.") from None
 
 
 @transaction.atomic
@@ -205,6 +338,7 @@ def update(sop, data: dict, *, actor) -> Sop:
     from apps.work.models import ClientTeam
 
     changed = []
+    review_before = sop.review_date
     if "title" in data:
         title = _words(data.get("title"), 200)
         if not title:
@@ -218,6 +352,54 @@ def update(sop, data: dict, *, actor) -> Sop:
     if "category" in data:
         sop.category = _words(data.get("category"), 80)
         changed.append("category")
+    # The overview (2026-11-14). An automatic number follows the category
+    # until the SOP is first published or a person types one.
+    if "category" in data and not sop.number_by_hand and sop.version == 0 \
+            and prefix_of(sop.category) != prefix_of_number(sop.number):
+        sop.number = next_number(sop.company, sop.category, exclude=sop)
+        changed.append("number")
+    if "number" in data:
+        number = _clean_number(data.get("number"))
+        if not number:
+            sop.number = next_number(sop.company, sop.category, exclude=sop)
+            sop.number_by_hand = False
+        else:
+            if Sop.objects.filter(company=sop.company, number=number).exclude(
+                    pk=sop.pk).exists():
+                raise SopRefused(f"{number} is already another of this company's SOPs.")
+            if number != sop.number:
+                sop.number_by_hand = True
+            sop.number = number
+        changed += ["number", "number_by_hand"]
+    if "effective_date" in data:
+        sop.effective_date = _date(data.get("effective_date"), "effective date")
+        changed.append("effective_date")
+    if "review_months" in data:
+        months = data.get("review_months")
+        try:
+            months = int(months) if months not in (None, "") else None
+        except (TypeError, ValueError):
+            raise SopRefused("The review frequency is a number of months.") from None
+        if months is not None and not 1 <= months <= MAX_REVIEW_MONTHS:
+            raise SopRefused(f"Review it every 1 to {MAX_REVIEW_MONTHS} months.")
+        if months != sop.review_months:
+            sop.review_months = months
+            changed.append("review_months")
+            if months:
+                today = _today(sop.company)
+                sop.review_date = next_review(months, base=sop.effective_date or today,
+                                              today=today)
+                changed.append("review_date")
+    if "definitions" in data:
+        sop.definitions = _clean_definitions(data.get("definitions"))
+        changed.append("definitions")
+    if "related" in data:
+        sop.related = _clean_related(sop, data.get("related"))
+        changed.append("related")
+    for key, limit in (("training", 6000), ("metrics", 6000)):
+        if key in data:
+            setattr(sop, key, _text(data.get(key), limit))
+            changed.append(key)
     if "roles" in data:
         sop.roles = _clean_roles(data.get("roles"))
         changed.append("roles")
@@ -228,8 +410,12 @@ def update(sop, data: dict, *, actor) -> Sop:
         sop.sections = _clean_sections(data.get("sections"))
         changed.append("sections")
     if "review_date" in data:
-        sop.review_date = _date(data.get("review_date"))
-        changed.append("review_date")
+        sent = _date(data.get("review_date"))
+        # A new frequency sets the next review; the date the form sent along
+        # with it, unchanged, doesn't undo that. A date typed by hand does.
+        if not ("review_months" in changed and sent == review_before):
+            sop.review_date = sent
+            changed.append("review_date")
     if "process_map" in data:
         text = _text(data.get("process_map"), 12000)
         errors = flow.check(text) if text else []
@@ -332,6 +518,118 @@ def detach(sop, attachment_id, *, actor):
     attachment.delete()
 
 
+# ------------------------------------------------------------------ training assets
+
+#: The largest file of each kind (2026-11-14). A link has no limit: the file
+#: stays where it is (the company's Google Drive, say).
+TRAINING_LIMITS_MB = {"video": 100, "audio": 50, "slides": 25, "quiz": 25,
+                      "flashcards": 25, "other": 25}
+MAX_TRAINING_ASSETS = 30
+
+
+def add_training(sop, *, actor, kind, title, upload=None, url="") -> SopTrainingAsset:
+    from apps.tenancy import storage
+
+    if kind not in SopTrainingAsset.Kind.values:
+        raise SopRefused("Choose what kind of material it is.")
+    title = _words(title, 200)
+    url = str(url or "").strip()[:1000]
+    if (upload is None) == (not url):
+        raise SopRefused("Upload a file or give a link, one of the two.")
+    if url and not re.match(r"^https://[^\s]+$", url):
+        raise SopRefused("A link starts with https://.")
+    if SopTrainingAsset.objects.filter(sop=sop).count() >= MAX_TRAINING_ASSETS:
+        raise SopRefused(f"An SOP holds {MAX_TRAINING_ASSETS} training items at most.")
+    stored = None
+    if upload is not None:
+        limit = TRAINING_LIMITS_MB[kind]
+        if upload.size > limit * 1024 * 1024:
+            raise SopRefused(f"A {SopTrainingAsset.Kind(kind).label.lower()} file is "
+                             f"{limit} MB at most. Put a bigger one in the company's Drive "
+                             "and add the link instead.")
+        content = upload.read()
+        name = re.sub(r"[^A-Za-z0-9._ -]+", "", getattr(upload, "name", "") or "file")[:120] \
+            or "file"
+        stored = storage.save(tenant=sop.company.tenant, content=content,
+                              object_key=storage.object_key(f"sops/{sop.pk}/training", name),
+                              purpose="sop_training",
+                              content_type=(upload.content_type or "application/octet-stream")
+                              .split(";")[0][:100])
+        title = title or _words(name.rsplit(".", 1)[0], 200)
+    if not title:
+        raise SopRefused("Give it a title.")
+    asset = SopTrainingAsset.objects.create(
+        tenant_id=sop.tenant_id, sop=sop, kind=kind, title=title, file=stored, url=url,
+        created_by=actor)
+    Sop.objects.filter(pk=sop.pk).update(updated_at=timezone.now())
+    _audit(sop, actor, "sops.training_added", sop=str(sop.pk), title=title, kind=kind)
+    return asset
+
+
+def remove_training(sop, asset_id, *, actor):
+    asset = SopTrainingAsset.objects.filter(sop=sop, pk=asset_id).first() \
+        if _uuid(asset_id) else None
+    if asset is None:
+        raise SopRefused("That isn't one of this SOP's training items.", 404)
+    from apps.tenancy import storage
+
+    stored = asset.file
+    asset.delete()
+    if stored is not None:
+        try:
+            storage.delete(stored)
+        except storage.StorageError:
+            pass
+    Sop.objects.filter(pk=sop.pk).update(updated_at=timezone.now())
+    _audit(sop, actor, "sops.training_removed", sop=str(sop.pk), title=asset.title)
+
+
+def training_rows(sop) -> list[dict]:
+    return [{"id": str(a.pk), "kind": a.kind, "label": a.get_kind_display(), "title": a.title,
+             "url": a.url or f"/api/sops/{sop.pk}/training/{a.pk}/",
+             "is_link": bool(a.url), "size": a.file.byte_size if a.file_id else None}
+            for a in sop.training_assets.select_related("file")]
+
+
+# ------------------------------------------------------------------ related documents
+
+def _document_choices(company) -> list:
+    from apps.esign.models import Document
+
+    if company.is_practice:
+        return []
+    return [{"id": str(d.pk), "title": d.title, "state": d.get_state_display()}
+            for d in Document.all_objects.filter(tenant_id=company.tenant_id, company=company)
+            .order_by("-created_at")[:100]]
+
+
+def related_rows(sop, rows, *, staff, membership=None) -> list:
+    """The related items with where each opens: a link to itself, another SOP
+    on its page (in the portal only when the reader can open it), a document
+    on the company's page or, for a client, the portal's Documents."""
+    from .access import portal_reaches
+
+    others = {str(o.pk): o for o in Sop.objects.filter(
+        company=sop.company, pk__in=[r.get("ref") for r in rows or []
+                                     if r.get("kind") == "sop" and _uuid(r.get("ref"))])}
+    out = []
+    for row in rows or []:
+        href = None
+        if row.get("kind") == "link":
+            href = row.get("url") or None
+        elif row.get("kind") == "sop":
+            other = others.get(str(row.get("ref")))
+            if other is not None and (staff or (membership is not None
+                                                and portal_reaches(other, membership))):
+                href = f"/sops/{other.pk}"
+            row = {**row, "number": other.number if other is not None else ""}
+        elif row.get("kind") == "document":
+            href = "/documents" if not staff else (
+                None if sop.company.is_practice else f"/companies/{sop.company_id}")
+        out.append({**row, "href": href})
+    return out
+
+
 # ------------------------------------------------------------------ versions
 
 def snapshot(sop) -> dict:
@@ -341,11 +639,50 @@ def snapshot(sop) -> dict:
     attachments = [{"id": str(a.pk), "name": a.name, "kind": a.kind}
                    for a in sop.attachments.all()
                    if a.kind == SopAttachment.Kind.PDF or str(a.pk) in used]
-    return {"title": sop.title, "purpose": sop.purpose, "applies_when": sop.applies_when,
-            "roles": sop.roles, "steps": sop.steps, "sections": sop.sections,
-            "owner": _name(sop.owner), "category": sop.category,
+    return {"title": sop.title, "number": sop.number,
+            "effective_date": sop.effective_date.isoformat() if sop.effective_date else None,
+            "review_months": sop.review_months,
+            "purpose": sop.purpose, "applies_when": sop.applies_when,
+            "definitions": sop.definitions, "roles": sop.roles, "steps": sop.steps,
+            "related": sop.related, "training": sop.training, "metrics": sop.metrics,
+            "sections": sop.sections, "owner": _name(sop.owner), "category": sop.category,
             "review_date": sop.review_date.isoformat() if sop.review_date else None,
             "process_map": sop.process_map, "kpis": kpis, "attachments": attachments}
+
+
+#: What a version published before the eleven sections (2026-11-14) lacks,
+#: read as empty. The number is given to every SOP by the migration, so a
+#: version without one isn't a change to publish.
+SNAPSHOT_EMPTY = {"number": "", "effective_date": None, "review_months": None,
+                  "definitions": [], "related": [], "training": "", "metrics": ""}
+
+
+def _same(old: dict, now: dict) -> bool:
+    for key, value in now.items():
+        if key not in old:
+            if key == "number" or value in (SNAPSHOT_EMPTY.get(key), "", [], None):
+                continue
+            return False
+        if key == "steps":
+            # A step published before steps had a trigger reads as one without.
+            if [{"when": "", **x} for x in old.get(key) or []] != \
+                    [{"when": "", **x} for x in value or []]:
+                return False
+            continue
+        if old[key] != value:
+            return False
+    return True
+
+
+def revisions(sop, up_to=None) -> list[dict]:
+    """The revision history: each published version's date, number, what
+    changed and who published it, oldest first (up to a version, for its PDF)."""
+    rows = SopVersion.objects.filter(sop=sop).select_related("published_by").order_by("number")
+    if up_to is not None:
+        rows = rows.filter(number__lte=up_to)
+    return [{"date": v.published_at.date().isoformat(), "version": v.number,
+             "change": v.change_note + (" (minor change)" if v.minor else ""),
+             "author": _name(v.published_by)} for v in rows]
 
 
 def latest(sop):
@@ -356,7 +693,7 @@ def unpublished_changes(sop) -> bool:
     last = latest(sop)
     if last is None:
         return True
-    return last.snapshot != snapshot(sop)
+    return not _same(last.snapshot or {}, snapshot(sop))
 
 
 @transaction.atomic
@@ -382,6 +719,16 @@ def publish(sop, *, actor, change_note="", minor=False) -> SopVersion:
     if not audience_memberships(sop) and sop.audience != Sop.Audience.COMPANY:
         raise SopRefused("The audience has nobody in it yet.")
     now = timezone.now()
+    today = _today(sop.company)
+    # The overview: the first version takes effect the day it is published
+    # unless a date was set; a review frequency sets the next review from
+    # each publish.
+    if first and sop.effective_date is None:
+        sop.effective_date = today
+    if sop.review_months and not minor:
+        sop.review_date = next_review(sop.review_months, base=today, today=today)
+    if first and not sop.number:
+        sop.number = next_number(sop.company, sop.category, exclude=sop)
     number = sop.version + 1
     version = SopVersion.objects.create(
         tenant_id=sop.tenant_id, sop=sop, number=number, change_note=note, minor=bool(minor),
@@ -645,7 +992,7 @@ def digest_lines(digest) -> list[str]:
 
 def summary(sop, access=None) -> dict:
     state = reads(sop) if (access is None or access.sees_reads) else None
-    return {"id": str(sop.pk), "title": sop.title, "status": sop.status,
+    return {"id": str(sop.pk), "title": sop.title, "number": sop.number, "status": sop.status,
             "category": sop.category, "version": sop.version,
             "company": {"id": "practice" if sop.company.is_practice else str(sop.company_id),
                         "name": sop.company.name, "is_practice": sop.company.is_practice},
@@ -724,7 +1071,18 @@ def full(sop, access) -> dict:
 
     out = summary(sop, access)
     last = latest(sop)
+    shape = template(sop.tenant_id)
     out.update({
+        "layout": shape["layout"],
+        "number": sop.number, "number_by_hand": sop.number_by_hand,
+        "effective_date": sop.effective_date.isoformat() if sop.effective_date else None,
+        "review_months": sop.review_months, "review_label": review_label(sop.review_months),
+        "definitions": sop.definitions, "related": related_rows(sop, sop.related, staff=True),
+        "training": sop.training, "metrics": sop.metrics,
+        "training_assets": training_rows(sop),
+        "revisions": revisions(sop),
+        "brain_dump": str(sop.brainstorms.filter(archived_at__isnull=True)
+                          .values_list("pk", flat=True).first() or "") or None,
         "purpose": sop.purpose, "applies_when": sop.applies_when, "roles": sop.roles,
         "steps": sop.steps, "sections": sop.sections, "process_map": sop.process_map,
         "map_svg": map_svg(sop.process_map, sop.title),
@@ -754,7 +1112,7 @@ def full(sop, access) -> dict:
         "may": {**access.describe(),
                 "publish": access.publishes and sop.status != Sop.Status.ARCHIVED,
                 "edit": access.drafts and sop.status != Sop.Status.ARCHIVED},
-        "hints": template(sop.tenant_id)["hints"],
+        "hints": shape["hints"],
         "last_version": last.number if last else 0,
     })
     if access.drafts:
@@ -767,6 +1125,10 @@ def full(sop, access) -> dict:
                        for m in _company_people(sop.company)],
             "kpis": [{"id": str(k.pk), "name": k.name} for k in Kpi.objects.filter(
                 scorecard__company=sop.company, archived_at__isnull=True).order_by("name")],
+            "documents": _document_choices(sop.company),
+            "sops": [{"id": str(o.pk), "title": o.title, "number": o.number}
+                     for o in Sop.objects.filter(company=sop.company).exclude(pk=sop.pk)
+                     .exclude(status=Sop.Status.ARCHIVED).order_by("number", "title")],
         }
     return out
 
@@ -792,11 +1154,19 @@ def portal_view(sop, membership, access) -> dict:
         "-acknowledged_at").first()
     from .access import in_audience
 
+    snap = {**SNAPSHOT_EMPTY, **(snap or {})}
     out = {"id": str(sop.pk), "title": snap["title"], "version": version.number,
            "published_at": version.published_at.isoformat(), "change_note": version.change_note,
-           "minor": version.minor, "purpose": snap["purpose"],
-           "applies_when": snap["applies_when"], "roles": snap["roles"],
+           "minor": version.minor, "layout": layout_of(sop.tenant_id),
+           "number": snap["number"], "effective_date": snap["effective_date"],
+           "review_months": snap["review_months"],
+           "review_label": review_label(snap["review_months"]),
+           "purpose": snap["purpose"], "applies_when": snap["applies_when"],
+           "definitions": snap["definitions"], "roles": snap["roles"],
            "steps": snap["steps"], "sections": snap["sections"], "owner": snap["owner"],
+           "related": related_rows(sop, snap["related"], staff=False, membership=membership),
+           "training": snap["training"], "metrics": snap["metrics"],
+           "training_assets": training_rows(sop), "revisions": revisions(sop),
            "category": snap["category"], "review_date": snap["review_date"],
            "kpis": snap["kpis"], "map_svg": map_svg(snap["process_map"], snap["title"]),
            "attachments": [{**a, "url": f"/api/sops/{sop.pk}/attachments/{a['id']}/"}

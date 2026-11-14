@@ -465,7 +465,8 @@ register(KpiLibraryEntry, factories.KpiLibraryEntryFactory,
 # audience (tests/test_sops.py).
 from apps.sops.models import (  # noqa: E402
     Brainstorm, BrainstormMessage, BrainstormProposal, BrainstormSource, PackPrompts, Sop, SopAck,
-    SopAttachment, SopAudiencePerson, SopAudienceTeam, SopComment, SopKpi, SopVersion,
+    SopAttachment, SopAudiencePerson, SopAudienceTeam, SopComment, SopKpi, SopTrainingAsset,
+    SopVersion,
 )
 
 register(Sop, factories.SopFactory, api_exposed=False)
@@ -476,6 +477,8 @@ register(SopVersion, factories.SopVersionFactory, api_exposed=False)
 register(SopAck, factories.SopAckFactory, api_exposed=False)
 register(SopAttachment, factories.SopAttachmentFactory, api_exposed=False)
 register(SopComment, factories.SopCommentFactory, api_exposed=False)
+# 2026-11-14: training material, a file or a link (tests/test_sops_layout.py).
+register(SopTrainingAsset, factories.SopTrainingAssetFactory, api_exposed=False)
 register(Brainstorm, factories.BrainstormFactory, api_exposed=False)
 register(BrainstormSource, factories.BrainstormSourceFactory, api_exposed=False)
 register(BrainstormMessage, factories.BrainstormMessageFactory, api_exposed=False)

@@ -3,7 +3,9 @@ value is written here as a person would have typed it.
 
 - **Acme Fasteners:** one run of each of the four Operations tools, from the
   reset's discovery weeks. The org chart and the bottleneck finder are shared
-  with Wiley in the portal.
+  with Wiley in the portal. Each seat has its department, and the monthly
+  review is attended by a whole team: Acme's default team, Everyone, spelled
+  out as its people wherever the attendees are listed (2026-11-14).
 - **Summit:** one tool of its own, "Client health check", made as if with the
   builder, and one run of it on the practice itself.
 """
@@ -41,19 +43,22 @@ CAPACITY = {"demand_change": 10, "roles": [
         {"item": "Orders shipped", "role": "Shipping", "volume": 45, "hours_per_unit": 1.2}]}
 
 ORG = {"seats": [
-    {"seat": "Owner", "reports_to": "", "person": "Wiley Coyote", "knows": "Yes",
-     "wants": "Yes", "has_time": "Yes",
+    {"seat": "Owner", "department": "Leadership", "reports_to": "", "person": "Wiley Coyote",
+     "knows": "Yes", "wants": "Yes", "has_time": "Yes",
      "responsibilities": "Where the company is going\nKey customers\nCash and pricing"},
-    {"seat": "Plant manager", "reports_to": "Owner", "person": "Marvin Martian",
-     "knows": "Yes", "wants": "Yes", "has_time": "No", "_flag": True,
+    {"seat": "Plant manager", "department": "Production", "reports_to": "Owner",
+     "person": "Marvin Martian", "knows": "Yes", "wants": "Yes", "has_time": "No",
+     "_flag": True,
      "responsibilities": "Runs the weekly meeting\nScheduling\nThe floor's people\n"
                          "Scrap and on-time numbers"},
-    {"seat": "Purchasing lead", "reports_to": "Owner", "person": "Daffy Duckworth",
-     "knows": "Yes", "wants": "No", "has_time": "Yes",
+    {"seat": "Purchasing lead", "department": "Purchasing", "reports_to": "Owner",
+     "person": "Daffy Duckworth", "knows": "Yes", "wants": "No", "has_time": "Yes",
      "responsibilities": "Steel and wire buying\nSupplier prices\nStock levels"},
-    {"seat": "Quality lead", "reports_to": "Plant manager", "person": "",
-     "responsibilities": "Inspection plans\nScrap tags\nCustomer returns", "_flag": True},
-    {"seat": "Second-shift supervisor", "reports_to": "Plant manager", "person": "",
+    {"seat": "Quality lead", "department": "Quality", "reports_to": "Plant manager",
+     "person": "", "responsibilities": "Inspection plans\nScrap tags\nCustomer returns",
+     "_flag": True},
+    {"seat": "Second-shift supervisor", "department": "Production",
+     "reports_to": "Plant manager", "person": "",
      "responsibilities": "Night shift output\nNight shift safety"}]}
 
 
@@ -66,8 +71,9 @@ def _meetings(start):
         {"name": "Every-two-weeks actions check", "cadence": "Every two weeks",
          "day": "Wednesday", "time": "15:00", "minutes": 30, "start": first,
          "attendees": ["Marvin Martian", "Daffy Duckworth"]},
+        # A whole team: Acme's default team, everyone in its portal.
         {"name": "Monthly review", "cadence": "Monthly", "day": "Thursday", "time": "10:00",
-         "minutes": 90, "start": first, "attendees": people},
+         "minutes": 90, "start": first, "attendees": ["Team: Everyone", "Daffy Duckworth"]},
         {"name": "Quarterly planning", "cadence": "Quarterly", "day": "Friday", "time": "09:00",
          "minutes": 240, "start": first, "attendees": people}],
         "agenda": [

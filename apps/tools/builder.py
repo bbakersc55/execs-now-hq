@@ -22,7 +22,8 @@ MAX_TOKENS = 6000
 SYSTEM = """You design a worksheet tool for a fractional executive's practice. Reply
 with JSON only: {"name": "...", "description": "...", "definition": {...}}.
 
-The definition is {"sections": [...], "results": [...]}:
+The definition is {"sections": [...], "results": [...], "how_to": [...],
+"sample": {...}}:
 - a section is {"title", "fields": [...]};
 - a field is {"key", "label", "type"} where key is lower_snake_case and type is
   one of: text, long_text, number, money, percent, date, choice (add "options":
@@ -30,7 +31,14 @@ The definition is {"sections": [...], "results": [...]}:
 - a table field has "columns": [fields of those types, or computed];
 - a computed field or column has "formula" and "format" (number, money,
   percent, text, list, hours, people);
-- a result is {"key", "label", "formula", "format", "note"}.
+- a result is {"key", "label", "formula", "format", "note", "says"}, where
+  "says" is one plain sentence saying what the result means, with {key} for a
+  result's value, for example "{tightest} is the most stretched role.";
+- "how_to" is three or four short, plain steps telling a person how to fill
+  the worksheet in and read it;
+- "sample" is a believable set of input values, {field key: value, table key:
+  [{column key: value}, ...]}, with no computed values; numbers as numbers,
+  choices from their options.
 
 Formulas use only: numbers, "strings", + - * / ^, parentheses, = != < <= > >=,
 and, or, not, a field's key, a table's column as table.column, and inside a
