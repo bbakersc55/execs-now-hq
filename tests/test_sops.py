@@ -155,10 +155,15 @@ def test_versions_minor_changes_and_reading_again(published):
 def test_a_late_read_is_told_to_the_practice_and_the_client_owner(published):
     from apps.notify.models import Notice
 
+    from apps.scorecard import board
+
     sc, sop = published, published["sop"]
+    # The practice's own date, as the app reads it: the server's (UTC) date is
+    # a day ahead of a practice in the Americas each evening, and a read-by
+    # day of "yesterday, UTC" was not yet past there (2026-11-14 UTC).
     with tenant_context(sc["tenant"].pk):
         SopVersion.objects.filter(sop_id=sop["id"]).update(
-            read_by=timezone.localdate() - timedelta(days=1))
+            read_by=board.today_for(sc["tenant"]) - timedelta(days=1))
     r = post(client(sc, "member"), f"{S}{sop['id']}/ack/")
     assert r.json()["late"] is True
     with tenant_context(sc["tenant"].pk):

@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-13 UTC**, after Release 41. **The next session starts at
-"2026-11-13, later: the plans engine (P11)" just below**; then
+2026-11-14 UTC**, after Release 42. **The next session starts at
+"2026-11-14: Release 42, the Operations Command Center's engines" just
+below**; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
 "2026-11-12, late: where things stand"; then
 "2026-11-12: Release 40, Command Centers"; then
@@ -30,7 +31,40 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-13, later: the plans engine (P11), built on `dev`, not released
+## 2026-11-14: Release 42, the Operations Command Center's engines
+
+- **Release 42 is live:** `main` at `d403a92`. Eighteen additive migrations,
+  applied by the runbook sequence:
+  - backup `execsnowhq_prod_20261113_235448` (the owner's run-now);
+  - pushed 00:00:08;
+  - applied 00:01:52–02:13, all `OK`;
+  - web serving about 2 min 12 s after the push.
+
+  Worker and `mcp` are up too. Recorded in the runbook ("Observed at
+  Release 42").
+- **It carried:**
+  - the plans engine (P11, `docs/p11_plans_engine.md`), with This week's
+    team line and teammates' sprint tasks behind a per-client switch, on by
+    default;
+  - the worksheet engine (P12): four Operations tools and the tool builder;
+  - the connector rails (P13): a webhook, any MCP server or any API feeding a
+    KPI, with webhook limits per sender and per address;
+  - the SOP studio (P10, `docs/p10_sop_studio.md`), with the media key
+    (Gemini) off until a practice enters one;
+  - the card form fix (`docs/p4_billing.md` §1.4, 2026-11-13): Collect.js
+    refused our script tag's `data-collect-js`; a form that can't load now
+    tells the payer and gives the practice owner a Notice;
+  - the New bonus plan form fix.
+- **On release:** nothing to set in Railway, and no new scheduled job.
+  `NMI_SANDBOX_CARD_FORM_HOST` is for laptop proofs only and refused elsewhere.
+- **Card payments stay paused.** After Resume, the first live pay page on
+  `secure.vaultixpay.com` is the first proof that Vaultix accepts the live
+  public key and draws the fields; a token and a sale there are proved only
+  by the first real payment.
+- **Not yet exercised in production:** an SOP, a brainstorm, a tool run, a
+  connector feeding a KPI, a plan.
+
+## 2026-11-13, later: the plans engine (P11), built on `dev` (released at 42)
 
 - **Spec as built:** `docs/p11_plans_engine.md`.
   - One plan per company and one for the practice, in five horizons.

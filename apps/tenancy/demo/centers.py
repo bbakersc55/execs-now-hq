@@ -75,12 +75,23 @@ def operations(world):
         rest = [str(g.pk) for g in goal_order.current_goals(company) if g.pk != run.goal_id]
         goal_order.set_order(company, [str(run.goal_id), *rest], actor=owner)
     # Three weeks in: what was due is done, but for one thing running late.
+    # The late one is the last thing due **before this week**, so last week's
+    # sprint closes with it carried over whatever day the seed runs: when it
+    # was simply the last thing due before today, a seed run late in the week
+    # put it in this week and last week closed with nothing carried (seen on a
+    # Saturday, 2026-11-14 UTC).
     from apps.crm.models import Task
+    from apps.plans import periods as P
     from apps.work.services import apply_task_changes
 
+    this_week = P.start_of("week", world.today, company)
     past = list(Task.objects.filter(project__goal=run.goal, due_date__lt=world.today)
                 .order_by("due_date", "created_at"))
-    for task in past[:-1]:
+    before = [t for t in past if t.due_date < this_week]
+    late = before[-1] if before else (past[-1] if past else None)
+    for task in past:
+        if task is late:
+            continue
         with at(moment(task.due_date, 15, 0)):
             apply_task_changes(task, actor=owner, role="FF", changes={"status": "done"})
 

@@ -878,6 +878,24 @@ applied by me 02:23:10–15, `OK`. R5: `migrations current` 02:23:27, running
 200. `enhq-site` not rebuilt (no change under `site/`). **Push to web serving:
 about 3 min 32 s.** Card payments stay paused by the platform owner's switch.
 
+**Observed at Release 42 (2026-11-14 UTC, eighteen migrations, all additive,
+`d403a92`: the plans engine, the worksheet engine, the connector rails, the
+SOP studio, This week's team view, the card form fix):** R1: the owner ran the
+backup by hand: `execsnowhq_prod_20261113_235448.sql.gz`, 15.9 MB, done by
+23:55 (`gcloud` signed out, so read from `railway logs --service backup`). R2:
+`main` fast-forwarded `4065f35..d403a92`, pushed 00:00:08. R3: worker
+`ee36e2ad` `WAITING` 00:01:33, its ten shown the first ten in plan order; web's
+own `WAITING` line at 00:01:46 named all eighteen, exactly the release's. R4:
+applied by me 00:01:52–02:13, all eighteen `OK` (`aiconnect 0002`, `centers
+0003–0004`, `crm 0058–0060`, `notify 0004–0005`, `plans 0001–0002`,
+`platform 0002`, `scorecard 0016–0017`, `work 0014–0015`, `tenancy 0025`,
+`sops 0001`, `tools 0001`). R5: `migrations current` 00:02:43, running
+00:02:47. R5b: no new scheduled job. R6a: `mcp` `40bf2c98` current 00:02:34,
+`/healthz` `ok`. R6: web `884dc040` SUCCESS by itself, gunicorn booting
+00:02:20; `/healthz` 200 and `/api/sops/` 403 signed out (404 before).
+`enhq-site` SKIPPED (no change under `site/`). **Push to web serving: about
+2 min 12 s.** Card payments stay paused by the platform owner's switch.
+
 ---
 
 ## Part A — the owner's steps, in order
