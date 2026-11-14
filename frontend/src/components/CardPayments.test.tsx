@@ -8,7 +8,7 @@ import { ClientAutopay } from "../screens/ClientAutopay";
 import { ClientInvoices } from "../screens/ClientInvoices";
 import { YourSubscription } from "../screens/YourSubscription";
 import { CardPaymentsSwitchCard } from "./CardPaymentsSwitch";
-import { COLLECT_TAG_DATA, FIELDS_WITHIN, FORM_FAILED, NmiCardForm } from "./NmiCardForm";
+import { COLLECT_TAG_DATA, FIELD_WORDS, FIELDS_WITHIN, FORM_FAILED, NmiCardForm } from "./NmiCardForm";
 
 vi.mock("@nmipayments/nmi-pay", () => ({
   mountNmiPayments: () => { throw new Error("the Payment Component must not load here"); },
@@ -298,6 +298,206 @@ describe("Collect.js is one per page (2026-11-13)", () => {
       .ccnumber.selector).toBe(first));
     expect(screen.queryByTestId("card-form-waiting")).toBeNull();
     expect(screen.getByRole("button", { name: "Save this card" })).toBeInTheDocument();
+  });
+});
+
+/** Collect.js's own words for a box, as the sandbox gave them (2026-11-14). */
+const RAW = {
+  empty: "Field is empty",
+  ccnumber: "Card number must be 13-19 digits and a recognizable card format",
+  ccexp: "Expiration date must be a present or future month and year",
+  cvv: "CVV must be 3 or 4 digits",
+} as const;
+type Box = "ccnumber" | "ccexp" | "cvv";
+type State = "empty" | "wrong" | "ok";
+
+/**
+ * Collect.js checking its boxes as the sandbox showed (2026-11-14): a box
+ * reports when the payer leaves it (a "blur" on its frame, then the check);
+ * Pay checks every box, and an attempt with one that fails is held, Pay
+ * ignored, until its timeout. `freeable: false` is a Collect.js without the
+ * `inSubmission` the form ends a failed attempt by.
+ */
+function checkingCollect(tag: HTMLScriptElement, boxes: Record<Box, State>, freeable = true) {
+  const seen = { config: undefined as Record<string, unknown> | undefined, starts: 0 };
+  let held = false;
+  const cj: Record<string, unknown> = {
+    configure: (config: Record<string, unknown>) => { seen.config = config; },
+    startPaymentRequest: () => {
+      if (freeable ? cj.inSubmission : held) return;
+      seen.starts += 1;
+      const c = seen.config!;
+      if (Object.values(boxes).every((s) => s === "ok")) {
+        (c.callback as (r: { token: string }) => void)({ token: "tok-from-collect" });
+        return;
+      }
+      held = true;
+      if (freeable) cj.inSubmission = true;
+      cj.responseTimeout = window.setTimeout(() => {
+        held = false;
+        if (freeable) cj.inSubmission = false;
+        (c.timeoutCallback as () => void)();
+      }, 15000);
+      for (const f of ["ccnumber", "cvv", "ccexp"] as Box[]) check(f);
+    },
+  };
+  if (freeable) cj.inSubmission = false;
+  window.CollectJS = cj as unknown as typeof window.CollectJS;
+  tag.onload?.(new Event("load"));
+  const check = (f: Box) => (seen.config!.validationCallback as (
+    f: string, ok: boolean, m: string) => void)(f, boxes[f] === "ok",
+    boxes[f] === "ok" ? "Success" : boxes[f] === "empty" ? RAW.empty : RAW[f]);
+  const frame = (f: Box) => {
+    const box = document.querySelector((seen.config!.fields as Record<Box, { selector: string }>)
+      [f].selector)!;
+    let found = box.querySelector("iframe");
+    if (!found) {
+      found = document.createElement("iframe");
+      found.id = `CollectJSInline${f}`;
+      box.appendChild(found);
+    }
+    return found;
+  };
+  /** The payer leaving a box: Collect.js's blur on its frame, then its check. */
+  const leave = (f: Box) => {
+    frame(f).dispatchEvent(new CustomEvent("blur", { bubbles: true,
+                                                     detail: { empty: boxes[f] === "empty" } }));
+    check(f);
+  };
+  const said = (f: Box) => document.querySelector(`.collect-said[data-field="${f}"]`)!
+    .textContent;
+  return { seen, cj, boxes, check, leave, said };
+}
+
+async function collectForm(boxes: Record<Box, State>, freeable = true) {
+  const tag = await waitFor(() => document.querySelector<HTMLScriptElement>(TAG)!);
+  const form = checkingCollect(tag, boxes, freeable);
+  await waitFor(() => expect(form.seen.config).toBeDefined());
+  (form.seen.config!.fieldsAvailableCallback as () => void)();
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Pay / })).toBeEnabled());
+  return form;
+}
+
+/** None of Collect.js's own words is anywhere on the page, and no banner. */
+function noRawWords() {
+  const text = document.body.textContent ?? "";
+  for (const raw of Object.values(RAW)) expect(text).not.toContain(raw);
+  expect(document.querySelector(".banner")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+}
+
+describe("a box's problem is said beside it, in plain words (2026-11-14)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    document.querySelectorAll(TAG).forEach((t) => t.remove());
+    delete window.CollectJS;
+  });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("says nothing until the payer has left the box, then says what it needs beside it",
+    async () => {
+      render(<NmiCardForm publicKey="pub" amountCents={500} payPath="/api/x/pay/"
+        onDone={() => {}} form={{ kind: "collect", script_url: VAULTIX }} />);
+      const f = await collectForm({ ccnumber: "empty", ccexp: "empty", cvv: "empty" });
+      // A check heard before the box's own blur waits for it.
+      f.check("ccnumber");
+      await waitFor(() => expect(f.said("ccnumber")).toBe(""));
+      f.leave("ccnumber");
+      await waitFor(() => expect(f.said("ccnumber")).toBe(FIELD_WORDS.ccnumber.empty));
+      expect(f.said("ccexp")).toBe("");
+      expect(f.said("cvv")).toBe("");
+      expect(document.querySelector(".collect-field.invalid")).not.toBeNull();
+      noRawWords();
+
+      f.boxes.ccnumber = "wrong";
+      f.leave("ccnumber");
+      await waitFor(() => expect(f.said("ccnumber")).toBe("That card number doesn't look right"));
+      f.boxes.ccexp = "wrong";
+      f.leave("ccexp");
+      await waitFor(() => expect(f.said("ccexp")).toBe("Enter the expiry date as MM/YY"));
+      f.boxes.cvv = "wrong";
+      f.leave("cvv");
+      await waitFor(() => expect(f.said("cvv")).toBe("Enter the security code"));
+      noRawWords();
+
+      f.boxes.ccnumber = "ok";
+      f.leave("ccnumber");
+      await waitFor(() => expect(f.said("ccnumber")).toBe(""));
+      expect(screen.getByRole("button", { name: "Pay $5.00" })).toBeEnabled();
+    });
+
+  it("Pay with empty boxes says what each needs, frees Pay at once, and the fixed card pays",
+    async () => {
+      const fetchMock = mockApi({ "POST /api/x/pay/": { status: "approved", message: "Paid.",
+                                                        balance_cents: 0 } });
+      vi.stubGlobal("fetch", fetchMock);
+      const done = vi.fn();
+      render(<NmiCardForm publicKey="pub" amountCents={500} payPath="/api/x/pay/"
+        onDone={done} form={{ kind: "collect", script_url: VAULTIX }} />);
+      const f = await collectForm({ ccnumber: "empty", ccexp: "empty", cvv: "empty" });
+      await userEvent.click(screen.getByRole("button", { name: "Pay $5.00" }));
+      await waitFor(() => expect(f.said("ccnumber")).toBe("Enter your card number"));
+      expect(f.said("ccexp")).toBe("Enter the expiry date as MM/YY");
+      expect(f.said("cvv")).toBe("Enter the security code");
+      // Not "Working…" until Collect.js's 15 s timeout, and no processor banner.
+      expect(screen.getByRole("button", { name: "Pay $5.00" })).toBeEnabled();
+      expect(f.cj.inSubmission).toBe(false);
+      noRawWords();
+
+      // A wrong number, left: said beside it; the rest still say theirs.
+      f.boxes.ccnumber = "wrong";
+      f.leave("ccnumber");
+      await waitFor(() => expect(f.said("ccnumber")).toBe("That card number doesn't look right"));
+      expect(f.said("cvv")).toBe("Enter the security code");
+
+      for (const b of ["ccnumber", "ccexp", "cvv"] as Box[]) { f.boxes[b] = "ok"; f.leave(b); }
+      await waitFor(() => expect(f.said("cvv")).toBe(""));
+      await userEvent.click(screen.getByRole("button", { name: "Pay $5.00" }));
+      expect(f.seen.starts).toBe(2);
+      await waitFor(() => expect(done).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "approved" })));
+      expect(fetchMock.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+      noRawWords();
+    });
+
+  it("a Collect.js that can't be freed early: Pay again waits for its timeout, then goes, "
+    + "with no processor banner", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = mockApi({ "POST /api/x/pay/": { status: "approved", message: "Paid.",
+                                                      balance_cents: 0 } });
+    vi.stubGlobal("fetch", fetchMock);
+    const done = vi.fn();
+    render(<NmiCardForm publicKey="pub" amountCents={500} payPath="/api/x/pay/"
+      onDone={done} form={{ kind: "collect", script_url: VAULTIX }} />);
+    const f = await collectForm({ ccnumber: "ok", ccexp: "ok", cvv: "empty" }, false);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole("button", { name: "Pay $5.00" }));
+    await waitFor(() => expect(f.said("cvv")).toBe("Enter the security code"));
+    expect(screen.getByRole("button", { name: "Pay $5.00" })).toBeEnabled();
+    f.boxes.cvv = "ok";
+    f.leave("cvv");
+    await user.click(screen.getByRole("button", { name: "Pay $5.00" }));
+    expect(screen.getByRole("button", { name: "Working…" })).toBeDisabled();
+    expect(f.seen.starts).toBe(1);
+    vi.advanceTimersByTime(15000);
+    await waitFor(() => expect(done).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "approved" })));
+    expect(f.seen.starts).toBe(2);
+    expect(screen.queryByText(/did not answer/)).toBeNull();
+  });
+
+  it("keeps the banner for a real failure: a decline in the server's words", async () => {
+    vi.stubGlobal("fetch", mockApi({ "POST /api/x/pay/": {
+      status: "declined", message: "The card was declined. Try another card.",
+      balance_cents: 500 } }));
+    render(<NmiCardForm publicKey="pub" amountCents={500} payPath="/api/x/pay/"
+      onDone={() => {}} form={{ kind: "collect", script_url: VAULTIX }} />);
+    const f = await collectForm({ ccnumber: "ok", ccexp: "ok", cvv: "ok" });
+    await userEvent.click(screen.getByRole("button", { name: "Pay $5.00" }));
+    expect(await screen.findByText("The card was declined. Try another card."))
+      .toBeInTheDocument();
+    expect(document.querySelector(".banner")).not.toBeNull();
+    for (const b of ["ccnumber", "ccexp", "cvv"] as Box[]) expect(f.said(b)).toBe("");
   });
 });
 

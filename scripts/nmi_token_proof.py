@@ -38,9 +38,12 @@ key, and makes its own v5 and Query API calls with the sandbox's private key
 white-label account gets: the real pay page, built from this tree, loads
 Collect.js from HOST with the page's own configuration
 (`NMI_SANDBOX_CARD_FORM_HOST`, laptop only). On secure.nmi.com the sandbox
-key works there, so it goes all the way: NMI's test card typed into
-Collect.js's frames, a real token, a real sandbox sale, the Paid page, the
-receipt and the payment on the invoice. On secure.vaultixpay.com the sandbox
+key works there, so it goes all the way. First the boxes' own checks
+(2026-11-14): nothing said in a box not yet left; the number left empty; Pay
+with every box empty; a wrong number left; each said beside its box in plain
+words, with no banner and none of Collect.js's own text, and Pay free again
+at once. Then NMI's test card typed into Collect.js's frames, a real token, a
+real sandbox sale, the Paid page, the receipt and the payment on the invoice. On secure.vaultixpay.com the sandbox
 key is unknown, so it shows how far the page gets: Collect.js loaded, the
 configuration accepted (no "too many fields"), what the host's token API
 answered, and that the page then tells the payer and the practice owner. It
@@ -613,7 +616,7 @@ def _form_facts(page) -> dict:
     """What the page's card form is, as the browser has it."""
     return page.evaluate("""() => {
       const tag = document.querySelector('script[src$="/token/Collect.js"]');
-      const boxes = [...document.querySelectorAll('[id^="cj-"]')];
+      const boxes = [...document.querySelectorAll('.collect-field[id^="cj-"]')];
       return {
         script: tag ? tag.getAttribute('src') : null,
         script_attributes: tag ? tag.getAttributeNames().sort() : [],
@@ -677,6 +680,69 @@ def caught_mail() -> list:
             for m in data.get("messages", [])]
 
 
+#: Collect.js's own words for a box (2026-11-14), which the page never shows.
+COLLECT_RAW = ("Field is empty", "Card number must be", "Expiration date must be", "CVV must be")
+PLAIN = {"ccnumber": "Enter your card number", "ccexp": "Enter the expiry date as MM/YY",
+         "cvv": "Enter the security code", "wrong_number": "That card number doesn't look right"}
+PAY_FREE = """() => { const b = [...document.querySelectorAll('button')]
+  .find((x) => /^Pay \\$/.test(x.textContent)); return !!b && !b.disabled; }"""
+
+
+def box_checks(page) -> dict:
+    """The card boxes' checks on the real pay page (2026-11-14), before the
+    good card is typed: in a box and not yet left, nothing is said; the
+    number left empty; Pay with every box empty; a wrong number left. Each
+    time, what is said is read from beside each box, with any banner or
+    alert and any of Collect.js's own words on the page. After the empty
+    Pay, how long until Pay can be pressed again (Collect.js holds a failed
+    attempt for its 15 s timeout unless the form ends it)."""
+    page.wait_for_function(PAY_FREE, timeout=60000)
+    heading = page.get_by_role("heading", name=re.compile(r"^Invoice "))
+    number = page.frame_locator("#CollectJSInlineccnumber").locator("#ccnumber")
+
+    def facts(step):
+        page.wait_for_timeout(1500)
+        body = page.locator("body").inner_text()
+        return {"step": step,
+                "said": page.evaluate("""() => Object.fromEntries([...document
+                  .querySelectorAll('.collect-said')].map((p) => [p.dataset.field,
+                  p.textContent]))"""),
+                "banner": page.locator(".banner").all_inner_texts(),
+                "alert": page.locator("[role=alert]").all_inner_texts(),
+                "collect_js_words_on_page": [w for w in COLLECT_RAW if w in body],
+                "processor_banner": "did not answer" in body}
+
+    steps = []
+    number.click()
+    steps.append(facts("in the number box, nothing typed, not left"))
+    heading.click()
+    steps.append(facts("left the number box empty"))
+    started = time.time()
+    page.get_by_role("button", name=re.compile(r"^Pay \$")).click()
+    page.wait_for_function("""() => [...document.querySelectorAll('.collect-said')]
+      .filter((p) => p.textContent).length === 3""", timeout=20000)
+    page.wait_for_function(PAY_FREE, timeout=20000)
+    free_after = round(time.time() - started, 1)
+    steps.append(facts("Pay pressed with every box empty"))
+    steps[-1]["pay_free_again_after_s"] = free_after
+    steps[-1]["collect_js_still_holding"] = page.evaluate("() => window.CollectJS.inSubmission")
+    number.fill("4111111111111112")
+    heading.click()
+    steps.append(facts("a wrong number typed (4111 1111 1111 1112) and left"))
+
+    clean = all(not s["banner"] and not s["alert"] and not s["collect_js_words_on_page"]
+                and not s["processor_banner"] for s in steps)
+    said = [s["said"] for s in steps]
+    ok = (clean
+          and said[0] == {"ccnumber": "", "ccexp": "", "cvv": ""}
+          and said[1] == {"ccnumber": PLAIN["ccnumber"], "ccexp": "", "cvv": ""}
+          and said[2] == {k: PLAIN[k] for k in ("ccnumber", "ccexp", "cvv")}
+          and said[3] == {"ccnumber": PLAIN["wrong_number"], "ccexp": PLAIN["ccexp"],
+                          "cvv": PLAIN["cvv"]}
+          and free_after < 5 and steps[2]["collect_js_still_holding"] is False)
+    return {"steps": steps, "ok": ok}
+
+
 def link_collect(host) -> dict:
     """The real pay page with Collect.js from `host` (see the docstring)."""
     from playwright.sync_api import sync_playwright
@@ -713,6 +779,7 @@ def link_collect(host) -> dict:
                 page.locator("iframe[src*='inline.php']").first.wait_for(timeout=60000)
                 result["form_before_paying"] = _form_facts(page)
                 page.get_by_text("Test mode").first.wait_for(timeout=60000)
+                result["boxes"] = box_checks(page)
                 fill_card(page, button=re.compile(r"^Pay \$"))
                 page.get_by_role("status").filter(has_text="was paid on invoice").wait_for(
                     timeout=120000)
@@ -750,6 +817,7 @@ def link_collect(host) -> dict:
     before = result["form_before_paying"]
     result["ok"] = (not refused and before["collectjs_defined"]
                     and result["apple_pay_errors"] == 0
+                    and result["boxes"]["ok"]
                     and not before["payment_component"]
                     and before["script"] == f"https://{host}/token/Collect.js"
                     and all(f["frames"] for f in before["field_frames"])

@@ -218,6 +218,49 @@ export function collectWalletSettings(amountCents: number) {
   return { currency: "USD", country: "US", price: (amountCents / 100).toFixed(2) };
 }
 
+type CardField = typeof FIELDS[number];
+const isCardField = (f: string): f is CardField => (FIELDS as readonly string[]).includes(f);
+
+/**
+ * What the payer reads beside a box (2026-11-14), never Collect.js's own
+ * words: its "Field is empty", shown as a red banner over the boxes, was
+ * taken by a payer for a box they couldn't type in. Collect.js reports on a
+ * box when the payer leaves it and on every box when Pay is pressed, and
+ * says nothing while one is typed in (proved on the sandbox,
+ * `scripts/nmi_token_proof.py --link-collect secure.nmi.com`). Its text is
+ * read only to tell an empty box from a wrong one: "Field is empty",
+ * "Card number must be 13-19 digits and a recognizable card format",
+ * "Expiration date must be a present or future month and year", "CVV must
+ * be 3 or 4 digits".
+ */
+export const FIELD_WORDS: Record<CardField, { empty: string; wrong: string }> = {
+  ccnumber: { empty: "Enter your card number", wrong: "That card number doesn't look right" },
+  ccexp: { empty: "Enter the expiry date as MM/YY", wrong: "Enter the expiry date as MM/YY" },
+  cvv: { empty: "Enter the security code", wrong: "Enter the security code" },
+};
+
+export function fieldWords(field: CardField, message: string, leftEmpty: boolean): string {
+  return leftEmpty || /empty/i.test(message) ? FIELD_WORDS[field].empty
+    : FIELD_WORDS[field].wrong;
+}
+
+/**
+ * Collect.js holds an attempt whose boxes failed their check until its own
+ * timeout (15 s here), and ignores Pay until then (`inSubmission` and
+ * `responseTimeout` on the CollectJS object, its index.js
+ * `startPaymentRequest`): the payer who fixed a box and pressed Pay again
+ * got "Working…" and then "The card processor did not answer". So the
+ * failed attempt is ended at once, which is what that timeout does. True
+ * when it was; on a Collect.js without those two, Pay waits for the timeout.
+ */
+function endFailedAttempt(cj: CollectJs): boolean {
+  const held = cj as CollectJs & { inSubmission?: unknown; responseTimeout?: number };
+  if (typeof held.inSubmission !== "boolean") return false;
+  if (held.responseTimeout) window.clearTimeout(held.responseTimeout);
+  held.inSubmission = false;
+  return true;
+}
+
 /** The tag that loaded Collect.js, found by its address alone. */
 function collectTag(): HTMLScriptElement | null {
   return document.querySelector<HTMLScriptElement>('script[src$="/token/Collect.js"]');
@@ -299,7 +342,24 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
   const host = (() => { try { return new URL(scriptUrl).host; } catch { return ""; } })();
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** A real failure, for the banner: the processor not answering, a
+   *  decline, a payment or card that could not be recorded. */
   const [problem, setProblem] = useState("");
+  /** What each box says beside it, once the payer has left it or pressed Pay. */
+  const [said, setSaid] = useState<Partial<Record<CardField, string>>>({});
+  const boxes = useRef({
+    verdict: {} as Partial<Record<CardField, string>>,   // Collect.js's latest, in our words
+    left: new Set<CardField>(), leftEmpty: new Set<CardField>(), tried: false,
+  });
+  const show = () => {
+    const b = boxes.current;
+    setSaid(Object.fromEntries(FIELDS.filter((f) => b.verdict[f] && (b.tried || b.left.has(f)))
+      .map((f) => [f, b.verdict[f]])));
+  };
+  /** Collect.js between startPaymentRequest and its callback or timeout;
+   *  whether that attempt already failed a box's check; Pay pressed while
+   *  Collect.js still held it. */
+  const attempt = useRef({ open: false, failed: false, again: false });
   const [notLoaded, fail] = useFailure(failurePath, "collect", host);
   const failed = useRef(fail);
   failed.current = fail;
@@ -317,6 +377,13 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
     let cancelled = false;
     setReady(false);
     collect.current = null;
+    // configure() draws the boxes afresh, empty.
+    boxes.current = { verdict: {}, left: new Set(), leftEmpty: new Set(), tried: false };
+    // A Pay waiting on a held attempt waits no more (a payment in flight
+    // keeps "Working…" until its answer, as before).
+    if (attempt.current.again) setBusy(false);
+    attempt.current = { open: false, failed: false, again: false };
+    setSaid({});
     // Fields that never come are a form that did not load, whatever the cause.
     const late = window.setTimeout(() => {
       if (!cancelled) failed.current(
@@ -342,14 +409,32 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
           timeoutDuration: COLLECT_TIMEOUT,
           timeoutCallback: () => {
             if (cancelled) return;
+            const was = attempt.current;
+            attempt.current = { open: false, failed: false, again: false };
+            if (was.failed) {
+              // Not the processor: a box failed its check, and the payer has
+              // been told beside it. Pay pressed since goes now.
+              if (was.again) send();
+              return;
+            }
             setBusy(false);
             setProblem("The card processor did not answer. Check the card details and try again.");
           },
-          validationCallback: (_field: string, valid: boolean, message: string) => {
-            if (!cancelled && !valid && message) setProblem(message);
+          validationCallback: (field: string, valid: boolean, message: string) => {
+            if (cancelled || !isCardField(field)) return;
+            const b = boxes.current;
+            if (valid) delete b.verdict[field];
+            else b.verdict[field] = fieldWords(field, message ?? "", b.leftEmpty.has(field));
+            show();
+            const now = attempt.current;
+            if (valid || !now.open || now.failed) return;
+            now.failed = true;
+            setBusy(false);
+            if (endFailedAttempt(cj)) attempt.current = { open: false, failed: false, again: false };
           },
           callback: async (response: CollectResponse) => {
             if (cancelled) return;
+            attempt.current = { open: false, failed: false, again: false };
             setProblem("");
             if (use.current) {
               const answer = await use.current(response.token);
@@ -376,11 +461,41 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
     return () => { cancelled = true; window.clearTimeout(late); };
   }, [publicKey, scriptUrl, payPath, amountCents, ids, owns]);
 
+  // Leaving a box: Collect.js marks it on the box's frame with a "blur"
+  // event of its own, saying whether the box was empty.
+  useEffect(() => {
+    if (!owns) return;
+    const off = FIELDS.map((f) => {
+      const box = document.getElementById(ids[f]);
+      const leave = (e: Event) => {
+        const b = boxes.current;
+        b.left.add(f);
+        const empty = (e as CustomEvent<{ empty?: boolean } | null>).detail?.empty;
+        if (empty === true) b.leftEmpty.add(f);
+        else if (empty === false) b.leftEmpty.delete(f);
+        show();
+      };
+      box?.addEventListener("blur", leave, true);
+      return () => box?.removeEventListener("blur", leave, true);
+    });
+    return () => off.forEach((o) => o());
+  }, [owns, ids]);
+
+  /** One attempt at a token; Collect.js checks every box first. */
+  function send() {
+    if (!collect.current) return;
+    attempt.current = { open: true, failed: false, again: false };
+    collect.current.startPaymentRequest();
+  }
+
   const start = () => {
     if (!collect.current || busy) return;
+    boxes.current.tried = true;
+    show();
     setProblem("");
     setBusy(true);
-    collect.current.startPaymentRequest();
+    if (attempt.current.open) attempt.current.again = true;   // still held: goes at its timeout
+    else send();
   };
 
   if (!owns) {
@@ -396,15 +511,15 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
       {problem && !notLoaded && <Banner kind="bad">{problem}</Banner>}
       <div data-testid="card-form" className="collect-fields" hidden={!!notLoaded}>
         <label className="small muted" htmlFor={ids.ccnumber}>Card number</label>
-        <div id={ids.ccnumber} className="collect-field" />
+        <CollectBox id={ids.ccnumber} field="ccnumber" said={said.ccnumber} />
         <div className="row tight">
           <div style={{ flex: 1 }}>
             <label className="small muted" htmlFor={ids.ccexp}>Expiry</label>
-            <div id={ids.ccexp} className="collect-field" />
+            <CollectBox id={ids.ccexp} field="ccexp" said={said.ccexp} />
           </div>
           <div style={{ flex: 1 }}>
             <label className="small muted" htmlFor={ids.cvv}>Security code</label>
-            <div id={ids.cvv} className="collect-field" />
+            <CollectBox id={ids.cvv} field="cvv" said={said.cvv} />
           </div>
         </div>
         {!ready && !problem && <p className="small muted">Loading the card form…</p>}
@@ -414,6 +529,18 @@ function CollectCardForm({ publicKey, amountCents, payPath, onDone, buttonText, 
       <p className="small muted" style={{ marginBottom: 0 }}>
         Your card details go straight to the card processor and never to this app.
       </p>
+    </>
+  );
+}
+
+/** One of Collect.js's boxes (it draws its frame inside), and what it says
+ *  beside it: read out as it changes. */
+function CollectBox({ id, field, said }: { id: string; field: CardField; said?: string }) {
+  return (
+    <>
+      <div id={id} className={said ? "collect-field invalid" : "collect-field"} />
+      <p id={`${id}-said`} className="collect-said" data-field={field} aria-live="polite">
+        {said ?? ""}</p>
     </>
   );
 }

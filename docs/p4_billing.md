@@ -238,6 +238,46 @@ secure.nmi.com, sandbox.nmi.com and secure.vaultixpay.com.
   - `--bank-fees` counted two errors per page without the settings and none
     with them. The token answers were identical either way.
 
+**2026-11-14: "Field is empty".** A payer on the live pay page saw a red
+banner reading only "Field is empty" above the card boxes, and took it for a
+box they couldn't type in. That was Collect.js's own text, put in the banner by
+the form's `validationCallback`. What the sandbox shows of those checks:
+- Collect.js checks a box when the payer leaves it, and every box when Pay
+  is pressed; it says nothing while a box is being typed in. Its words are
+  "Field is empty", "Card number must be 13-19 digits and a recognizable
+  card format", "Expiration date must be a present or future month and
+  year" and "CVV must be 3 or 4 digits".
+- Pay with a box that fails is **held**: Collect.js ignores Pay until its own
+  timeout (15 s here), and then calls the timeout callback. So a payer who
+  pressed Pay on empty boxes saw "Working…" for 15 s, and then "The card
+  processor did not answer".
+
+Now (`NmiCardForm.tsx`, the Collect.js form, which all four card screens use):
+- **Each box says what it needs beside it**, in plain words
+  (`FIELD_WORDS`): "Enter your card number", "That card number doesn't look
+  right", "Enter the expiry date as MM/YY", "Enter the security code".
+  - A box speaks only once the payer has left it (the blur Collect.js
+    marks on its frame) or has pressed Pay.
+  - The words clear when Collect.js passes the box.
+  - Collect.js's own text is read only to tell an empty box from a wrong
+    one, and is never shown.
+- **A failed attempt is ended at once.** The form ends it the way the
+  timeout would (`inSubmission`, `responseTimeout` in Collect.js's
+  `startPaymentRequest`), so Pay works again straight away.
+  - If a later Collect.js lacks those, Pay pressed meanwhile waits for the
+    timeout and then goes.
+  - That timeout is never reported as the processor's.
+- **The banner is for real failures only:** the form not loading, the
+  processor not answering, a decline, or a payment or card that could not
+  be recorded, each in our own or the server's words.
+- NMI's Payment Component (NMI's own host, and the sandbox) already shows
+  its own message beside each box, inside its widget; it is unchanged.
+- **Proved in headless Chrome on the sandbox:** `--link-collect
+  secure.nmi.com`, which now checks the boxes before paying. It leaves the
+  number empty, presses Pay with every box empty, then leaves a wrong number.
+  Each time it reads what is said beside each box, and finds no banner and
+  none of Collect.js's own words. Then the test card pays.
+
 ### 1.5 Bank payments and card fees: what the sandbox shows (2026-11-14)
 
 `scripts/nmi_token_proof.py --bank-fees`, against the platform's sandbox
