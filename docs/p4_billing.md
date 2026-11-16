@@ -5,6 +5,10 @@
 **2026-11-16:** void and refund from the app (§11) and knowing when the
 processor is in Test Mode (§12), released at Release 44.
 
+**2026-11-16, decided:** no card fee on invoices; an invoice stays one amount.
+The card-fee build is dropped. Bank (ACH) payments stay planned, on a separate
+ACH merchant ID, for the same total as a card (§13).
+
 **This replaces the Stripe version of 2026-10-03** (in git history at
 `fa79a2a`). The owner decided D1–D10 on 2026-10-08 and changed the processor:
 **NMI everywhere, no Stripe.** His decisions are recorded in §7, and his
@@ -285,6 +289,9 @@ Now (`NmiCardForm.tsx`, the Collect.js form, which all four card screens use):
   none of Collect.js's own words. Then the test card pays.
 
 ### 1.5 Bank payments and card fees: what the sandbox shows (2026-11-14)
+
+**2026-11-16: no card fee will be built (§13).** Rows C1–C3 stay as findings
+only. The B rows still serve the planned bank payments.
 
 `scripts/nmi_token_proof.py --bank-fees`, against the platform's sandbox
 account only. It uses its own page with Collect.js from secure.nmi.com, and
@@ -865,3 +872,38 @@ True reads a sandbox account's Test Mode as off, so a proof can take the books
 path with real sandbox answers. Refused at start anywhere but a localhost
 server; never applies to a live account.
 
+---
+
+## 13. Decision, 2026-11-16: no card fee on invoices; bank payments stay planned
+
+Bryan and the processor agreed on 2026-11-16. Recorded as decided; no code
+changed.
+
+**No card fee line or fee option on invoices.**
+- A practice discusses any card fee with its client beforehand and puts it in
+  the price. **An invoice stays one amount.**
+- The app adds no fee line and shows no second total. It neither detects
+  credit or debit nor sends a surcharge.
+
+**The card-fee build is dropped:**
+- the fee line on an invoice;
+- two totals (by card, and by bank);
+- credit/debit detection (§1.5 C1);
+- the surcharge field on a sale (§1.5 C3).
+
+§1.5's C rows stay as what the sandbox showed, not as a plan. The pay form
+still passes `price` and `currency` to Collect.js (§1.4, to quiet the Apple
+Pay error), and nothing reads a surcharge quote.
+
+**Bank account (ACH) payments stay planned. Nothing is built yet.**
+- The payer chooses **card or bank** for the **same total**.
+- The processor is setting up a **separate ACH merchant ID**.
+- §1.5's B rows are what the sandbox has shown for bank payments so far:
+  - tokenizing through Collect.js;
+  - WEB and CCD;
+  - the vault;
+  - CCD sent on every vault sale.
+- Still open, for when it is built:
+  - how the ACH merchant ID reaches the app: its own keys, or a second
+    processor on the same gateway account;
+  - how a return is reported (§1.5 B6–B8).

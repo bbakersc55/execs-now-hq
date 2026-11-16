@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-16 UTC**, after Release 44. **The next session starts at "2026-11-16:
-Release 44, refunds and Test Mode" just below**; then "2026-11-14, evening: Release 43, SOP
+2026-11-16 UTC**, after Release 44 and the card-fee decision. **The next
+session starts at "2026-11-16, later: no card fee on invoices" just below**;
+then "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
@@ -31,6 +32,24 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-16, later: no card fee on invoices (a decision; no code)
+
+- **Decided by Bryan and the processor, 2026-11-16:**
+  - no card fee line or fee option on invoices;
+  - any card fee is discussed with the client beforehand and put in the
+    price, so **an invoice stays one amount**.
+- **Dropped:** the card-fee build. That is the fee line, two totals,
+  credit/debit detection and the surcharge field. §1.5's C rows stay as
+  findings only.
+- **Still planned:** bank account (ACH) payments, with the payer choosing card
+  or bank for the same total.
+  - The processor is setting up a **separate ACH merchant ID**.
+  - Nothing is built.
+  - Open: how that merchant ID reaches the app (its own keys, or a second
+    processor on the same gateway account), and how a return is reported.
+- Recorded in `docs/p4_billing.md` §13, with a line at its top and a note on
+  §1.5.
 
 ## 2026-11-16: Release 44, refunds and Test Mode
 
