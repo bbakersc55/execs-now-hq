@@ -3,7 +3,7 @@
 **Practices beta program, phase 4 · re-specified 2026-10-08, and for NMI's v5 API on 2026-10-21 · part 1 built**
 
 **2026-11-16:** void and refund from the app (§11) and knowing when the
-processor is in Test Mode (§12), built on `dev`.
+processor is in Test Mode (§12), released at Release 44.
 
 **This replaces the Stripe version of 2026-10-03** (in git history at
 `fa79a2a`). The owner decided D1–D10 on 2026-10-08 and changed the processor:
@@ -669,7 +669,7 @@ choices of the plan, all "as recommended".
 
 ## 11. Void and refund from the app (2026-11-16)
 
-**Built 2026-11-16 on `dev`, not released.** Migrations `billing 0013` and
+**Built 2026-11-16; live since Release 44 the same day.** Migrations `billing 0013` and
 `finance 0018`, both additive. Code: `apps/billing/refunds.py`; screens: the
 invoice page, Invoices ("From NMI: please look"), Practices.
 
@@ -777,7 +777,7 @@ switch refuses sales and saved cards only. With real calls off in production
 
 ## 12. Knowing when the processor is in Test Mode (2026-11-16)
 
-**Built 2026-11-16 on `dev`, not released.** Code: `apps/billing/gateway_mode.py`,
+**Built 2026-11-16; live since Release 44 the same day.** Code: `apps/billing/gateway_mode.py`,
 `apps/billing/testmode.py`.
 
 ### The reading

@@ -913,6 +913,25 @@ change under `site/`). **Push to web serving: about 2 min 24 s.** Not
 checked: the numbers the write gave production's SOPs (a production shell
 read waits on the owner's ask).
 
+**Observed at Release 44 (2026-11-16 UTC, two migrations,
+`billing 0013_refunds_and_test_mode` and `finance 0018_refunds_and_test_mode`:
+two new tables, new columns with database defaults, check and unique
+constraints, no write; `b679800`: void and refund from the app, the card
+processor's Test Mode, and two date-dependent demo-seed checks):** R1: the
+owner ran the backup by hand: `execsnowhq_prod_20261116_183119.sql.gz`,
+16.7 MB, landed 18:31:23. R2: `main` fast-forwarded `88a84a5..b679800`, pushed
+18:32:03. R3: worker `07eec4d6` `WAITING` 18:33:56, listing exactly
+`billing.0013` and `finance.0018`. R4: applied by me 18:34:14–26, both `OK`.
+R5: `migrations current` 18:34:31, running 18:34:35. R5b: no new scheduled job
+(a lost refund answer is found by the existing `billing.resolve_card_payments`).
+R6a: `mcp` `b11a2de8` SUCCESS by itself, `/healthz` `ok`. R6: web `a278c7ff`
+SUCCESS by itself, gunicorn listening 18:34:29 (its wait was at 70 s of 360 s);
+`/healthz` 200, and the served bundle carries "Refund or cancel this payment"
+and "Clear test payments". `enhq-site` SKIPPED. **Push to web serving: about
+2 min 26 s.** Not checked: what the live key's `test_mode_status` reads (a
+production read waits on the owner's ask; the line is in `docs/p4_billing.md`
+§12).
+
 ---
 
 ## Part A — the owner's steps, in order

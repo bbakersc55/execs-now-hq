@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-16 UTC**. **The next session starts at "2026-11-16: refunds and
-Test Mode, on `dev`" just below**; then "2026-11-14, evening: Release 43, SOP
+2026-11-16 UTC**, after Release 44. **The next session starts at "2026-11-16:
+Release 44, refunds and Test Mode" just below**; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
@@ -32,9 +32,14 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-16: refunds and Test Mode, on `dev`
+## 2026-11-16: Release 44, refunds and Test Mode
 
-- **Built on `dev`, not released.** Spec as built: `docs/p4_billing.md` §11
+- **Release 44 is live:** `main` at `b679800`. Two migrations, applied by the
+  runbook sequence: backup `execsnowhq_prod_20261116_183119` (the owner's
+  run-now); pushed 18:32:03; applied 18:34:14–26, both `OK`; web serving about
+  2 min 26 s after the push. Worker and `mcp` up too. Recorded in the runbook
+  ("Observed at Release 44").
+- **What it carried.** Spec as built: `docs/p4_billing.md` §11
   (void and refund from the app) and §12 (knowing when the processor is in
   Test Mode). Migrations `billing 0013_refunds_and_test_mode` and `finance
   0018_refunds_and_test_mode`, additive; applied on the laptop's
