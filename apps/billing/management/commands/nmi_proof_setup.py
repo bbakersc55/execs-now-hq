@@ -48,6 +48,17 @@ class Command(BaseCommand):
                             help="Part 4, after the client saved a card and turned auto-pay "
                                  "on: send a new invoice through the practice's approval, "
                                  "make it due today, and run the auto-pay job.")
+        # 2026-11-16: refunds, voids and Test Mode (`nmi_token_proof.py --refunds`).
+        parser.add_argument("--another-invoice", action="store_true",
+                            help="A second sent invoice to the proof contact; its pay path.")
+        parser.add_argument("--read-back", action="store_true",
+                            help="Run the morning read-back of the proof practice now.")
+        parser.add_argument("--portal-refund", nargs=2, metavar=("INVOICE", "CENTS"),
+                            help="Refund an invoice's card payment straight at NMI, as the "
+                                 "merchant portal would: the app makes no record of it.")
+        parser.add_argument("--refund-facts", action="store_true",
+                            help="What the database holds: invoices, payments, refunds, "
+                                 "entries in the books, the read-back's flags, cards, mail.")
 
     def handle(self, *args, **options):
         database = connection.settings_dict["NAME"] or ""
@@ -57,6 +68,14 @@ class Command(BaseCommand):
                                "on, in a database whose name ends in _nmi_proof.")
         if options["autopay_charge"]:
             return self.autopay_charge()
+        if options["another_invoice"]:
+            return self.another_invoice()
+        if options["read_back"]:
+            return self.read_back()
+        if options["portal_refund"]:
+            return self.portal_refund(*options["portal_refund"])
+        if options["refund_facts"]:
+            return self.refund_facts()
         if options["subscription"]:
             return self.subscription()
         if options["subscription_charge"]:
@@ -201,3 +220,109 @@ class Command(BaseCommand):
             again = subscriptions.run(tenant, today=day)
         self.stdout.write(json.dumps({"first_charge_on": day.isoformat(),
                                       "day_before": before, "job": ran, "job_again": again}))
+
+
+    # ------------------------------------------- refunds and Test Mode (11-16)
+
+    def _practice(self):
+        from apps.tenancy.models import Membership, Role, Tenant
+
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        return tenant, Membership.all_objects.get(tenant=tenant, role=Role.FF).user
+
+    def another_invoice(self):
+        from apps.billing import pay_links, services
+        from apps.billing.models import ClientInvoice
+        from apps.crm.models import Contact
+        from apps.tenancy.context import tenant_context
+        from apps.tenancy.models import Role
+
+        tenant, owner = self._practice()
+        with tenant_context(tenant.pk):
+            contact = Contact.objects.get(first_name="Robin")
+            cents = 5000 + timezone.now().microsecond % 3000
+            invoice = services.create_draft(
+                tenant, actor=owner, kind="contact", contact=contact,
+                lines=[{"description": "Workshop (proof)", "quantity": "1",
+                        "unit_price_cents": cents}])
+            services.make_ready(invoice, actor=owner, role=Role.FF)
+            ClientInvoice.all_objects.filter(pk=invoice.pk).update(
+                status=ClientInvoice.Status.SENT, sent_at=timezone.now())
+            invoice.refresh_from_db()
+        link = pay_links.url_of(invoice)
+        self.stdout.write(json.dumps({
+            "invoice_id": str(invoice.pk), "pay_path": link[link.index("/pay/"):],
+            "number": invoice.number, "amount_cents": invoice.total_cents}))
+
+    def read_back(self):
+        from apps.billing import readback
+        from apps.tenancy.context import tenant_context
+
+        tenant, _ = self._practice()
+        with tenant_context(tenant.pk):
+            counts = readback.read_back(tenant)
+        self.stdout.write(json.dumps(counts))
+
+    def portal_refund(self, invoice_id, cents):
+        from apps.billing import payment_accounts
+        from apps.billing.gateway.nmi import NmiGateway
+        from apps.billing.models import ClientPayment
+
+        tenant, _ = self._practice()
+        payment = ClientPayment.all_objects.get(invoice_id=invoice_id, removed_at__isnull=True)
+        txn = NmiGateway().refund(payment_accounts.practice_account(tenant),
+                                  transaction_id=payment.nmi_transaction_id,
+                                  amount_cents=int(cents))
+        self.stdout.write(json.dumps({"refund_transaction_id": txn.id,
+                                      "approved": txn.approved,
+                                      "sale_transaction_id": payment.nmi_transaction_id}))
+
+    def refund_facts(self):
+        from apps.billing import gateway_mode, payment_accounts
+        from apps.billing.gateway.nmi import NmiGateway
+        from apps.billing.models import (
+            CardRefund, ClientInvoice, ClientPayment, ClientPaymentMethod, NmiEvent,
+        )
+        from apps.crm.models import OutboxMessage
+        from apps.finance.models import FinanceEntry
+
+        tenant, _ = self._practice()
+        account = payment_accounts.practice_account(tenant)
+        cards = []
+        for card in ClientPaymentMethod.all_objects.filter(tenant=tenant):
+            # Still in the sandbox's vault? (GET answers 200, or refuses.)
+            status, _ = NmiGateway()._send(account, "GET", f"/customers/{card.vault_id}", None,
+                                           raise_for_status=False)
+            cards.append({"last4": card.last4, "is_test": card.is_test,
+                          "removed": card.removed_at is not None,
+                          "vault_answers": status})
+        self.stdout.write(json.dumps({
+            "gateway_mode": gateway_mode.practice_state(tenant),
+            "invoices": [{
+                "number": i.number, "status": i.status, "total_cents": i.total_cents,
+                "paid_cents": i.paid_cents, "test_paid_cents": i.test_paid_cents,
+                "payments": [{
+                    "amount_cents": p.amount_cents, "nmi_transaction_id": p.nmi_transaction_id,
+                    "is_test": p.is_test, "removed": p.removed_at is not None,
+                    "remove_reason": p.remove_reason[:60],
+                    "books": list(FinanceEntry.all_objects.filter(client_payment=p).values_list(
+                        "kind", "direction", "amount_cents", "removed_at"))}
+                    for p in ClientPayment.all_objects.filter(invoice=i).order_by("created_at")],
+                "refunds": [{
+                    "kind": r.kind, "status": r.status, "source": r.source,
+                    "amount_cents": r.amount_cents, "nmi_transaction_id": r.nmi_transaction_id,
+                    "against": r.against_transaction_id, "is_test": r.is_test,
+                    "void_invoice": r.void_invoice, "cleared": r.cleared_at is not None,
+                    "problem": r.problem,
+                    "books": list(FinanceEntry.all_objects.filter(client_refund=r).values_list(
+                        "kind", "direction", "amount_cents", "on_date"))}
+                    for r in CardRefund.all_objects.filter(invoice=i).order_by("created_at")]}
+                for i in ClientInvoice.all_objects.filter(tenant=tenant).order_by("created_at")],
+            "flags": list(NmiEvent.all_objects.filter(tenant=tenant).values_list(
+                "kind", "outcome", "amount_cents", "transaction_id")),
+            "cards": cards,
+            "mail": list(OutboxMessage.all_objects.filter(source_type="card_refund").values_list(
+                "producer", "subject")),
+            "receipts_saying_test": OutboxMessage.all_objects.filter(
+                producer="payment_receipt", body_text__contains="test mode").count(),
+        }, default=str))

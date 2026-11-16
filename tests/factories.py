@@ -1287,6 +1287,25 @@ class ClientPaymentFactory(TenantScopedFactory):
     paid_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 10, 5))
 
 
+class CardRefundFactory(TenantScopedFactory):
+    """A refund of a client's card payment (2026-11-16)."""
+
+    class Meta:
+        model = "billing.CardRefund"
+
+    tenant = factory.SubFactory(TenantFactory)
+    payment = factory.SubFactory(ClientPaymentFactory, tenant=factory.SelfAttribute("..tenant"),
+                                 method="card", nmi_transaction_id=factory.Sequence(
+                                     lambda n: str(70000 + n)))
+    invoice = factory.SelfAttribute("payment.invoice")
+    kind = "refund"
+    status = "done"
+    amount_cents = 1000
+    reason = "Agreed with the client."
+    against_transaction_id = factory.SelfAttribute("payment.nmi_transaction_id")
+    environment = "sandbox"
+
+
 # --- P5: the books ---
 
 class FinanceAccountFactory(TenantScopedFactory):

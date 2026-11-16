@@ -37,7 +37,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from apps.billing import gateway as gw
-from apps.billing import money
+from apps.billing import gateway_mode, money
 from apps.billing.models import (
     BillingPlan, PracticeInvoice, PracticeInvoiceLine, PracticeSubscription,
     PracticeSubscriptionAddon,
@@ -164,7 +164,8 @@ def state(tenant) -> dict:
         "card_form": gw.card_form(settings.NMI_ENVIRONMENT),
         # 2026-11-10: no card saved and no Pay now while card payments are paused.
         "paused": paused,
-        "test_mode": settings.NMI_ENVIRONMENT != "live",
+        "test_mode": (settings.NMI_ENVIRONMENT != "live"
+                      or gateway_mode.last_for_platform() is True),
         "suspended": tenant.status == tenant.Status.SUSPENDED,
         "open_cents": sum(i.balance_cents for i in invoices if i.status == I.OPEN),
         "invoices": [{
@@ -174,6 +175,7 @@ def state(tenant) -> dict:
             "paid_at": i.paid_at.isoformat() if i.paid_at else None,
             "checking": i.charge_state == "unknown",
             "last_charge_text": i.last_charge_text if i.status == I.OPEN else "",
+            "is_test": i.is_test and i.amount_paid_cents > 0,
         } for i in invoices],
     }
 
@@ -204,6 +206,8 @@ def save_card(tenant, *, user, payment_token) -> PracticeSubscription:
         raise SubscriptionRefused(gw.PAUSED_MESSAGE, 503)
     account = gw.platform_account()
     first, _, last = (user.full_name or user.email).strip().partition(" ")
+    # Saved while the platform account is in Test Mode: a test card (2026-11-16).
+    is_test = gateway_mode.for_platform() is True
     try:
         record = gw.gateway().vault_add(account, payment_token=payment_token,
                                         billing=gw.Billing(first_name=first or "Card",
@@ -227,6 +231,7 @@ def save_card(tenant, *, user, payment_token) -> PracticeSubscription:
         row.card_brand, row.card_last4 = record.brand, record.last4
         row.card_expires = f"{exp[:2]}/{exp[2:]}"
         row.card_added_by, row.card_added_at = user, timezone.now()
+        row.card_is_test = is_test
         # No part-month: the first charge is the next 1st (§2.2).
         row.first_charge_on = row.first_charge_on or first_of_next_month(today)
         if row.status == S.NEEDS_CARD:
@@ -348,6 +353,10 @@ def charge(invoice, *, by=None) -> tuple[PracticeInvoice, str]:
         invoice.charge_tries += 1
         invoice.save(update_fields=["charge_state", "charge_started_at", "charge_tries",
                                     "updated_at"])
+    # The processor's own Test Mode, read before the sale (2026-11-16).
+    is_test = gateway_mode.for_platform() is True
+    PracticeInvoice.all_objects.filter(pk=invoice.pk).update(is_test=is_test)
+    invoice.is_test = is_test
     try:
         txn = gw.gateway().sale(gw.platform_account(), amount_cents=invoice.balance_cents,
                                 reference=invoice.reference, vault_id=row.nmi_vault_id)
@@ -560,7 +569,7 @@ def _receipt(invoice_id) -> None:
                 f"Invoice: {invoice.number}\nTransaction: {invoice.nmi_transaction_id}",
                 "The invoice is attached, and is under Settings → Billing in the app."
                 + (" (Test mode: no real money moved.)"
-                   if settings.NMI_ENVIRONMENT != "live" else "")],
+                   if settings.NMI_ENVIRONMENT != "live" or invoice.is_test else "")],
             producer=OutboxMessage.Producer.SUBSCRIPTION_RECEIPT,
             attachment=(content, f"Invoice-{invoice.number}.pdf"))
     except Exception as exc:  # noqa: BLE001 — the charge stands either way
@@ -616,7 +625,34 @@ def platform_summary(tenant) -> dict:
         # What the platform's NMI read-back found against this practice's
         # subscription (or, on the owner's own, matched nothing) and is unseen.
         "nmi_events": readback.platform_open(tenant),
+        # 2026-11-16: its charges, each with what can still be given back.
+        "charges": charges_for_platform(tenant),
     }
+
+
+def charges_for_platform(tenant) -> list[dict]:
+    """The last year's subscription invoices that were charged, for the
+    platform owner's "Refund or cancel this charge": amounts, dates, states
+    and the refunds made, never the card."""
+    from apps.billing import refunds
+    from apps.billing.models import CardRefund
+
+    rows = (PracticeInvoice.all_objects.filter(tenant=tenant).exclude(nmi_transaction_id="")
+            .order_by("-period_start")[:12])
+    out = []
+    for invoice in rows:
+        made = CardRefund.all_objects.filter(practice_invoice=invoice).select_related(
+            "requested_by").order_by("created_at")
+        out.append({
+            "id": str(invoice.pk), "number": invoice.number,
+            "period_start": invoice.period_start.isoformat(),
+            "total_cents": invoice.total_cents, "amount_paid_cents": invoice.amount_paid_cents,
+            "status": invoice.status, "status_label": invoice.get_status_display(),
+            "is_test": invoice.is_test and invoice.amount_paid_cents > 0,
+            **refunds.subscription_options(invoice),
+            "refunds": [refunds.represent(r) for r in made],
+        })
+    return out
 
 
 def set_amount(tenant, amount_cents, *, actor) -> None:

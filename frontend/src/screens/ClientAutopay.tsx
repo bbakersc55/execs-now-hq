@@ -42,7 +42,8 @@ export function ClientAutopay() {
         <p style={{ marginTop: 0 }}>
           <strong>{data.card.brand || "Card"} ending {data.card.last4}</strong>, expires{" "}
           {data.card.expires}{data.card.added_by ? `, added by ${data.card.added_by}` : ""}.{" "}
-          {data.test_mode && <Pill kind="warn">Test mode</Pill>}
+          {data.card.is_test ? <Pill kind="warn">Test card</Pill>
+            : data.test_mode && <Pill kind="warn">Test mode</Pill>}
         </p>
       ) : (
         <p style={{ marginTop: 0 }}>No card on file.{" "}

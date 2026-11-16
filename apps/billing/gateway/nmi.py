@@ -20,6 +20,14 @@ The request and response shapes below were proved against NMI's sandbox on
   that has not settled yet; more than the balance is refused (400).
 - `GET /payments/{id}` answers 401 for a bad key and 404 for an unknown id,
   which makes it the connection test.
+- A void (2026-11-16) is `POST /payments/{id}/void` with an empty body: the
+  sale's own transaction comes back with `status` "canceled" and a "void"
+  action. Only a sale pending settlement can be voided, and a voided sale
+  cannot be refunded nor a refunded one voided (400, E_INVALID_TRANS_SPECIFIED).
+- A refund is a transaction of its own: a new id, `original_transaction_id`
+  the sale's, the sale's order id carried over, its amount negative.
+- The account's Test Mode is the Query API's `report_type=test_mode_status`:
+  `<test_mode_enabled>true</test_mode_enabled>` (the sandbox always says true).
 - v5 cannot search. Finding a sale whose answer was lost is the read-only
   Query API (`query.php`, form-posted, XML back) by order id.
 """
@@ -97,6 +105,21 @@ class NmiGateway:
                                 {"amount": to_dollars(amount_cents)})
         return self._transaction(payload)
 
+    def void(self, account: Account, *, transaction_id: str) -> Transaction:
+        """Cancel a sale that has not settled: nothing reaches the statement."""
+        _, payload = self._send(account, "POST", f"/payments/{transaction_id}/void", {})
+        return self._transaction(payload)
+
+    def test_mode(self, account: Account) -> bool:
+        """Whether the account is in the processor's Test Mode. Read-only.
+        Raises when the answer does not say."""
+        root = self._query(account, {"report_type": "test_mode_status"})
+        said = (root.findtext("test_mode_enabled")
+                or root.findtext("account_details/test_mode_enabled") or "").strip().lower()
+        if said not in ("true", "false"):
+            raise GatewayError("The card processor did not say whether it is in Test Mode.")
+        return said == "true"
+
     def get_transaction(self, account: Account, transaction_id: str) -> Transaction:
         _, payload = self._send(account, "GET", f"/payments/{transaction_id}", None)
         return self._transaction(payload)
@@ -104,20 +127,7 @@ class NmiGateway:
     def find_by_reference(self, account: Account, reference: str) -> Transaction | None:
         """The sale made with our reference as its order id, or None if NMI
         has none. Read-only (the Query API); nothing is charged."""
-        form = {"order_id": reference[:50]}
-        refuse_card_fields(form)
-        data = urllib.parse.urlencode({"security_key": account.private_key, **form})
-        status, text = self._call(account, "POST", account.query_url, data, "query",
-                                  {"Content-Type": "application/x-www-form-urlencoded"})
-        if status >= 300:
-            raise GatewayUnreachable(f"NMI's lookup answered {status}.")
-        try:
-            root = ET.fromstring(text)
-        except ET.ParseError:
-            raise GatewayUnreachable("NMI's lookup answer could not be read.") from None
-        error = root.findtext("error_response")
-        if error:
-            raise GatewayError(account.scrub(error.strip()))
+        root = self._query(account, {"order_id": reference[:50]})
         for node in root.findall("transaction"):
             sales = [a for a in node.findall("action") if a.findtext("action_type") == "sale"]
             if not sales:
@@ -140,10 +150,21 @@ class NmiGateway:
         sales, refunds, voids, chargebacks, whoever made them (this app or
         NMI's portal). Read-only, through the Query API like the lookup,
         because v5 has no search (A13). Nothing is charged."""
-        from datetime import datetime, timezone as tz
+        from datetime import timezone as tz
 
         form = {"start_date": start.astimezone(tz.utc).strftime("%Y%m%d%H%M%S"),
                 "end_date": end.astimezone(tz.utc).strftime("%Y%m%d%H%M%S")}
+        return _actions(self._query(account, form))
+
+    def actions_for_reference(self, account: Account, reference: str) -> list:
+        """Every action on the transactions carrying our reference as their
+        order id: the sale, a void on it, and each refund (its own
+        transaction, the sale's order id carried over). Read-only; for
+        finding a refund or void whose answer was lost."""
+        return _actions(self._query(account, {"order_id": reference[:50]}))
+
+    def _query(self, account: Account, form: dict):
+        """One read of the classic Query API: the parsed XML. Never charges."""
         refuse_card_fields(form)
         data = urllib.parse.urlencode({"security_key": account.private_key, **form})
         status, text = self._call(account, "POST", account.query_url, data, "query",
@@ -157,22 +178,7 @@ class NmiGateway:
         error = root.findtext("error_response")
         if error:
             raise GatewayError(account.scrub(error.strip()))
-        out = []
-        for node in root.findall("transaction"):
-            tid = node.findtext("transaction_id", "")
-            for action in node.findall("action"):
-                when = action.findtext("date", "")
-                try:
-                    at = datetime.strptime(when, "%Y%m%d%H%M%S").replace(tzinfo=tz.utc)
-                except ValueError:
-                    continue
-                out.append(Action(
-                    transaction_id=tid, action_type=(action.findtext("action_type") or "").lower(),
-                    amount_cents=abs(to_cents(action.findtext("amount") or 0)), at=at,
-                    reference=node.findtext("order_id", "") or "",
-                    original_transaction_id=node.findtext("original_transaction_id", "") or "",
-                    success=action.findtext("success", "1") == "1"))
-        return out
+        return root
 
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:
@@ -257,6 +263,27 @@ class NmiGateway:
             last4=_last4(card.get("card_number", "")),
             reference=str(fields.get("field_1", "")) if isinstance(fields, dict) else "",
         )
+
+
+def _actions(root) -> list:
+    from datetime import datetime, timezone as tz
+
+    out = []
+    for node in root.findall("transaction"):
+        tid = node.findtext("transaction_id", "")
+        for action in node.findall("action"):
+            when = action.findtext("date", "")
+            try:
+                at = datetime.strptime(when, "%Y%m%d%H%M%S").replace(tzinfo=tz.utc)
+            except ValueError:
+                continue
+            out.append(Action(
+                transaction_id=tid, action_type=(action.findtext("action_type") or "").lower(),
+                amount_cents=abs(to_cents(action.findtext("amount") or 0)), at=at,
+                reference=node.findtext("order_id", "") or "",
+                original_transaction_id=node.findtext("original_transaction_id", "") or "",
+                success=action.findtext("success", "1") == "1"))
+    return out
 
 
 def brand_of(masked: str) -> str:

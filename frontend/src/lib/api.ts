@@ -1845,6 +1845,8 @@ export interface InvoiceRow {
    *  due date is the issue date and these. */
   terms_days: number; terms_label: string;
   total_cents: number; paid_cents: number; balance_cents: number;
+  /** 2026-11-16: the part of `paid_cents` that is test payments (Test Mode). */
+  test_paid_cents?: number;
   from_schedule: boolean;
   /** For a ready invoice: is its email waiting for approval, or sent back? */
   send_state: "" | "waiting" | "sent_back";
@@ -1859,6 +1861,34 @@ export interface InvoicePayment {
   id: string; amount_cents: number; paid_on: string; method: string; method_label: string;
   reference: string; note: string; recorded_by: string; removed: boolean;
   remove_reason: string; removed_by: string;
+  /** 2026-11-16: taken while the card processor was in Test Mode; a card
+   *  payment the app took. */
+  is_test?: boolean; card?: boolean;
+  /** The practice owner's only: "Refund or cancel this payment". */
+  can_refund?: boolean; refundable_cents?: number; can_void_invoice?: boolean;
+}
+
+/** 2026-11-16: money given back on a card payment or a subscription charge. */
+export interface CardRefundRow {
+  id: string; kind: "void" | "refund"; kind_label: string;
+  status: "pending" | "done" | "unknown" | "failed"; status_label: string;
+  amount_cents: number; reason: string; source: "app" | "portal"; source_label: string;
+  nmi_transaction_id: string; response_text: string; is_test: boolean; problem: string;
+  by: string; at: string; payment: string | null; cleared: boolean;
+}
+
+/** 2026-11-16: the card processor's own Test Mode, as last read. */
+export interface GatewayMode {
+  test_mode: boolean | null; read_at: string | null;
+  /** "The card processor is in Test Mode: no money moves." while it is. */
+  banner: string;
+  /** Why it could not be read, once a read was tried and failed. */
+  unknown: string;
+}
+
+/** Test payments (and test cards) waiting to be cleared. */
+export interface TestPayments {
+  payments: number; cards: number; amount_cents: number; can_clear: boolean;
 }
 
 export interface Invoice extends InvoiceRow {
@@ -1868,8 +1898,12 @@ export interface Invoice extends InvoiceRow {
   bill_to: { name?: string; company?: string; email?: string; address?: string };
   has_pdf: boolean; sent_at: string | null; voided_at: string | null; void_reason: string;
   lines: InvoiceLine[]; payments: InvoicePayment[]; merge_fields: string[];
+  /** 2026-11-16: money given back on its card payments. */
+  refunds?: CardRefundRow[];
   /** P4 §4: refunds, voids and chargebacks made in NMI's portal against it. */
   nmi_events?: NmiEvent[];
+  /** After "Refund or cancel this payment": what happened. */
+  message?: string;
   /** Auto-pay will charge it: the practice's line, and what the email says. */
   autopay?: { line: string; email_line: string } | null;
   /** Where its payments are entered in the books, "" for what its kind
@@ -1884,6 +1918,8 @@ export interface InvoiceTotals {
 
 export interface InvoiceList {
   invoices: InvoiceRow[]; totals: InvoiceTotals; drafts_from_schedules: number;
+  /** The practice owner's only (2026-11-16). */
+  gateway_mode?: GatewayMode; test_payments?: TestPayments;
 }
 
 export interface InvoiceSettingsData {
@@ -1955,7 +1991,7 @@ export interface AutopayState {
   /** 2026-11-10: no card saved while card payments are paused. */
   paused?: boolean; card_form?: CardForm;
   card: { brand: string; last4: string; expires: string; added_by: string;
-          added_at: string } | null;
+          added_at: string; is_test?: boolean } | null;
   autopay: { since: string; by: string } | null;
   wording: string; wording_version: string;
 }
@@ -1973,7 +2009,8 @@ export interface SubscriptionState {
   paused?: boolean; card_form?: CardForm;
   invoices: { id: string; number: string; period_start: string; total_cents: number;
               status: "open" | "paid" | "void" | "refunded"; status_label: string;
-              paid_at: string | null; checking: boolean; last_charge_text: string }[];
+              paid_at: string | null; checking: boolean; last_charge_text: string;
+              is_test?: boolean }[];
   /** After a card is saved or Pay now: what happened. */
   message?: string;
 }
@@ -2005,6 +2042,8 @@ export interface CardPaymentsSwitch {
   paused: "" | "off" | "held"; held: boolean; changed_at: string | null; changed_by: string;
   live_calls: boolean; environment: "sandbox" | "live"; api_host: string;
   card_form: "component" | "collect";
+  /** 2026-11-16: the platform account's Test Mode, and its test charges. */
+  gateway_mode?: GatewayMode; test_payments?: TestPayments;
 }
 
 // ------------------------------------------------------------- the books (P5)
@@ -2816,6 +2855,9 @@ export interface NmiEvent {
   amount_cents: number; happened_at: string; transaction_id: string;
   outcome: "matched" | "unmatched"; note: string; invoice: string | null;
   invoice_number: string; reviewed: boolean;
+  /** 2026-11-16: "Record this refund" (a refund or void matched to its
+   *  payment), whether it was, and whether it leaves nothing paid. */
+  can_record?: boolean; recorded?: boolean; full?: boolean;
 }
 
 /** R3: an introduction the practice made, as either contact's page shows it. */

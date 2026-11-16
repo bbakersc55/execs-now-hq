@@ -133,7 +133,13 @@ class ClientInvoice(TenantScopedModel):
     subtotal_cents = models.BigIntegerField(default=0, db_default=0)
     tax_cents = models.BigIntegerField(default=0, db_default=0)
     total_cents = models.BigIntegerField(default=0, db_default=0)
+    #: What has been paid and not refunded: payments less refunds.
     paid_cents = models.BigIntegerField(default=0, db_default=0)
+    #: The part of `paid_cents` that is test payments (made while the card
+    #: processor was in Test Mode, 2026-11-16): no money moved. It counts on
+    #: the invoice, so the payer's pages read as they will, and nowhere else:
+    #: not the books, the totals, the forecast or a KPI.
+    test_paid_cents = models.BigIntegerField(default=0, db_default=0)
     currency = models.CharField(max_length=3, default="usd", db_default="usd")
     notes = models.TextField(blank=True, default="", db_default="")
     terms = models.TextField(blank=True, default="", db_default="")
@@ -187,6 +193,9 @@ class ClientInvoice(TenantScopedModel):
                 name="client_invoice_amounts_not_negative"),
             models.CheckConstraint(condition=Q(paid_cents__lte=F("total_cents")),
                                    name="client_invoice_not_overpaid"),
+            models.CheckConstraint(
+                condition=Q(test_paid_cents__gte=0, test_paid_cents__lte=F("paid_cents")),
+                name="client_invoice_test_paid_within_paid"),
             models.UniqueConstraint(fields=["pay_token_hash"], condition=~Q(pay_token_hash=""),
                                     name="client_invoice_pay_token_once"),
         ]
@@ -198,6 +207,11 @@ class ClientInvoice(TenantScopedModel):
     @property
     def balance_cents(self) -> int:
         return self.total_cents - self.paid_cents
+
+    @property
+    def real_balance_cents(self) -> int:
+        """What is really owed: test payments moved no money."""
+        return self.total_cents - self.paid_cents + self.test_paid_cents
 
 
 class ClientInvoiceLine(TenantScopedModel):
@@ -250,6 +264,9 @@ class ClientPayment(TenantScopedModel):
     #: for one recorded by hand. One transaction is never recorded twice.
     nmi_transaction_id = models.CharField(max_length=40, blank=True, default="",
                                           db_default="")
+    #: Taken while the card processor was in Test Mode (2026-11-16): no money
+    #: moved. Never in the books; removed by "Clear test payments".
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "client_payment"
@@ -279,6 +296,19 @@ class CardPaymentHold(UUIDModel):
         db_table = "card_payment_hold"
 
 
+class PlatformGatewayMode(UUIDModel):
+    """The platform account's Test Mode as last read (2026-11-16), one row or
+    none: the platform's twin of `PaymentAccount.gateway_test_mode`. Read
+    before each subscription charge and card save; shown on Practices."""
+
+    test_mode = models.BooleanField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    detail = models.TextField(blank=True, default="", db_default="")
+
+    class Meta:
+        db_table = "platform_gateway_mode"
+
+
 class PaymentAccount(TenantScopedModel):
     """The practice's own NMI merchant account (P4 §1.2, §3.3): which of NMI's
     environments its keys are for, and the last connection test. The two keys
@@ -299,6 +329,13 @@ class PaymentAccount(TenantScopedModel):
     check_detail = models.TextField(blank=True, default="", db_default="")
     checked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
+    #: The card processor's own Test Mode (2026-11-16), as last read on Test
+    #: connection and before each sale, card save or refund: true (no money
+    #: moves), false, or null when it could not be read, and then card
+    #: payments behave as before and Billing says why (`gateway_mode_detail`).
+    gateway_test_mode = models.BooleanField(null=True, blank=True)
+    gateway_mode_read_at = models.DateTimeField(null=True, blank=True)
+    gateway_mode_detail = models.TextField(blank=True, default="", db_default="")
 
     class Meta(TenantScopedModel.Meta):
         db_table = "payment_account"
@@ -366,6 +403,8 @@ class PaymentAttempt(TenantScopedModel):
     problem = models.TextField(blank=True, default="", db_default="")
     finished_at = models.DateTimeField(null=True, blank=True)
     looked_up_at = models.DateTimeField(null=True, blank=True)
+    #: Made while the card processor said it was in Test Mode (2026-11-16).
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "payment_attempt"
@@ -403,6 +442,9 @@ class ClientPaymentMethod(TenantScopedModel):
                                    on_delete=models.SET_NULL, related_name="+")
     #: When the client was told the card is about to expire. Once per card.
     expiry_notice_at = models.DateTimeField(null=True, blank=True)
+    #: Saved while the card processor was in Test Mode (2026-11-16): deleted
+    #: from the vault by "Clear test payments".
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "client_payment_method"
@@ -511,6 +553,9 @@ class PracticeSubscription(TenantScopedModel):
                               default=Status.NEEDS_CARD, db_default=Status.NEEDS_CARD)
     #: The first 1st on or after the card went on file: no part-month (§2.2).
     first_charge_on = models.DateField(null=True, blank=True)
+    #: The card was saved while the platform account was in Test Mode
+    #: (2026-11-16): deleted from the vault by "Clear test payments".
+    card_is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "practice_subscription"
@@ -570,6 +615,9 @@ class PracticeInvoice(TenantScopedModel):
     charge_tries = models.PositiveSmallIntegerField(default=0, db_default=0)
     #: What NMI said to the last charge that was not approved.
     last_charge_text = models.TextField(blank=True, default="", db_default="")
+    #: Its charge was made while the platform account was in Test Mode
+    #: (2026-11-16): no money moved. Set as each charge starts.
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "practice_invoice"
@@ -672,3 +720,106 @@ class NmiEvent(TenantScopedModel):
             models.CheckConstraint(condition=Q(amount_cents__gte=0),
                                    name="nmi_event_amount_not_negative"),
         ]
+
+
+class CardRefund(TenantScopedModel):
+    """Money given back on a card payment the app took (2026-11-16): a client
+    payment (the practice owner's, on the practice's account) or a practice's
+    subscription charge (the platform owner's, on the platform's account).
+
+    **A void or a refund.** The card processor is asked for the sale's state
+    first: a sale not yet settled and given back in full is voided, so nothing
+    reaches the payer's statement; anything else is refunded, in full or in
+    part. **One at a time, recorded before the call**, never retried by itself;
+    a lost answer is "unknown" and found by the ten-minute lookup. Never more
+    than was paid. One made in the processor's own portal is recorded from the
+    read-back's flag ("Record this refund"), with `source` portal and no call.
+    """
+
+    class Kind(models.TextChoices):
+        VOID = "void", "Cancelled before it settled"
+        REFUND = "refund", "Refunded"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Asking the card processor"
+        DONE = "done", "Done"
+        #: The processor's answer was lost; being looked up.
+        UNKNOWN = "unknown", "Checking with the card processor"
+        #: Refused, or the processor has none: nothing was given back.
+        FAILED = "failed", "Not done"
+
+    class Source(models.TextChoices):
+        APP = "app", "Made here"
+        PORTAL = "portal", "Made in the card processor's portal"
+
+    IN_FLIGHT = (Status.PENDING, Status.UNKNOWN)
+    #: What counts against what may still be given back.
+    COUNTED = (Status.PENDING, Status.UNKNOWN, Status.DONE)
+
+    payment = models.ForeignKey(ClientPayment, null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="refunds")
+    invoice = models.ForeignKey(ClientInvoice, null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="refunds")
+    practice_invoice = models.ForeignKey(PracticeInvoice, null=True, blank=True,
+                                         on_delete=models.PROTECT, related_name="refunds")
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.PENDING,
+                              db_default=Status.PENDING)
+    source = models.CharField(max_length=8, choices=Source.choices, default=Source.APP,
+                              db_default=Source.APP)
+    amount_cents = models.BigIntegerField()
+    #: Required: why the money was given back.
+    reason = models.TextField()
+    #: The sale it gives back, and our reference on that sale (what the
+    #: lookup searches by: a refund carries its sale's order id).
+    against_transaction_id = models.CharField(max_length=40)
+    sale_reference = models.CharField(max_length=60, blank=True, default="", db_default="")
+    #: The processor's id for it: a refund's own transaction; a void's is the
+    #: sale's own, which it cancelled.
+    nmi_transaction_id = models.CharField(max_length=40, blank=True, default="", db_default="")
+    response_code = models.CharField(max_length=40, blank=True, default="", db_default="")
+    response_text = models.TextField(blank=True, default="", db_default="")
+    environment = models.CharField(max_length=8, default="sandbox")
+    #: Of a test payment (no money moved either way): never in the books.
+    is_test = models.BooleanField(default=False, db_default=False)
+    #: Chosen with a full refund: void the invoice once it is done.
+    void_invoice = models.BooleanField(default=False, db_default=False)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="+")
+    #: The read-back's flag it was recorded from ("Record this refund").
+    nmi_event = models.OneToOneField(NmiEvent, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name="recorded_refund")
+    #: Given back at the processor, but something after could not be done
+    #: (the books refused it): the owner is told what to do by hand.
+    problem = models.TextField(blank=True, default="", db_default="")
+    finished_at = models.DateTimeField(null=True, blank=True)
+    looked_up_at = models.DateTimeField(null=True, blank=True)
+    #: A test refund cleared with its test payment: it no longer counts.
+    cleared_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "card_refund"
+        constraints = [
+            models.CheckConstraint(condition=Q(amount_cents__gt=0),
+                                   name="card_refund_amount_positive"),
+            # A client payment's (with its invoice), or a subscription
+            # invoice's: exactly one of the two.
+            models.CheckConstraint(
+                condition=(Q(payment__isnull=False, invoice__isnull=False,
+                             practice_invoice__isnull=True)
+                           | Q(payment__isnull=True, invoice__isnull=True,
+                               practice_invoice__isnull=False)),
+                name="card_refund_one_side"),
+            models.UniqueConstraint(fields=["payment"],
+                                    condition=Q(status__in=["pending", "unknown"],
+                                                payment__isnull=False),
+                                    name="card_refund_one_in_flight_per_payment"),
+            models.UniqueConstraint(fields=["practice_invoice"],
+                                    condition=Q(status__in=["pending", "unknown"],
+                                                practice_invoice__isnull=False),
+                                    name="card_refund_one_in_flight_per_subscription_invoice"),
+            models.UniqueConstraint(fields=["tenant", "nmi_transaction_id"],
+                                    condition=Q(kind="refund") & ~Q(nmi_transaction_id=""),
+                                    name="card_refund_refund_once"),
+        ]
+        indexes = [models.Index(fields=["status", "created_at"])]

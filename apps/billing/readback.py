@@ -14,8 +14,11 @@ each one the app did not make becomes one `nmi_event`:
   is flagged for the practice owner.
 
 Our own sales (a payment or an attempt carries their transaction id or our
-reference) are not events. A subscription charge ("sub-…") is the platform's
-and is left out, even where a practice shares the platform's keys (§1.2).
+reference) are not events, and nor are the refunds and voids this app made
+(2026-11-16, `refunds.is_ours`). A subscription charge ("sub-…") is the
+platform's and is left out, even where a practice shares the platform's keys
+(§1.2). A refund or void from the portal that matches a payment can be
+recorded with one click ("Record this refund", `refunds.record_event`).
 """
 
 from __future__ import annotations
@@ -26,8 +29,8 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing import gateway as gw
-from apps.billing import payment_accounts
-from apps.billing.models import ClientPayment, NmiEvent, PaymentAttempt
+from apps.billing import payment_accounts, refunds
+from apps.billing.models import CardRefund, ClientPayment, NmiEvent, PaymentAttempt
 from apps.tenancy.models import AuditEvent
 
 #: How far back each read looks: a week, so a day or two missed is caught up.
@@ -97,6 +100,9 @@ def read_back(tenant, *, now=None) -> dict:
         kind = KINDS.get(action.action_type, NmiEvent.Kind.OTHER)
         if kind == NmiEvent.Kind.SALE and _ours(tenant, action):
             continue
+        if kind in (NmiEvent.Kind.REFUND, NmiEvent.Kind.VOID) and \
+                refunds.is_ours(action, tenant=tenant):
+            continue                                  # made here: on its invoice already
         payment = None if kind == NmiEvent.Kind.SALE else _payment_for(tenant, action)
         outcome = NmiEvent.Outcome.MATCHED if payment is not None else NmiEvent.Outcome.UNMATCHED
         note = _words(kind, action, payment)
@@ -156,7 +162,22 @@ def represent(event) -> dict:
             # The platform's read-back: the subscription invoice it was against.
             "practice_invoice_number": (event.practice_invoice.number
                                         if event.practice_invoice_id else ""),
-            "reviewed": event.reviewed_at is not None}
+            "reviewed": event.reviewed_at is not None,
+            # 2026-11-16: a refund or void made in the portal, matched to its
+            # payment: "Record this refund" does the bookkeeping.
+            "can_record": refunds.can_record(event),
+            "recorded": CardRefund.all_objects.filter(nmi_event=event).exists(),
+            "full": _full(event)}
+
+
+def _full(event) -> bool:
+    """Whether recording it would leave nothing paid ("and void the invoice")."""
+    if event.platform:
+        invoice = event.practice_invoice
+        return bool(invoice and invoice.amount_paid_cents - event.amount_cents == 0)
+    payment = event.payment
+    return bool(payment and payment.invoice.paid_cents - event.amount_cents == 0
+                and refunds.refundable_cents(payment) == event.amount_cents)
 
 
 # ------------------------------------------------- the platform's own account
@@ -185,6 +206,9 @@ def read_back_platform(*, now=None) -> dict:
         if action.action_type in QUIET or not action.success:
             continue
         kind = KINDS.get(action.action_type, NmiEvent.Kind.OTHER)
+        if kind in (NmiEvent.Kind.REFUND, NmiEvent.Kind.VOID) and \
+                refunds.is_ours(action, subscription=True):
+            continue                          # made here, by the platform owner
         ids = [i for i in (action.transaction_id, action.original_transaction_id) if i]
         invoice = PracticeInvoice.all_objects.filter(nmi_transaction_id__in=ids) \
             .select_related("tenant").first() if ids else None

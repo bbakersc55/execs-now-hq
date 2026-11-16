@@ -26,7 +26,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone
 
 from apps.billing import money
@@ -663,21 +663,34 @@ def _to_the_books(change) -> None:
 
 
 def _recount(invoice) -> None:
-    paid = (ClientPayment.all_objects.filter(invoice=invoice, removed_at__isnull=True)
-            .aggregate(total=Sum("amount_cents"))["total"] or 0)
-    invoice.paid_cents = paid
-    if paid >= invoice.total_cents:
-        invoice.status = S.PAID
-    elif paid > 0:
-        invoice.status = S.PARTIALLY_PAID
-    else:
-        invoice.status = S.SENT
-    invoice.save(update_fields=["paid_cents", "status", "updated_at"])
+    """Paid is what was paid less what was given back (2026-11-16: card
+    refunds and voids). The test part is kept apart: test payments moved no
+    money, so only the invoice itself counts them."""
+    from apps.billing.models import CardRefund
+
+    live = ClientPayment.all_objects.filter(invoice=invoice, removed_at__isnull=True)
+    refunds = CardRefund.all_objects.filter(invoice=invoice, status=CardRefund.Status.DONE,
+                                            cleared_at__isnull=True)
+
+    def total(qs):
+        return qs.aggregate(total=Sum("amount_cents"))["total"] or 0
+
+    paid = total(live) - total(refunds)
+    test = total(live.filter(is_test=True)) - total(refunds.filter(is_test=True))
+    invoice.paid_cents, invoice.test_paid_cents = paid, test
+    if invoice.status != S.VOID:
+        if paid >= invoice.total_cents:
+            invoice.status = S.PAID
+        elif paid > 0:
+            invoice.status = S.PARTIALLY_PAID
+        else:
+            invoice.status = S.SENT
+    invoice.save(update_fields=["paid_cents", "test_paid_cents", "status", "updated_at"])
 
 
 @transaction.atomic
 def record_payment(invoice, *, actor, amount_cents, paid_on, method=None, reference="",
-                   note="", nmi_transaction_id="") -> ClientPayment:
+                   note="", nmi_transaction_id="", is_test=False) -> ClientPayment:
     invoice = ClientInvoice.all_objects.select_for_update().get(pk=invoice.pk)
     if invoice.status not in ClientInvoice.OPEN:
         raise BillingError(
@@ -702,11 +715,14 @@ def record_payment(invoice, *, actor, amount_cents, paid_on, method=None, refere
         tenant_id=invoice.tenant_id, invoice=invoice, amount_cents=amount, paid_on=paid_on,
         method=method, reference=str(reference or "").strip()[:120],
         note=str(note or "").strip(), recorded_by=actor,
-        nmi_transaction_id=str(nmi_transaction_id or ""))
+        nmi_transaction_id=str(nmi_transaction_id or ""), is_test=bool(is_test))
     _recount(invoice)
-    _to_the_books(lambda finance: finance.payment_recorded(payment, actor=actor))
+    if not payment.is_test:
+        # A test payment moved no money: never in the books (2026-11-16).
+        _to_the_books(lambda finance: finance.payment_recorded(payment, actor=actor))
     audit(invoice, "payment_recorded", actor, payment=str(payment.pk), amount_cents=amount,
-          paid_on=paid_on.isoformat(), method=method, before=before, after=invoice.status)
+          paid_on=paid_on.isoformat(), method=method, before=before, after=invoice.status,
+          **({"test": True} if payment.is_test else {}))
     return payment
 
 
@@ -721,6 +737,12 @@ def remove_payment(payment, *, actor, reason) -> ClientInvoice:
         raise BillingError("That payment was already removed.", status=409)
     if invoice.status == S.VOID:
         raise BillingError("The invoice is void.", status=409)
+    from apps.billing.models import CardRefund
+
+    if CardRefund.all_objects.filter(payment=payment, status__in=CardRefund.COUNTED,
+                                     cleared_at__isnull=True).exists():
+        raise BillingError("Money was given back on this card payment, so it stays on the "
+                           "invoice with its refund.", status=409)
     before = invoice.status
     payment.removed_at = timezone.now()
     payment.removed_by = actor
@@ -773,12 +795,15 @@ def void(invoice, *, actor, reason) -> ClientInvoice:
 def totals(queryset, today=None) -> dict:
     """Over exactly the invoices given, so an associate's totals are the
     totals of what they may see. A draft, a ready one and a void one are not
-    money owed."""
+    money owed. Test payments moved no money (2026-11-16): an invoice they
+    paid is still owed here."""
     today = today or timezone.localdate()
     counted = queryset.filter(status__in=(S.SENT, S.PARTIALLY_PAID, S.PAID))
-    sums = counted.aggregate(invoiced=Sum("total_cents"), paid=Sum("paid_cents"))
-    late = counted.filter(status__in=ClientInvoice.OPEN, due_date__lt=today).aggregate(
-        total=Sum(F("total_cents") - F("paid_cents")))
+    sums = counted.aggregate(invoiced=Sum("total_cents"),
+                             paid=Sum(F("paid_cents") - F("test_paid_cents")))
+    late = counted.filter(due_date__lt=today).filter(
+        Q(status__in=ClientInvoice.OPEN) | Q(test_paid_cents__gt=0)).aggregate(
+        total=Sum(F("total_cents") - F("paid_cents") + F("test_paid_cents")))
     invoiced, paid = sums["invoiced"] or 0, sums["paid"] or 0
     return {"invoiced_cents": invoiced, "paid_cents": paid,
             "outstanding_cents": invoiced - paid, "overdue_cents": late["total"] or 0}

@@ -9,6 +9,13 @@ connection test. It refuses card fields exactly as the real one does.
 A test sets what the next sale meets: `refuse_next = ("E_DUPLICATE",
 "Duplicate transaction")` for NMI's refusal, or `lose_next_answer = True`
 (charged, answer lost) / `"uncharged"` (never reached) for a timeout.
+
+Refunds and voids (2026-11-16) behave as the sandbox did: only a sale
+pending settlement voids (`settle(tid)` settles one), a voided sale cannot
+be refunded nor a refunded one voided, a refund is its own transaction
+pointing back to the sale. `lose_next_refund_answer` does for a refund or a
+void what `lose_next_answer` does for a sale. `test_mode_on` is what the
+account's Test Mode reads (`test_mode_unreadable` makes the read fail).
 """
 
 from __future__ import annotations
@@ -40,6 +47,10 @@ class StubGateway:
         #: (account label, Action): what the read-back lists, newest last.
         self.actions: list[tuple[str, Action]] = []
         self.actions_unreachable = False
+        self.test_mode_on = False
+        self.test_mode_unreadable = False
+        self.lose_next_refund_answer: bool | str = False
+        self.refuse_next_refund: tuple[str, str] | None = None
 
     @classmethod
     def shared(cls) -> "StubGateway":
@@ -87,7 +98,8 @@ class StubGateway:
         approved = amount_cents >= DECLINE_BELOW_CENTS
         tid = str(next(self._ids))
         self.sales[tid] = {"account": account.label, "amount_cents": amount_cents,
-                           "refunded_cents": 0, "reference": reference, "approved": approved}
+                           "refunded_cents": 0, "reference": reference, "approved": approved,
+                           "settled": False, "voided": False}
         self._act(account.label, tid, "sale", amount_cents, reference, success=approved)
         if lost:
             raise GatewayUnreachable("NMI did not answer.")
@@ -105,22 +117,85 @@ class StubGateway:
         sale = self.sales.get(transaction_id)
         if sale is None or sale["account"] != account.label or not sale["approved"]:
             raise GatewayError("Transaction not found")
+        self._refused_refund()
+        if sale.get("voided"):
+            raise GatewayRefused("Voided Transaction Cannot be Refunded",
+                                 code="E_INVALID_TRANS_SPECIFIED")
         if amount_cents <= 0 or sale["refunded_cents"] + amount_cents > sale["amount_cents"]:
-            raise GatewayError("Refund amount may not exceed the transaction balance")
+            raise GatewayRefused("Refund amount may not exceed the transaction balance",
+                                 code="E_INVALID_AMOUNT")
+        lost, self.lose_next_refund_answer = self.lose_next_refund_answer, False
+        if lost == "unsent":
+            raise GatewayUnreachable("NMI did not answer.")
         sale["refunded_cents"] += amount_cents
-        self._act(account.label, transaction_id, "refund", amount_cents, sale["reference"])
-        return Transaction(id=str(next(self._ids)), approved=True, status="pendingsettlement",
+        rid = str(next(self._ids))
+        # A refund is a transaction of its own, pointing back (as the sandbox).
+        self._act(account.label, rid, "refund", amount_cents, sale["reference"],
+                  original=transaction_id)
+        if lost:
+            raise GatewayUnreachable("NMI did not answer.")
+        return Transaction(id=rid, approved=True, status="pendingsettlement",
                            response_code="100", response_text="SUCCESS",
                            amount_cents=-amount_cents, card_type="Visa", last4="1111",
                            reference=sale["reference"])
+
+    def void(self, account: Account, *, transaction_id: str) -> Transaction:
+        self._record("void", account, {"transaction_id": transaction_id})
+        sale = self.sales.get(transaction_id)
+        if sale is None or sale["account"] != account.label or not sale["approved"]:
+            raise GatewayError("Transaction not found")
+        self._refused_refund()
+        if sale["refunded_cents"]:
+            raise GatewayRefused("Refunded transactions may not be voided",
+                                 code="E_INVALID_TRANS_SPECIFIED")
+        if sale.get("voided") or sale.get("settled"):
+            raise GatewayRefused("Only transactions pending settlement can be voided",
+                                 code="E_INVALID_TRANS_SPECIFIED")
+        lost, self.lose_next_refund_answer = self.lose_next_refund_answer, False
+        if lost == "unsent":
+            raise GatewayUnreachable("NMI did not answer.")
+        sale["voided"] = True
+        self._act(account.label, transaction_id, "void", sale["amount_cents"], sale["reference"])
+        if lost:
+            raise GatewayUnreachable("NMI did not answer.")
+        return self._transaction(transaction_id)
+
+    def _refused_refund(self):
+        if self.refuse_next_refund is not None:
+            code, message = self.refuse_next_refund
+            self.refuse_next_refund = None
+            raise GatewayRefused(message, code=code)
+
+    def settle(self, transaction_id: str) -> None:
+        """What the processor does overnight: the sale can no longer be voided."""
+        self.sales[transaction_id]["settled"] = True
+
+    def test_mode(self, account: Account) -> bool:
+        self._record("test_mode", account, {})
+        if self.test_mode_unreadable:
+            raise GatewayUnreachable("NMI's lookup did not answer.")
+        return bool(self.test_mode_on)
+
+    def actions_for_reference(self, account: Account, reference: str) -> list:
+        self._record("actions_for_reference", account, {"reference": reference})
+        if self.lookup_unreachable:
+            raise GatewayUnreachable("NMI's lookup did not answer.")
+        return [a for label, a in self.actions
+                if label == account.label and a.reference == reference]
 
     def get_transaction(self, account: Account, transaction_id: str) -> Transaction:
         self._record("get_transaction", account, {"transaction_id": transaction_id})
         sale = self.sales.get(transaction_id)
         if sale is None or sale["account"] != account.label:
             raise GatewayError("Transaction not found")
+        return self._transaction(transaction_id)
+
+    def _transaction(self, transaction_id: str) -> Transaction:
+        sale = self.sales[transaction_id]
+        status = ("canceled" if sale.get("voided") else "complete" if sale.get("settled")
+                  else "pendingsettlement") if sale["approved"] else "failed"
         return Transaction(id=transaction_id, approved=sale["approved"],
-                           status="pendingsettlement" if sale["approved"] else "failed",
+                           status=status,
                            response_code="100" if sale["approved"] else "200",
                            response_text="SUCCESS" if sale["approved"] else "DECLINE",
                            amount_cents=sale["amount_cents"], card_type="Visa", last4="1111",
@@ -170,9 +245,16 @@ class StubGateway:
     def portal_sale(self, account: Account, amount_cents: int, *, reference="", at=None) -> str:
         tid = str(next(self._ids))
         self.sales[tid] = {"account": account.label, "amount_cents": amount_cents,
-                           "refunded_cents": 0, "reference": reference, "approved": True}
+                           "refunded_cents": 0, "reference": reference, "approved": True,
+                           "settled": False, "voided": False}
         self._act(account.label, tid, "sale", amount_cents, reference, at=at)
         return tid
+
+    def portal_void(self, account: Account, transaction_id: str, *, at=None):
+        sale = self.sales[transaction_id]
+        sale["voided"] = True
+        self._act(account.label, transaction_id, "void", sale["amount_cents"],
+                  sale["reference"], at=at)
 
     def vault_add(self, account: Account, *, payment_token: str,
                   billing: Billing) -> VaultRecord:

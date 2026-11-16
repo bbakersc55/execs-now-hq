@@ -24,13 +24,14 @@ def run_invoice_schedules(tenant_id: str) -> int:
 @unattended_job("billing.resolve_card_payments")
 def resolve_card_payments(tenant_id: str) -> int:
     """Looks up, by our reference, each card payment NMI did not answer
-    (P4 part 2). It charges nothing: it only reads what NMI did."""
-    from apps.billing import card_payments
+    (P4 part 2), and each refund or void whose answer was lost (2026-11-16).
+    It charges and gives back nothing: it only reads what NMI did."""
+    from apps.billing import card_payments, refunds
     from apps.tenancy.models import Tenant
 
     with tenant_context(tenant_id):
         tenant = Tenant.objects.get(pk=tenant_id)
-        return card_payments.resolve_unknown(tenant)
+        return card_payments.resolve_unknown(tenant) + refunds.resolve_unknown(tenant)
 
 
 @unattended_job("billing.run_autopay")

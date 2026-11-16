@@ -66,6 +66,8 @@ def represent_row(invoice, today=None) -> dict:
         "terms_label": services.terms_label(services.terms_days_of(invoice)),
         "total_cents": invoice.total_cents, "paid_cents": invoice.paid_cents,
         "balance_cents": invoice.balance_cents,
+        # 2026-11-16: paid while the card processor was in Test Mode.
+        "test_paid_cents": invoice.test_paid_cents,
         "from_schedule": invoice.schedule_id is not None,
         "send_state": _send_state(invoice),
     }
@@ -80,8 +82,27 @@ def books_category(row, role) -> dict:
     return {"income_category": str(row.income_category_id or "")}
 
 
+def _payment(p, role) -> dict:
+    from apps.billing import refunds
+
+    row = {
+        "id": str(p.pk), "amount_cents": p.amount_cents, "paid_on": p.paid_on.isoformat(),
+        "method": p.method, "method_label": p.get_method_display(),
+        "reference": p.reference, "note": p.note, "recorded_by": _person(p.recorded_by),
+        "removed": p.removed_at is not None, "remove_reason": p.remove_reason,
+        "removed_by": _person(p.removed_by),
+        # 2026-11-16: taken while the card processor was in Test Mode.
+        "is_test": p.is_test, "card": refunds.is_card_payment(p),
+    }
+    if role == Role.FF:
+        # "Refund or cancel this payment" is the practice owner's alone.
+        row.update(refunds.payment_options(p))
+    return row
+
+
 def represent(invoice, role=None) -> dict:
-    from apps.billing import autopay, pay_links
+    from apps.billing import autopay, pay_links, refunds
+    from apps.billing.models import CardRefund
 
     pay_url = pay_links.url_of(invoice)
     lines = ClientInvoiceLine.all_objects.filter(invoice=invoice).order_by(
@@ -112,13 +133,11 @@ def represent(invoice, role=None) -> dict:
             "project": str(line.project_id) if line.project_id else None,
             "goal": str(line.goal_id) if line.goal_id else None,
         } for line in lines],
-        "payments": [{
-            "id": str(p.pk), "amount_cents": p.amount_cents, "paid_on": p.paid_on.isoformat(),
-            "method": p.method, "method_label": p.get_method_display(),
-            "reference": p.reference, "note": p.note, "recorded_by": _person(p.recorded_by),
-            "removed": p.removed_at is not None, "remove_reason": p.remove_reason,
-            "removed_by": _person(p.removed_by),
-        } for p in payments],
+        "payments": [_payment(p, role) for p in payments],
+        "test_paid_cents": invoice.test_paid_cents,
+        # 2026-11-16: money given back on its card payments.
+        "refunds": [refunds.represent(r) for r in CardRefund.all_objects.filter(
+            invoice=invoice).select_related("requested_by").order_by("created_at")],
         "merge_fields": list(services.MERGE_FIELDS),
         # P4 §4: refunds, voids and chargebacks NMI's portal made against it.
         "nmi_events": [readback.represent(e) for e in
@@ -240,10 +259,18 @@ class InvoiceViewSet(BillingViewSet):
         if refused:
             return refused
         qs = self._filtered(request)
-        return Response({"invoices": [represent_row(invoice) for invoice in qs[:500]],
-                         "totals": services.totals(qs),
-                         "drafts_from_schedules": self.invoices().filter(
-                             status=S.DRAFT, schedule__isnull=False).count()})
+        body = {"invoices": [represent_row(invoice) for invoice in qs[:500]],
+                "totals": services.totals(qs),
+                "drafts_from_schedules": self.invoices().filter(
+                    status=S.DRAFT, schedule__isnull=False).count()}
+        if self._role() == Role.FF:
+            from apps.billing import gateway_mode, testmode
+
+            # 2026-11-16: "The card processor is in Test Mode", and the test
+            # payments waiting to be cleared.
+            body["gateway_mode"] = gateway_mode.practice_state(request.tenant)
+            body["test_payments"] = testmode.practice_summary(request.tenant)
+        return Response(body)
 
     @action(detail=False, methods=["get"])
     def export(self, request):
@@ -387,6 +414,30 @@ class InvoiceViewSet(BillingViewSet):
     def void(self, request, pk=None):
         return self._do(request, pk, lambda i: services.void(
             i, actor=request.user, reason=request.data.get("reason")), owner=True)
+
+    @action(detail=True, methods=["post"])
+    def refund(self, request, pk=None):
+        """2026-11-16: "Refund or cancel this payment" on a card payment the
+        app took. {payment, amount_cents, reason, void_invoice}. The practice
+        owner's alone. Answers the invoice and the sentence to show."""
+        from apps.billing import refunds
+
+        if (refused := self._owner()):
+            return refused
+        invoice = self.load(pk)
+        payment = ClientPayment.objects.filter(
+            invoice=invoice, pk=request.data.get("payment")).first() \
+            if _uuid(request.data.get("payment")) else None
+        if payment is None:
+            raise Http404
+        try:
+            _, message = refunds.refund_payment(
+                payment, amount_cents=request.data.get("amount_cents"),
+                reason=request.data.get("reason"),
+                void_invoice=request.data.get("void_invoice") is True, actor=request.user)
+        except refunds.RefundRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({**represent(self.load(pk), self._role()), "message": message})
 
     @action(detail=True, methods=["get"])
     def pdf(self, request, pk=None):
@@ -623,6 +674,26 @@ class NmiEventViewSet(BillingViewSet):
         event.save(update_fields=["reviewed_at", "reviewed_by", "updated_at"])
         return Response(readback.represent(event))
 
+    @action(detail=True, methods=["post"])
+    def record(self, request, pk=None):
+        """2026-11-16: "Record this refund": a refund or void made in the
+        processor's portal, recorded against its payment with the same
+        bookkeeping as one made here. {void_invoice}."""
+        from apps.billing import refunds
+
+        if (refused := self._owner()):
+            return refused
+        event = NmiEvent.objects.filter(pk=pk, platform=False).first() if _uuid(pk) else None
+        if event is None:
+            raise Http404
+        try:
+            refunds.record_event(event, actor=request.user,
+                                 void_invoice=request.data.get("void_invoice") is True)
+        except refunds.RefundRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        event.refresh_from_db()
+        return Response(readback.represent(event))
+
 
 def _uuid(value) -> bool:
     import uuid
@@ -772,6 +843,19 @@ class PaymentAccountView(viewsets.ViewSet):
         except payment_accounts.PaymentAccountError as exc:
             return Response({"detail": str(exc)}, status=400)
 
+    @action(detail=False, methods=["post"], url_path="clear-test-payments")
+    def clear_test_payments(self, request):
+        """2026-11-16: once the processor reads live again. {invoices:
+        "reopen" | "void"}. Answers what was done and the account's state."""
+        from apps.billing import payment_accounts, testmode
+
+        try:
+            done = testmode.clear_practice(request.tenant, actor=request.user,
+                                           invoices=request.data.get("invoices"))
+        except testmode.ClearRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"cleared": done, **payment_accounts.state(request.tenant)})
+
 
 class PortalAutopayView(viewsets.ViewSet):
     """P4 part 4: the company's card on file and auto-pay, in the portal.
@@ -909,6 +993,7 @@ class CardPaymentsSwitchView(viewsets.ViewSet):
         from django.conf import settings
 
         from apps.billing import gateway as gw
+        from apps.billing import gateway_mode, testmode
         from apps.billing.models import CardPaymentHold
 
         row = CardPaymentHold.objects.select_related("changed_by").first()
@@ -922,6 +1007,10 @@ class CardPaymentsSwitchView(viewsets.ViewSet):
             "environment": settings.NMI_ENVIRONMENT,
             "api_host": gw.api_host("live"),
             "card_form": gw.card_form(settings.NMI_ENVIRONMENT)["kind"],
+            # 2026-11-16: the platform account's Test Mode, and its test
+            # subscription charges and cards waiting to be cleared.
+            "gateway_mode": gateway_mode.platform_state(),
+            "test_payments": testmode.platform_summary(),
         }
 
     def list(self, request):
@@ -940,4 +1029,26 @@ class CardPaymentsSwitchView(viewsets.ViewSet):
         row.save()
         logging.getLogger(__name__).warning("card payments %s by the platform owner",
                                             "paused" if paused else "resumed")
+        return Response(self._state())
+
+    @action(detail=False, methods=["post"], url_path="clear-test-payments")
+    def clear_test_payments(self, request):
+        """2026-11-16: the platform account's test subscription charges and
+        cards, once it reads live again. {invoices: "reopen" | "void"}."""
+        from apps.billing import testmode
+
+        try:
+            done = testmode.clear_platform(actor=request.user,
+                                           invoices=request.data.get("invoices"))
+        except testmode.ClearRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"cleared": done, **self._state()})
+
+    @action(detail=False, methods=["post"], url_path="read-test-mode")
+    def read_test_mode(self, request):
+        """Read the platform account's Test Mode now (the platform's Test
+        connection, for this one setting)."""
+        from apps.billing import gateway_mode
+
+        gateway_mode.for_platform()
         return Response(self._state())

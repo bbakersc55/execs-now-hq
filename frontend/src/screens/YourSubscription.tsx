@@ -107,6 +107,7 @@ export function YourSubscription() {
                 <td>
                   <Pill kind={invoice.status === "paid" ? "ok" : "bad"}>
                     {invoice.checking ? "Being checked" : invoice.status_label}</Pill>
+                  {invoice.is_test && <> <Pill kind="warn">Test</Pill></>}
                   {invoice.last_charge_text && (
                     <span className="small muted"> {invoice.last_charge_text}</span>)}
                 </td>

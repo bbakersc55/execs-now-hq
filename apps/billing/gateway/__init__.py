@@ -11,7 +11,8 @@ URL or a request body. Four rules hold here, for every caller:
   test runner, whatever the setting. Otherwise `gateway()` is the stub.
 - **Production never takes the stub's answer**, and the platform owner can
   pause card payments (`paused()`, 2026-11-10): then nothing that charges or
-  stores a card leaves, and nothing is marked paid.
+  stores a card leaves, and nothing is marked paid. A refund or a void still
+  goes (2026-11-16); with real calls off in production nothing does.
 - **No key is ever logged or returned.** An `Account` does not print its keys,
   and errors carry NMI's own message, scrubbed of the account's keys.
 
@@ -291,11 +292,13 @@ class RefusingGateway:
 
 
 class HeldGateway:
-    """The switch is on: a sale, a refund or a card stored is refused before
-    it leaves; reads (the connection test, lookups, the read-back) and a
-    card's deletion pass through to the gateway underneath."""
+    """The switch is on: a sale or a card stored is refused before it leaves;
+    reads (the connection test, lookups, the read-back, Test Mode), a card's
+    deletion, and a refund or void pass through to the gateway underneath.
+    Giving money back stays possible while payments are paused (owner,
+    2026-11-16): the pause stops money coming in, not going back."""
 
-    MOVES = frozenset({"sale", "refund", "vault_add"})
+    MOVES = frozenset({"sale", "vault_add"})
 
     def __init__(self, inner):
         self._inner = inner

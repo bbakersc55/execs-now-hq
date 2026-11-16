@@ -696,16 +696,67 @@ def payment_removed(payment, *, actor=None, reason="") -> int:
     return count
 
 
+@transaction.atomic
+def refund_recorded(refund, *, actor=None, on_date=None) -> list[FinanceEntry]:
+    """A card refund of an invoice payment (2026-11-16): income going back
+    out, on the refund's own date, in the category the payment went to, and
+    the tax part back out of tax held in the payment's own proportion. A test
+    refund is never here. Safe to call again."""
+    payment = refund.payment
+    invoice = payment.invoice
+    tenant = invoice.tenant
+    if refund.is_test or FinanceEntry.all_objects.filter(
+            tenant=tenant, client_refund=refund, removed_at__isnull=True).exists():
+        return []
+    on_date = on_date or timezone.localdate()
+    _unlocked(tenant, on_date)
+    entered = FinanceEntry.all_objects.filter(tenant=tenant, client_payment=payment,
+                                              removed_at__isnull=True)
+    income = entered.filter(kind=K.INCOME).first()
+    held = entered.filter(kind=K.HELD).first()
+    category = income.category if income else income_category_for(invoice)
+    tax = 0
+    if held is not None and payment.amount_cents > 0:
+        tax = min(refund.amount_cents, int(
+            (Decimal(refund.amount_cents) * held.amount_cents / Decimal(payment.amount_cents))
+            .quantize(Decimal("1"), rounding=ROUND_HALF_UP)))
+    fee = refund.amount_cents - tax
+    who = invoice.client_company.name if invoice.client_company_id else str(invoice.contact)
+    common = dict(
+        tenant=tenant, on_date=on_date, client_company=invoice.client_company,
+        client_refund=refund, description=f"Refund on invoice {invoice.number}"[:255],
+        counterparty=who[:160], reference=payment.reference,
+        source=FinanceEntry.Source.INVOICE, created_by=actor)
+    made = []
+    if fee > 0:
+        made.append(FinanceEntry.all_objects.create(
+            kind=K.INCOME, direction=D.OUT, amount_cents=fee, category=category, **common))
+    if tax > 0:
+        made.append(FinanceEntry.all_objects.create(
+            kind=K.HELD, direction=D.OUT, amount_cents=tax,
+            category=held.category if held else None, **common))
+    for entry in made:
+        audit(tenant, "entry_added", actor, entry, after=_state(entry),
+              invoice=invoice.number, refund=str(refund.pk))
+    return made
+
+
 def backfill_payments(tenant, *, apply: bool) -> int:
     """Entries for invoice payments recorded before the books existed (F13).
-    Counts what it would write; writes only when told to."""
-    from apps.billing.models import ClientPayment
+    Counts what it would write; writes only when told to. Never a test
+    payment, nor one voided at the card processor (its entries were taken
+    out on purpose, 2026-11-16)."""
+    from apps.billing.models import CardRefund, ClientPayment
 
     entered = FinanceEntry.all_objects.filter(
         tenant=tenant, removed_at__isnull=True, client_payment__isnull=False)
+    voided = CardRefund.all_objects.filter(
+        tenant=tenant, kind=CardRefund.Kind.VOID, status=CardRefund.Status.DONE,
+        payment__isnull=False).values("payment_id")
     waiting = ClientPayment.all_objects.filter(
-        tenant=tenant, removed_at__isnull=True).exclude(
-            pk__in=entered.values("client_payment_id")).order_by("paid_on", "created_at")
+        tenant=tenant, removed_at__isnull=True, is_test=False).exclude(
+            pk__in=entered.values("client_payment_id")).exclude(
+            pk__in=voided).order_by("paid_on", "created_at")
     count = 0
     for payment in waiting:
         count += 1

@@ -36,7 +36,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.html import escape
 
-from apps.billing import card_payments, money, payment_accounts, services
+from apps.billing import card_payments, gateway_mode, money, payment_accounts, services
 from apps.billing import gateway as gw
 from apps.billing.models import (
     AutopayConsent, ClientInvoice, ClientPaymentMethod, PaymentAttempt,
@@ -102,7 +102,7 @@ def state(company) -> dict:
         "public_key": account.public_key if account and not paused else "",
         "card_form": gw.card_form(account.environment if account else "sandbox"),
         "card": card and {
-            "brand": card.brand, "last4": card.last4,
+            "brand": card.brand, "last4": card.last4, "is_test": card.is_test,
             "expires": f"{card.exp_month:02d}/{card.exp_year % 100:02d}",
             "added_by": (card.added_by.full_name or card.added_by.email) if card.added_by else "",
             "added_at": card.created_at.isoformat()},
@@ -134,6 +134,8 @@ def save_card(company, *, user, payment_token) -> ClientPaymentMethod:
         raise AutopayRefused(gw.PAUSED_MESSAGE, 503)
     account = payment_accounts.practice_account(company.tenant)
     first, _, last = (user.full_name or user.email).strip().partition(" ")
+    # Saved while the processor is in Test Mode: a test card (2026-11-16).
+    is_test = gateway_mode.for_practice(company.tenant, account) is True
     try:
         record = gw.gateway().vault_add(account, payment_token=payment_token,
                                         billing=gw.Billing(first_name=first or "Card",
@@ -157,9 +159,10 @@ def save_card(company, *, user, payment_token) -> ClientPaymentMethod:
         card = ClientPaymentMethod.all_objects.create(
             tenant=company.tenant, client_company=company, vault_id=record.id,
             environment=row.environment, brand=record.brand, last4=record.last4,
-            exp_month=int(exp[:2]), exp_year=2000 + int(exp[2:]), added_by=user)
+            exp_month=int(exp[:2]), exp_year=2000 + int(exp[2:]), added_by=user,
+            is_test=is_test)
         _audit(company, "card_saved", user, last4=card.last4,
-               replaced=old.last4 if old else "")
+               replaced=old.last4 if old else "", **({"test": True} if is_test else {}))
     if old is not None:
         _delete_from_vault(old)
     return card

@@ -6,6 +6,7 @@ import { InvoiceLines, cleanLines } from "../components/InvoiceLines";
 import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
 import { TermsPicker } from "../components/PaymentTerms";
 import { Modal, PageHead, useRowLink } from "../components/shell";
+import { ClearTestPayments, GatewayModeBanner } from "../components/TestMode";
 import { Banner, Card, Empty, Field, Pill } from "../components/ui";
 import {
   Company, Contact, Invoice, InvoiceLine, InvoiceList, InvoiceRow, InvoiceSchedule,
@@ -23,6 +24,21 @@ import { dollars, longDate } from "../lib/money";
  * client pays is recorded by hand on the invoice.
  */
 
+/** POST /api/payment-account/clear-test-payments/ — what was done. */
+export interface Cleared {
+  cleared: { payments: number; reopened: number; voided: number; cards: number };
+}
+
+export function cleared(data?: Cleared): string {
+  if (!data) return "";
+  const c = data.cleared;
+  const parts = [`${c.payments} test payment${c.payments === 1 ? "" : "s"} cleared`];
+  if (c.reopened) parts.push(`${c.reopened} invoice${c.reopened === 1 ? "" : "s"} reopened`);
+  if (c.voided) parts.push(`${c.voided} voided`);
+  if (c.cards) parts.push(`${c.cards} test card${c.cards === 1 ? "" : "s"} deleted from the vault`);
+  return parts.join(", ") + ".";
+}
+
 const STATUSES: [string, string][] = [
   ["", "Every status"], ["draft", "Draft"], ["ready", "Ready to send"], ["sent", "Sent"],
   ["partially_paid", "Partly paid"], ["paid", "Paid"], ["overdue", "Overdue"],
@@ -36,6 +52,7 @@ export function StatusPill({ row }: { row: Pick<InvoiceRow, "status" | "status_l
   return (
     <>
       <Pill kind={kind}>{row.status_label}</Pill>
+      {(row.test_paid_cents ?? 0) > 0 && <> <Pill kind="warn">Test</Pill></>}
       {row.overdue && <> <Pill kind="bad">Overdue</Pill></>}
       {row.send_state === "waiting" && <> <Pill>waiting to be approved</Pill></>}
       {row.send_state === "sent_back" && <> <Pill kind="warn">sent back</Pill></>}
@@ -65,6 +82,16 @@ export function Invoices({ me }: { me: Me }) {
   const rowLink = useRowLink();
   const [writing, setWriting] = useState(false);
   const owner = me.role === "FF";
+  const qc = useQueryClient();
+  // 2026-11-16: test payments, once the card processor reads live again.
+  const clear = useMutation({
+    mutationFn: (invoices: "reopen" | "void") =>
+      api.post<Cleared>("/api/payment-account/clear-test-payments/", { invoices }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["payment-account"] });
+    },
+  });
 
   if (list.isError) return <Banner kind="bad">{(list.error as Error).message}</Banner>;
   const data = list.data;
@@ -79,6 +106,17 @@ export function Invoices({ me }: { me: Me }) {
         action={<button className="primary" onClick={() => setWriting(true)}>
           New invoice</button>} />
 
+      {owner && data && (
+        <>
+          <GatewayModeBanner mode={data.gateway_mode}
+            again="Turned it off? Press Test connection under Settings, Billing." />
+          <ClearTestPayments summary={data.test_payments} busy={clear.isPending}
+            onClear={(invoices) => clear.mutate(invoices)} />
+          {clear.isSuccess && <div role="status"><Banner kind="ok">{cleared(clear.data)}
+            </Banner></div>}
+          {clear.isError && <Banner kind="bad">{(clear.error as Error).message}</Banner>}
+        </>
+      )}
       {owner && <FromNmi />}
 
       {writing && <NewInvoice clients={clients} owner={owner}
@@ -487,12 +525,23 @@ function FromNmi() {
     mutationFn: (id: string) => api.post(`/api/nmi-events/${id}/seen/`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nmi-events"] }),
   });
+  // 2026-11-16: one made in the portal, recorded against its payment.
+  const record = useMutation({
+    mutationFn: (id: string) => api.post(`/api/nmi-events/${id}/record/`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["nmi-events"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+  });
   const rows = events.data ?? [];
   if (rows.length === 0) return null;
   return (
     <Card title="From NMI: please look">
       <p className="small muted" style={{ marginTop: 0 }}>Found in your NMI account by the daily check. The
-        invoices' balances are not changed by these: record what each means by hand.</p>
+        invoices' balances are not changed by these by themselves. A refund or cancel made in
+        the processor's portal is recorded on its invoice and in your books with Record this
+        refund; anything else, record by hand.</p>
+      {record.isError && <Banner kind="bad">{(record.error as Error).message}</Banner>}
       <ul className="moves nmi-events">
         {rows.map((e) => (
           <li key={e.id}>
@@ -501,8 +550,15 @@ function FromNmi() {
                 {e.outcome === "unmatched" ? `Unmatched ${e.kind_label.toLowerCase()}` : e.kind_label}</Pill>{" "}
               {e.invoice ? <Link to={`/invoices/${e.invoice}`}>{e.note}</Link> : e.note}
             </span>
-            <button className="ghost small" aria-label={`Mark as seen: ${e.note}`} disabled={seen.isPending}
-              onClick={() => seen.mutate(e.id)}>Mark as seen</button>
+            <span className="row tight">
+              {e.can_record && (
+                <button className="small" aria-label={`Record this refund: ${e.note}`}
+                  disabled={record.isPending} onClick={() => record.mutate(e.id)}>
+                  Record this refund</button>
+              )}
+              <button className="ghost small" aria-label={`Mark as seen: ${e.note}`} disabled={seen.isPending}
+                onClick={() => seen.mutate(e.id)}>Mark as seen</button>
+            </span>
           </li>
         ))}
       </ul>

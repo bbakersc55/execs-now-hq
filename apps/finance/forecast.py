@@ -151,7 +151,7 @@ def _lateness(tenant, today: date) -> dict:
     since = _add_months(today, -12)
     paid = (ClientPayment.all_objects.filter(
         tenant=tenant, removed_at__isnull=True, invoice__status=ClientInvoice.Status.PAID,
-        invoice__client_company__isnull=False)
+        invoice__client_company__isnull=False, is_test=False, invoice__test_paid_cents=0)
         .values("invoice_id", "invoice__client_company_id", "invoice__due_date")
         .annotate(last=Max("paid_on")).filter(last__gte=since))
     days: dict = {}
@@ -181,12 +181,15 @@ def _known(tenant, today: date, end: date, adjusted: dict) -> tuple[list[dict], 
     S = ClientInvoice.Status
     late = _lateness(tenant, today)
     lines, left_out = [], []
-    invoices = (ClientInvoice.all_objects.filter(
-        tenant=tenant, status__in=(S.SENT, S.PARTIALLY_PAID, S.READY, S.DRAFT))
+    # An invoice that test payments "paid" is still owed (2026-11-16): they
+    # moved no money.
+    invoices = (ClientInvoice.all_objects.filter(tenant=tenant).filter(
+        Q(status__in=(S.SENT, S.PARTIALLY_PAID, S.READY, S.DRAFT))
+        | Q(status=S.PAID, test_paid_cents__gt=0))
         .select_related("client_company", "contact").order_by("due_date", "created_at"))
     for invoice in invoices:
-        sent = invoice.status in ClientInvoice.OPEN
-        amount = invoice.balance_cents if sent else invoice.total_cents
+        sent = invoice.status in ClientInvoice.OPEN or invoice.status == S.PAID
+        amount = invoice.real_balance_cents if sent else invoice.total_cents
         if amount <= 0:
             continue
         who = invoice.client_company.name if invoice.client_company_id \
@@ -214,8 +217,8 @@ def _known(tenant, today: date, end: date, adjusted: dict) -> tuple[list[dict], 
         expected = max(due + timedelta(days=habit or 0), today)
         detail = (("Due " if sent else "Not sent yet. As if sent today, due ")
                   + f"{_long(due)}; forecast {_habit(habit)}."
-                  + (" Part paid: this is what is left." if invoice.paid_cents and sent
-                     else ""))
+                  + (" Part paid: this is what is left."
+                     if invoice.paid_cents - invoice.test_paid_cents and sent else ""))
         said = ""
         if moved is not None:
             expected = max(moved.expected_on, today)

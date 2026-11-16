@@ -30,7 +30,7 @@ from django.utils import timezone
 from django.utils.html import escape
 
 from apps.billing import gateway as gw
-from apps.billing import money, payment_accounts, services
+from apps.billing import gateway_mode, money, payment_accounts, services
 from apps.billing.models import ClientInvoice, PaymentAttempt
 
 A = PaymentAttempt.Status
@@ -78,8 +78,10 @@ def can_pay(invoice, *, via=PaymentAttempt.Via.PORTAL) -> bool:
 
 
 def is_test_mode(tenant) -> bool:
+    """A sandbox account, or one whose processor last said Test Mode
+    (2026-11-16): the pay page and the receipt say no money moves."""
     row = payment_accounts.PaymentAccount.all_objects.filter(tenant=tenant).first()
-    return row is None or row.environment != "live"
+    return row is None or row.environment != "live" or row.gateway_test_mode is True
 
 
 def pay_config(invoice, *, via=PaymentAttempt.Via.PORTAL) -> dict:
@@ -154,6 +156,10 @@ def _charge(attempt, **source) -> tuple[PaymentAttempt, str]:
     """One sale for a written attempt, never retried; its answer finishes it."""
     try:
         account = payment_accounts.practice_account(attempt.invoice.tenant)
+        # The processor's own Test Mode, read before every sale (2026-11-16).
+        if gateway_mode.for_practice(attempt.invoice.tenant, account) is True:
+            attempt.is_test = True
+            attempt.save(update_fields=["is_test", "updated_at"])
         txn = gw.gateway().sale(account, amount_cents=attempt.amount_cents,
                                 reference=str(attempt.pk), **source)
     except gw.CardPaymentsPaused:
@@ -215,6 +221,7 @@ def settle(attempt, txn: gw.Transaction) -> tuple[PaymentAttempt, str]:
                     attempt.invoice, actor=attempt.payer, amount_cents=attempt.amount_cents,
                     paid_on=timezone.localdate(), method="card",
                     reference=f"Card {card}".strip()[:120], nmi_transaction_id=txn.id,
+                    is_test=attempt.is_test,
                     note={PaymentAttempt.Via.LINK: "Paid by the pay link.",
                           PaymentAttempt.Via.AUTOPAY: "Charged by auto-pay to the card on file.",
                           }.get(attempt.via, "Paid in the portal.")
@@ -265,7 +272,8 @@ def _send_receipt_and_notice(attempt_id) -> None:
     card = " ".join(p for p in (attempt.card_type, f"ending {attempt.last4}"
                                 if attempt.last4 else "") if p) or "card"
     thread = services._thread_for(invoice)
-    test = " (test mode: no real money moved)" if attempt.environment != "live" else ""
+    test = (" (test mode: no real money moved)"
+            if attempt.environment != "live" or attempt.is_test else "")
 
     # By the link or auto-pay no one is signed in: the receipt goes where the
     # invoice went.

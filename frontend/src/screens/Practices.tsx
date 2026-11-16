@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModelTiersCard } from "../components/AiApps";
+import { RefundForm, RefundsList } from "../components/CardRefunds";
 import { CardPaymentsSwitchCard } from "../components/CardPaymentsSwitch";
 import { useState } from "react";
 
 import { PageHead } from "../components/shell";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
-import { api, Me } from "../lib/api";
+import { api, CardRefundRow, Me } from "../lib/api";
+import { dollars, longDate } from "../lib/money";
 import { DemoVisitors } from "./DemoVisitors";
 
 /** GET /api/platform/practices — numbers and dates only (apps/platform/stats.py). */
@@ -34,9 +36,20 @@ export interface PracticeRow {
     overridden: boolean; card_on_file: boolean; open_cents: number;
     oldest_open_days: number | null; eligible_for_suspension: boolean;
     /** What the platform's NMI read-back found against its subscription, unseen. */
-    nmi_events?: { id: string; kind_label: string; note: string; happened_at: string }[];
+    nmi_events?: { id: string; kind_label: string; note: string; happened_at: string;
+                   can_record?: boolean; full?: boolean }[];
     suspended_at: string | null;
+    /** 2026-11-16: its charged invoices, with what can still be given back. */
+    charges?: PracticeCharge[];
   };
+}
+
+/** A subscription invoice that was charged (2026-11-16). */
+export interface PracticeCharge {
+  id: string; number: string; period_start: string; total_cents: number;
+  amount_paid_cents: number; status: string; status_label: string; is_test: boolean;
+  can_refund: boolean; refundable_cents: number; can_void_invoice: boolean;
+  refunds: CardRefundRow[];
 }
 
 const EMPTY = { legal_name: "", display_name: "", domain: "", owner_email: "",
@@ -124,6 +137,22 @@ export function Practices({ me }: { me?: Me }) {
   const seen = useMutation({
     mutationFn: (id: string) => api.post(`/api/platform/nmi-events/${id}/seen`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-practices"] }),
+  });
+  // 2026-11-16: "Record this refund" on one made in the processor's portal,
+  // and "Refund or cancel this charge" on a subscription invoice.
+  const record = useMutation({
+    mutationFn: (id: string) => api.post(`/api/platform/nmi-events/${id}/record`, {}),
+    onSuccess: () => done("Recorded on the practice's subscription invoice."),
+    onError: failed,
+  });
+  const [giving, setGiving] = useState<string | null>(null);
+  const refund = useMutation({
+    mutationFn: ({ practice, charge, body }: { practice: string; charge: string;
+                                               body: object }) =>
+      api.post<{ message: string }>(
+        `/api/platform/practices/${practice}/charges/${charge}/refund`, body),
+    onSuccess: (data) => { setGiving(null); done(data.message); },
+    onError: failed,
   });
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string;
@@ -279,10 +308,47 @@ export function Practices({ me }: { me?: Me }) {
                   {(p.subscription?.nmi_events ?? []).map((e) => (
                     <Banner key={e.id} kind="warn">
                       <strong>From NMI: {e.kind_label}.</strong> {e.note}{" "}
+                      {e.can_record && (
+                        <button className="small" disabled={record.isPending}
+                          onClick={() => record.mutate(e.id)}>Record this refund</button>
+                      )}{" "}
                       <button className="small" disabled={seen.isPending}
                         onClick={() => seen.mutate(e.id)}>Mark as seen</button>
                     </Banner>
                   ))}
+                  {(p.subscription?.charges ?? []).length > 0 && (
+                    <details className="small">
+                      <summary>Subscription charges</summary>
+                      <table aria-label={`Subscription charges of ${p.display_name}`}>
+                        <thead><tr><th>Invoice</th><th>Month</th>
+                          <th className="money">Charged</th><th>Status</th><th /></tr></thead>
+                        <tbody>
+                          {p.subscription!.charges!.map((c) => (
+                            <tr key={c.id}>
+                              <td>{c.number}</td>
+                              <td>{longDate(c.period_start).replace(/ 1,/, "")}</td>
+                              <td className="money">{dollars(c.amount_paid_cents)} of{" "}
+                                {dollars(c.total_cents)}</td>
+                              <td>{c.status_label}{c.is_test && <> <Pill kind="warn">Test</Pill></>}</td>
+                              <td className="money">{c.can_refund && (
+                                <button className="ghost small"
+                                  aria-label={`Refund or cancel the charge for ${c.number}`}
+                                  onClick={() => setGiving(giving === c.id ? null : c.id)}>
+                                  Refund or cancel this charge</button>)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {p.subscription!.charges!.filter((c) => c.id === giving).map((c) => (
+                        <RefundForm key={c.id} noun="charge" refundable={c.refundable_cents}
+                          canVoidInvoice={c.can_void_invoice} busy={refund.isPending}
+                          onCancel={() => setGiving(null)}
+                          onSubmit={(body) => refund.mutate({ practice: p.id, charge: c.id,
+                                                              body })} />
+                      ))}
+                      <RefundsList refunds={p.subscription!.charges!.flatMap((c) => c.refunds)} />
+                    </details>
+                  )}
                   <div className="row tight">
                     {editing !== p.id && (
                       <button className="ghost" onClick={() => {

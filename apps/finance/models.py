@@ -205,6 +205,12 @@ class FinanceEntry(TenantScopedModel):
     client_payment = models.ForeignKey("billing.ClientPayment", null=True, blank=True,
                                        on_delete=models.PROTECT,
                                        related_name="finance_entries")
+    #: A card refund of an invoice payment (2026-11-16): income going back
+    #: out, on the refund's own date. A void has none: it removes the
+    #: payment's own entries instead.
+    client_refund = models.ForeignKey("billing.CardRefund", null=True, blank=True,
+                                      on_delete=models.PROTECT,
+                                      related_name="finance_entries")
     #: The bank's own id for the line, where its export carries one: the
     #: surest way to know a line is already in the books.
     bank_id = models.CharField(max_length=120, blank=True, default="", db_default="")
@@ -280,6 +286,11 @@ class FinanceEntry(TenantScopedModel):
                                     condition=Q(removed_at__isnull=True,
                                                 client_payment__isnull=False),
                                     name="finance_entry_one_per_payment_and_kind"),
+            # One fee entry and at most one tax entry for a refund, too.
+            models.UniqueConstraint(fields=["tenant", "client_refund", "kind"],
+                                    condition=Q(removed_at__isnull=True,
+                                                client_refund__isnull=False),
+                                    name="finance_entry_one_per_refund_and_kind"),
         ]
         indexes = [
             models.Index(fields=["tenant", "on_date"]),

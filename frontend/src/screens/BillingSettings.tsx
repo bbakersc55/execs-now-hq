@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { PageHead } from "../components/shell";
+import { ClearTestPayments, GatewayModeBanner } from "../components/TestMode";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
-import { api } from "../lib/api";
+import { GatewayMode, TestPayments, api } from "../lib/api";
+import { Cleared, cleared } from "./Invoices";
 import { YourSubscription } from "./YourSubscription";
 
 /** GET /api/payment-account/ — never a key, only the last four of each. */
@@ -23,6 +25,10 @@ export interface PaymentAccountState {
   api_host?: string;
   pricing_program: "" | "interchange_plus" | "dual_pricing";
   pricing_program_label: string;
+  /** 2026-11-16: the processor's own Test Mode as last read, and the test
+   *  payments waiting to be cleared once it is off. */
+  gateway_mode?: GatewayMode;
+  test_payments?: TestPayments;
 }
 
 /**
@@ -59,6 +65,15 @@ export function BillingSettings() {
     onSuccess: (data) => done(data, data.check_ok ? "Connected." : ""),
     onError: failed,
   });
+  const clear = useMutation({
+    mutationFn: (invoices: "reopen" | "void") => api.post<PaymentAccountState & Cleared>(
+      "/api/payment-account/clear-test-payments/", { invoices }),
+    onSuccess: (data) => {
+      done(data, cleared(data));
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: failed,
+  });
 
   const s = state.data;
   if (state.isError) return <Banner kind="bad">{(state.error as Error).message}</Banner>;
@@ -83,8 +98,12 @@ export function BillingSettings() {
         <Banner kind="warn">Card payments are paused by Execs NOW HQ. Pay buttons and pay
           links say so, and nothing is charged until they resume.</Banner>
       )}
+      <GatewayModeBanner mode={s.gateway_mode} showUnknown
+        again="Turned it off at the processor? Press Test connection to read it again." />
       {note && <Banner kind="ok">{note}</Banner>}
       {problem && <Banner kind="bad">{problem}</Banner>}
+      <ClearTestPayments summary={s.test_payments} busy={clear.isPending}
+        onClear={(invoices) => clear.mutate(invoices)} />
 
       <Card title="Taking card payments">
         <p style={{ marginTop: 0 }}>

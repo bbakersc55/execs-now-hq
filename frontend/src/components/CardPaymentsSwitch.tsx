@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { CardPaymentsSwitch as SwitchState, api } from "../lib/api";
+import { ClearTestPayments, GatewayModeBanner } from "./TestMode";
 import { Banner, Card, Pill } from "./ui";
 
 const URL = "/api/platform/card-payments/";
@@ -20,8 +21,28 @@ export function CardPaymentsSwitchCard() {
     mutationFn: (paused: boolean) => api.post<SwitchState>(URL, { paused }),
     onSuccess: (next) => qc.setQueryData(["card-payments-switch"], next),
   });
+  // 2026-11-16: the platform account's own Test Mode, read again on demand,
+  // and its test subscription charges cleared once it reads live.
+  const read = useMutation({
+    mutationFn: () => api.post<SwitchState>(`${URL}read-test-mode/`, {}),
+    onSuccess: (next) => qc.setQueryData(["card-payments-switch"], next),
+  });
+  const clear = useMutation({
+    mutationFn: (invoices: "reopen" | "void") =>
+      api.post<SwitchState>(`${URL}clear-test-payments/`, { invoices }),
+    onSuccess: (next) => {
+      qc.setQueryData(["card-payments-switch"], next);
+      qc.invalidateQueries({ queryKey: ["platform-practices"] });
+    },
+  });
   const s = state.data;
   return (
+    <>
+    <GatewayModeBanner mode={s?.gateway_mode}
+      again="Turned it off at the processor? Read it again under Card payments." />
+    <ClearTestPayments summary={s?.test_payments} busy={clear.isPending}
+      onClear={(invoices) => clear.mutate(invoices)} />
+    {clear.isError && <Banner kind="bad">{(clear.error as Error).message}</Banner>}
     <Card title="Card payments">
       {state.isError && <Banner kind="bad">{(state.error as Error).message}</Banner>}
       {flip.isError && <Banner kind="bad">{(flip.error as Error).message}</Banner>}
@@ -46,11 +67,22 @@ export function CardPaymentsSwitchCard() {
             payments and the daily read-back go on.
             {s.held && s.changed_by && <> Paused by {s.changed_by}.</>}
           </p>
-          <button className={s.held ? "primary" : ""} disabled={flip.isPending}
-            onClick={() => flip.mutate(!s.held)}>
-            {s.held ? "Resume card payments" : "Pause card payments"}</button>
+          <div className="row tight">
+            <button className={s.held ? "primary" : ""} disabled={flip.isPending}
+              onClick={() => flip.mutate(!s.held)}>
+              {s.held ? "Resume card payments" : "Pause card payments"}</button>
+            <button className="ghost" disabled={read.isPending} onClick={() => read.mutate()}>
+              {read.isPending ? "Reading…" : "Read Test Mode now"}</button>
+          </div>
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            Refunds and cancels still go while payments are paused. Test Mode:{" "}
+            {s.gateway_mode?.test_mode === true ? "on" : s.gateway_mode?.test_mode === false
+              ? "off" : "not read yet"}
+            {s.gateway_mode?.unknown && <> ({s.gateway_mode.unknown})</>}.
+          </p>
         </>
       )}
     </Card>
+    </>
   );
 }

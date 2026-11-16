@@ -10,6 +10,28 @@
     .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.nmi.com         # the real
     .venv/bin/python scripts/nmi_token_proof.py --link-collect secure.vaultixpay.com  # pay page
     .venv/bin/python scripts/nmi_token_proof.py --bank-fees   # bank payments, card category, surcharge
+    .venv/bin/python scripts/nmi_token_proof.py --refunds     # void and refund from the app
+    .venv/bin/python scripts/nmi_token_proof.py --test-mode   # the processor's own Test Mode
+
+**--refunds** (2026-11-16) is the pay link with money given back, through the
+real pages built from this tree: the payer pays; the practice owner, signed in,
+presses "Refund or cancel this payment" for the whole amount and the sale is
+voided (it has not settled); the payer pays again (with NMI's Mastercard test
+card, since the same card for the same amount within minutes is a duplicate);
+the owner refunds $2.00 and then the rest, voiding the invoice; the morning
+read-back runs and flags none of them. Then a second invoice is paid and $1.00
+of it refunded straight at NMI (the merchant portal's stand-in): the read-back
+flags it and the owner presses "Record this refund". The sandbox always says
+it is in Test Mode, so this run reads it as live (`NMI_SANDBOX_IGNORE_TEST_MODE`,
+laptop only) to take the books path; the facts printed come from the database.
+
+**--test-mode** (2026-11-16) takes the sandbox's own answer, Test Mode on: the
+owner sees the banner on Billing and Invoices; a payment and a part refund are
+tests and stay out of the books; the client saves a card, a test card. Then
+the server restarts reading the sandbox as live ("back in live mode"), the
+owner presses Test connection, sees "1 test payment" and presses "Clear test
+payments": the payment comes off, the invoice reopens, the card is deleted
+from the sandbox's vault.
 
 **--bank-fees** (2026-11-14) proves, on the sandbox only and with no app code,
 what bank payments and a card fee would stand on. It serves its own page on
@@ -168,11 +190,11 @@ def build_frontend() -> None:
     manage("collectstatic", "--noinput", "--clear")
 
 
-def fill_card(page, button=re.compile(r"^Pay$")):
+def fill_card(page, button=re.compile(r"^Pay$"), card=None):
     """Type the test card into NMI's frames, waiting for them to settle: the
     component re-renders its frames a few times while it loads."""
     frames = "iframe[src*='inline.php']"
-    for selector, value in zip(("#ccnumber", "#ccexp", "#cvv"), TEST_CARD):
+    for selector, value in zip(("#ccnumber", "#ccexp", "#cvv"), card or TEST_CARD):
         for _ in range(120):
             done = False
             for k in range(page.locator(frames).count()):
@@ -274,13 +296,13 @@ def run() -> dict:
     return {}
 
 
-def link_attempt(browser, setup) -> None:
+def link_attempt(browser, setup, card=None) -> None:
     page = browser.new_page()
     try:
         page.goto(BASE + setup["pay_path"], wait_until="domcontentloaded", timeout=90000)
         page.get_by_role("heading", name=f"Invoice {setup['number']}").wait_for(timeout=90000)
         page.get_by_text("Test mode").first.wait_for(timeout=60000)
-        fill_card(page, button=re.compile(r"^Pay \$"))
+        fill_card(page, button=re.compile(r"^Pay \$"), card=card)
         page.get_by_role("status").filter(has_text="was paid on invoice").wait_for(
             timeout=120000)
     finally:
@@ -546,6 +568,190 @@ print(json.dumps({"attempt": {"status": a.status, "nmi_transaction_id": a.nmi_tr
             __import__("apps.billing.payment_accounts", fromlist=["x"]).practice_account(
                 a.invoice.tenant), str(a.pk)))}))
 """
+
+
+# ------------------------------------------ refunds and Test Mode (2026-11-16)
+
+#: NMI's published Mastercard test card: the second payment of one amount.
+SECOND_CARD = ("5431111111111111", "10/29", "999")
+IGNORE_TEST_MODE = {"NMI_SANDBOX_IGNORE_TEST_MODE": "true"}
+
+
+def facts(env) -> dict:
+    return json.loads(manage("nmi_proof_setup", "--refund-facts",
+                             env_extra=env).strip().splitlines()[-1])
+
+
+def owner_page(browser, session):
+    context = browser.new_context()
+    context.add_cookies([{"name": session["cookie"], "value": session["session"],
+                          "url": BASE}])
+    return context, context.new_page()
+
+
+def give_back(page, invoice_id, *, reason, amount=None, void=False, expect="") -> str:
+    """The practice owner's "Refund or cancel this payment", as clicked."""
+    page.goto(f"{BASE}/invoices/{invoice_id}", wait_until="domcontentloaded", timeout=90000)
+    page.get_by_role("button", name=re.compile(r"^Refund or cancel the payment of")).click(
+        timeout=90000)
+    form = page.get_by_role("form", name="Refund or cancel this payment")
+    if amount is not None:
+        form.get_by_label("Amount to give back").fill(amount)
+    form.get_by_label("Why the money is given back").fill(reason)
+    if void:
+        form.get_by_label("and void the invoice").check()
+    form.get_by_role("button", name=re.compile(r"^Give back \$")).click()
+    said = page.get_by_role("status").filter(has_text=expect)
+    said.wait_for(timeout=120000)
+    return said.inner_text()
+
+
+def refunds_proof() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    env = {**PROOF_ENV, **IGNORE_TEST_MODE}
+    build_frontend()
+    fresh_proof_db()
+    setup = json.loads(manage("nmi_proof_setup", "--contact",
+                              env_extra=env).strip().splitlines()[-1])
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=env).strip().splitlines()[-1])
+    steps, said = [], {}
+    server = start_server(env)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            link_attempt(browser, setup)
+            steps.append(("paid by the link", facts(env)["invoices"][0]["status"]))
+            said["cancel"] = give_back(owner, setup["invoice_id"], reason="Charged twice "
+                                       "by mistake (proof).", expect="Cancelled before it "
+                                       "settled")
+            steps.append(("cancelled in full", facts(env)["invoices"][0]["refunds"][-1]))
+            link_attempt(browser, setup, card=SECOND_CARD)
+            steps.append(("paid again", facts(env)["invoices"][0]["status"]))
+            said["part"] = give_back(owner, setup["invoice_id"], amount="2.00",
+                                     reason="A goodwill credit (proof).", expect="Refunded")
+            said["rest"] = give_back(owner, setup["invoice_id"], reason="Engagement ended "
+                                     "(proof).", void=True, expect="Refunded")
+            steps.append(("read-back, next run", json.loads(manage(
+                "nmi_proof_setup", "--read-back", env_extra=env).strip().splitlines()[-1])))
+            # A second invoice, refunded in part straight at NMI.
+            second = json.loads(manage("nmi_proof_setup", "--another-invoice",
+                                       env_extra=env).strip().splitlines()[-1])
+            link_attempt(browser, second)
+            portal = json.loads(manage("nmi_proof_setup", "--portal-refund",
+                                       second["invoice_id"], "100",
+                                       env_extra=env).strip().splitlines()[-1])
+            steps.append(("refunded at NMI, not here", portal["approved"]))
+            steps.append(("read-back after it", json.loads(manage(
+                "nmi_proof_setup", "--read-back", env_extra=env).strip().splitlines()[-1])))
+            owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            owner.get_by_role("button", name=re.compile(r"^Record this refund")).click(
+                timeout=90000)
+            owner.get_by_role("button", name=re.compile(r"^Record this refund")).wait_for(
+                state="detached", timeout=60000)
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    result = {"steps": steps, "said": said, "facts": facts(env)}
+    first, second_invoice = result["facts"]["invoices"]
+    # The sandbox's last week holds other runs' transactions too, which this
+    # fresh database never made: the read-back rightly flags those. What
+    # matters is that none of this run's own were, but the portal's refund.
+    ours = {t for inv in result["facts"]["invoices"]
+            for t in [p["nmi_transaction_id"] for p in inv["payments"]]
+            + [r["nmi_transaction_id"] for r in inv["refunds"]]}
+    flagged_ours = [f for f in result["facts"]["flags"] if f[3] in ours]
+    result["flagged_of_this_run"] = flagged_ours
+    result["flagged_from_earlier_runs"] = len(result["facts"]["flags"]) - len(flagged_ours)
+    result["facts"]["flags"] = flagged_ours
+    kinds = [(r["kind"], r["status"], r["amount_cents"]) for r in first["refunds"]]
+    pays = first["payments"]
+    result["ok"] = bool(
+        len(kinds) == 3 and kinds[0][0] == "void" and kinds[1][:2] == ("refund", "done")
+        and kinds[1][2] == 200 and kinds[2][:2] == ("refund", "done")
+        and kinds[2][2] == pays[1]["amount_cents"] - 200
+        and first["status"] == "void" and first["paid_cents"] == 0
+        and all(not row[3] is None for row in pays[0]["books"])        # the void took it out
+        and all(row[3] is None for row in pays[1]["books"])            # the second stays
+        and sum(r["books"][0][2] for r in first["refunds"][1:]) == pays[1]["amount_cents"]
+        and flagged_ours == [["refund", "matched", 100, second_invoice["refunds"][0][
+            "nmi_transaction_id"]]]
+        and steps[5][1]["matched"] == 1
+        and second_invoice["refunds"][0]["source"] == "portal"
+        and second_invoice["refunds"][0]["amount_cents"] == 100
+        and second_invoice["refunds"][0]["books"])
+    return result
+
+
+def test_mode_proof() -> dict:
+    from playwright.sync_api import sync_playwright
+
+    build_frontend()
+    fresh_proof_db()
+    setup = json.loads(manage("nmi_proof_setup", "--contact",
+                              env_extra=PROOF_ENV).strip().splitlines()[-1])
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=PROOF_ENV).strip().splitlines()[-1])
+    seen = {}
+    server = start_server(PROOF_ENV)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            for where in ("/settings/billing", "/invoices"):
+                owner.goto(BASE + where, wait_until="domcontentloaded", timeout=90000)
+                seen[where] = owner.get_by_role("alert").filter(
+                    has_text="Test Mode").first.inner_text(timeout=90000)
+            link_attempt(browser, setup)
+            seen["refund"] = give_back(owner, setup["invoice_id"], amount="1.00",
+                                       reason="Trying a refund in Test Mode (proof).",
+                                       expect="a test: no money moved")
+            autopay_attempt(browser, setup)       # the client saves a card: a test card
+            seen["while_test_mode"] = facts(PROOF_ENV)
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    # Back in live mode: the same sandbox, read as live from here on.
+    env = {**PROOF_ENV, **IGNORE_TEST_MODE}
+    server = start_server(env)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            owner.goto(BASE + "/settings/billing", wait_until="domcontentloaded", timeout=90000)
+            owner.get_by_role("button", name="Test connection").click(timeout=90000)
+            owner.get_by_role("heading", name="1 test payment").wait_for(timeout=90000)
+            owner.get_by_role("button", name="Clear test payments").click()
+            seen["cleared"] = owner.get_by_text(re.compile(r"test payment cleared")).first \
+                .inner_text(timeout=90000)
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    after = facts(env)
+    during = seen["while_test_mode"]
+    paid = during["invoices"][0]
+    result = {"seen": seen, "after": after}
+    result["ok"] = bool(
+        during["gateway_mode"]["test_mode"] is True
+        and all("Test Mode" in seen[w] for w in ("/settings/billing", "/invoices"))
+        and paid["payments"][0]["is_test"] and not paid["payments"][0]["books"]
+        and paid["test_paid_cents"] == paid["paid_cents"] > 0
+        and paid["refunds"][0]["is_test"] and not paid["refunds"][0]["books"]
+        and during["cards"][0]["is_test"] and during["receipts_saying_test"] >= 1
+        and after["gateway_mode"]["test_mode"] is False
+        and after["invoices"][0]["status"] == "sent"
+        and after["invoices"][0]["payments"][0]["removed"]
+        and after["invoices"][0]["refunds"][0]["cleared"]
+        and after["cards"][0]["removed"] and after["cards"][0]["vault_answers"] != 200)
+    return result
 
 
 def fresh_proof_db() -> None:
@@ -1409,6 +1615,10 @@ def run_mode():
         PROOF_ENV["NMI_SANDBOX_CARD_FORM_HOST"] = host
     if "--bank-fees" in sys.argv:
         result = bank_fees()
+    elif "--refunds" in sys.argv:
+        result = refunds_proof()
+    elif "--test-mode" in sys.argv:
+        result = test_mode_proof()
     elif "--link-collect" in sys.argv:
         host = sys.argv[sys.argv.index("--link-collect") + 1]
         if host not in ("secure.nmi.com", "secure.vaultixpay.com"):

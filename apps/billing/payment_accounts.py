@@ -21,6 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing import gateway as gw
+from apps.billing import gateway_mode, testmode
 from apps.billing.models import PaymentAccount
 from apps.tenancy.models import SecretKind, TenantSecret
 
@@ -88,6 +89,10 @@ def state(tenant) -> dict:
         "pricing_program": tenant.pricing_program,
         "pricing_program_label": tenant.get_pricing_program_display() if tenant.pricing_program
         else "",
+        # 2026-11-16: the processor's own Test Mode, as last read, and the
+        # test payments waiting to be cleared once it is off.
+        "gateway_mode": gateway_mode.practice_state(tenant),
+        "test_payments": testmode.practice_summary(tenant),
     }
 
 
@@ -155,6 +160,7 @@ def connect(tenant, *, environment: str, private_key: str = "", public_key: str 
             target_type="payment_account", target_id=row.pk,
             payload={"environment": environment,
                      **{f"{name}_key_last4": last4 for name, last4 in written.items()}})
+    gateway_mode.for_practice(tenant, account)
     return state(tenant)
 
 
@@ -177,6 +183,8 @@ def retest(tenant, *, actor) -> dict:
     row.check_detail, row.checked_by = result.detail, actor
     row.save(update_fields=["checked_at", "check_ok", "check_detail", "checked_by",
                             "updated_at"])
+    # The processor's Test Mode, read with the same keys (2026-11-16).
+    gateway_mode.for_practice(tenant, account)
     AuditEvent.all_objects.create(
         tenant=tenant, actor=actor, verb="payments.connection_tested",
         target_type="payment_account", target_id=row.pk,

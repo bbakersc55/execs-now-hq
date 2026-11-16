@@ -198,18 +198,31 @@ def _done_at(tenant, end):
 
 
 def _invoice_money(tenant, end):
-    """Invoice id -> (paid by `end` in cents, the day it was paid in full or None)."""
-    from apps.billing.models import ClientInvoice, ClientPayment
+    """Invoice id -> (paid by `end` in cents, the day it was paid in full or None).
+    Test payments moved no money, and money given back is not paid
+    (2026-11-16)."""
+    from django.db.models import Sum
+
+    from apps.billing.models import CardRefund, ClientInvoice, ClientPayment
 
     out = {}
     for invoice in ClientInvoice.all_objects.filter(tenant=tenant, sent_at__isnull=False,
                                                     sent_at__lt=end).exclude(status="void"):
         paid, full = 0, None
         for p in ClientPayment.all_objects.filter(invoice=invoice, removed_at__isnull=True,
+                                                  is_test=False,
                                                   paid_on__lt=end.date()).order_by("paid_on"):
             paid += p.amount_cents
             if full is None and paid >= invoice.total_cents > 0:
                 full = p.paid_on
+        back = CardRefund.all_objects.filter(
+            invoice=invoice, status=CardRefund.Status.DONE, is_test=False,
+            cleared_at__isnull=True, finished_at__lt=end).aggregate(
+            total=Sum("amount_cents"))["total"] or 0
+        if back:
+            paid -= back
+            if paid < invoice.total_cents:
+                full = None
         out[invoice.pk] = (invoice, paid, full)
     return out
 

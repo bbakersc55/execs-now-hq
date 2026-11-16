@@ -370,6 +370,14 @@ if NMI_SANDBOX_CARD_FORM_HOST and NMI_SANDBOX_CARD_FORM_HOST not in (
                        f"secure.vaultixpay.com, not {NMI_SANDBOX_CARD_FORM_HOST!r}.")
 if NMI_SANDBOX_CARD_FORM_HOST and not IS_LOCAL:
     raise RuntimeError("NMI_SANDBOX_CARD_FORM_HOST is for proofs on the laptop only.")
+# Laptop only (2026-11-16): NMI's sandbox always reports its own Test Mode on
+# (`test_mode_status` answers true), so every sandbox payment is a test one and
+# stays out of the books. True reads a sandbox account's Test Mode as off, so
+# a proof can also take the books path (a void removing the entry, a refund
+# entered on its own date) with real sandbox answers. Never a live account's.
+NMI_SANDBOX_IGNORE_TEST_MODE = env.bool("NMI_SANDBOX_IGNORE_TEST_MODE", default=False)
+if NMI_SANDBOX_IGNORE_TEST_MODE and not IS_LOCAL:
+    raise RuntimeError("NMI_SANDBOX_IGNORE_TEST_MODE is for proofs on the laptop only.")
 # Nothing reaches NMI unless this is true. Off, every charge, refund and
 # connection test goes to the stub gateway. The test suite never turns it on.
 NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)

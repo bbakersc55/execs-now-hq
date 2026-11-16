@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { RefundBody, RefundForm, RefundsList } from "../components/CardRefunds";
 import { InvoiceLines, PriceBox, cleanLines } from "../components/InvoiceLines";
 import { IncomeCategoryPicker } from "../components/IncomeCategoryPicker";
 import { TermsPicker, dueOn } from "../components/PaymentTerms";
@@ -28,6 +29,9 @@ const WHAT: Record<string, string> = {
   invoice_reopened: "Sent back to draft", invoice_sent: "Sent", invoice_resent: "Sent again",
   payment_recorded: "Payment recorded", payment_removed: "Payment removed",
   invoice_voided: "Voided",
+  // 2026-11-16: money given back, and test payments cleared.
+  payment_refunded: "Refunded", payment_cancelled: "Payment cancelled before it settled",
+  test_payments_cleared: "Test payments cleared",
 };
 const METHODS: [string, string][] = [
   ["ach", "Bank transfer"], ["check", "Check"], ["card", "Card"], ["wire", "Wire"],
@@ -62,6 +66,22 @@ export function InvoiceDetail({ me }: { me: Me }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoices"] }); navigate("/invoices"); },
     onError: (e: Error) => setSaid(e.message),
   });
+  // 2026-11-16: "Refund or cancel this payment", and "Record this refund" on
+  // one made in the card processor's portal.
+  const [done, setDone] = useState("");
+  const refund = useMutation({
+    mutationFn: (body: object) => api.post<Invoice>(`${path}refund/`, body),
+    onSuccess: (data) => { setSaid(""); setDone(data.message ?? ""); refresh(); },
+    onError: (e: Error) => { setDone(""); setSaid(e.message); },
+  });
+  const record = useMutation({
+    mutationFn: ({ id, void_invoice }: { id: string; void_invoice: boolean }) =>
+      api.post(`/api/nmi-events/${id}/record/`, { void_invoice }),
+    onSuccess: () => {
+      setSaid(""); setDone("Recorded: the invoice and the books now show it."); refresh();
+    },
+    onError: (e: Error) => { setDone(""); setSaid(e.message); },
+  });
 
   if (invoice.isLoading) return <p>Opening the invoice…</p>;
   if (invoice.isError) {
@@ -73,7 +93,7 @@ export function InvoiceDetail({ me }: { me: Me }) {
     );
   }
   const i = invoice.data!;
-  const busy = act.isPending || remove.isPending;
+  const busy = act.isPending || remove.isPending || refund.isPending || record.isPending;
   const who = i.client_company?.name ?? i.contact.name;
 
   return (
@@ -84,6 +104,7 @@ export function InvoiceDetail({ me }: { me: Me }) {
           <StatusPill row={i} />{i.kind === "contact"
             && <> <Pill>not a client: email only</Pill></>}</>} />
       {said && <Banner kind="bad">{said}</Banner>}
+      {done && <div role="status"><Banner kind="ok">{done}</Banner></div>}
       {/* For the practice, on the form and once sent: auto-pay will charge it. */}
       {i.autopay && <div role="note"><Banner>{i.autopay.line}</Banner></div>}
 
@@ -139,7 +160,10 @@ export function InvoiceDetail({ me }: { me: Me }) {
             <Payments invoice={i} owner={owner} busy={busy}
               onPay={(body) => act.mutate({ suffix: "payments/", body })}
               onRemove={(payment, reason) =>
-                act.mutate({ suffix: "remove-payment/", body: { payment, reason } })} />
+                act.mutate({ suffix: "remove-payment/", body: { payment, reason } })}
+              onRefund={(payment, body) => refund.mutate({ payment, ...body })}
+              onRecord={(id, voidInvoice) => record.mutate({ id, void_invoice: voidInvoice })}
+              refunded={refund.isSuccess ? refund.submittedAt : 0} />
           )}
 
           {owner && i.status !== "void" && (
@@ -354,11 +378,19 @@ function Draft({ invoice: i, busy, onSaved, onError, onReady, onDelete }: {
   );
 }
 
-function Payments({ invoice: i, owner, busy, onPay, onRemove }: {
+function Payments({ invoice: i, owner, busy, onPay, onRemove, onRefund, onRecord, refunded }: {
   invoice: Invoice; owner: boolean; busy: boolean;
   onPay: (body: object) => void; onRemove: (payment: string, reason: string) => void;
+  onRefund: (payment: string, body: RefundBody) => void;
+  onRecord: (event: string, voidInvoice: boolean) => void;
+  /** When the last refund went through: its form closes. */
+  refunded: number;
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const [giving, setGiving] = useState<string | null>(null);
+  const [voidOnRecord, setVoidOnRecord] = useState<Record<string, boolean>>({});
+  useEffect(() => { setGiving(null); }, [refunded]);
+  const givingBack = i.payments.find((p) => p.id === giving);
   const [cents, setCents] = useState(i.balance_cents);
   const [paidOn, setPaidOn] = useState(today);
   const [method, setMethod] = useState("ach");
@@ -378,24 +410,46 @@ function Payments({ invoice: i, owner, busy, onPay, onRemove }: {
               <tr key={p.id} style={p.removed ? { textDecoration: "line-through" } : undefined}>
                 <td>{longDate(p.paid_on)}</td>
                 <td className="money">{dollars(p.amount_cents)}</td>
-                <td>{p.method_label}</td><td>{p.reference}</td><td>{p.recorded_by}</td>
+                <td>{p.method_label}{p.is_test && <> <Pill kind="warn">Test</Pill></>}</td>
+                <td>{p.reference}</td><td>{p.recorded_by}</td>
                 <td className="money">
                   {p.removed ? <span className="tiny muted" style={{ textDecoration: "none" }}>
                     removed: {p.remove_reason}</span>
                     : owner && i.status !== "void" && (
-                      <button className="ghost small" disabled={busy}
-                        aria-label={`Remove the payment of ${dollars(p.amount_cents)}`}
-                        onClick={() => {
-                          const reason = prompt("Why is this payment being removed? It is "
-                            + "kept in the history, and stops counting.");
-                          if (reason && reason.trim()) onRemove(p.id, reason.trim());
-                        }}>Remove</button>
+                      <span className="row tight" style={{ justifyContent: "flex-end" }}>
+                        {p.can_refund && (
+                          <button className="ghost small" disabled={busy}
+                            aria-label={`Refund or cancel the payment of ${dollars(p.amount_cents)}`}
+                            onClick={() => setGiving(giving === p.id ? null : p.id)}>
+                            Refund or cancel this payment</button>
+                        )}
+                        {!p.card && (
+                          <button className="ghost small" disabled={busy}
+                            aria-label={`Remove the payment of ${dollars(p.amount_cents)}`}
+                            onClick={() => {
+                              const reason = prompt("Why is this payment being removed? It is "
+                                + "kept in the history, and stops counting.");
+                              if (reason && reason.trim()) onRemove(p.id, reason.trim());
+                            }}>Remove</button>
+                        )}
+                      </span>
                     )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {owner && givingBack && (
+        <RefundForm key={givingBack.id} refundable={givingBack.refundable_cents ?? 0}
+          canVoidInvoice={Boolean(givingBack.can_void_invoice)} busy={busy}
+          onSubmit={(body) => onRefund(givingBack.id, body)} onCancel={() => setGiving(null)} />
+      )}
+      <RefundsList refunds={i.refunds} />
+      {(i.test_paid_cents ?? 0) > 0 && (
+        <p className="small"><Pill kind="warn">Test</Pill> {dollars(i.test_paid_cents ?? 0)} of
+          what is paid here was paid while the card processor was in Test Mode: no money
+          moved, and it is in none of your books, totals or forecasts.</p>
       )}
       {owner && open && (
         <div className="row" style={{ marginTop: "var(--s3)" }}>
@@ -430,7 +484,26 @@ function Payments({ invoice: i, owner, busy, onPay, onRemove }: {
         <div className="nmi-events" aria-label="From NMI">
           <strong className="small">From NMI</strong>
           <ul className="small">
-            {i.nmi_events!.map((e) => <li key={e.id}><Pill kind={e.kind === "chargeback" ? "bad" : "warn"}>{e.kind_label}</Pill> {e.note}</li>)}
+            {i.nmi_events!.map((e) => (
+              <li key={e.id}><Pill kind={e.kind === "chargeback" ? "bad" : "warn"}>{e.kind_label}</Pill>
+                {" "}{e.note}
+                {e.recorded && <> <Pill kind="ok">Recorded</Pill></>}
+                {owner && e.can_record && (
+                  <span className="row tight">
+                    {e.full && (
+                      <label className="check small">
+                        <input type="checkbox" checked={Boolean(voidOnRecord[e.id])}
+                          onChange={(ev) => setVoidOnRecord({ ...voidOnRecord,
+                                                              [e.id]: ev.target.checked })} />
+                        {" "}and void the invoice</label>
+                    )}
+                    <button className="small" disabled={busy}
+                      onClick={() => onRecord(e.id, Boolean(voidOnRecord[e.id]))}>
+                      Record this refund</button>
+                  </span>
+                )}
+              </li>
+            ))}
           </ul>
         </div>
       )}

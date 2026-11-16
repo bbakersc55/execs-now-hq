@@ -2,6 +2,9 @@
 
 **Practices beta program, phase 4 · re-specified 2026-10-08, and for NMI's v5 API on 2026-10-21 · part 1 built**
 
+**2026-11-16:** void and refund from the app (§11) and knowing when the
+processor is in Test Mode (§12), built on `dev`.
+
 **This replaces the Stripe version of 2026-10-03** (in git history at
 `fa79a2a`). The owner decided D1–D10 on 2026-10-08 and changed the processor:
 **NMI everywhere, no Stripe.** His decisions are recorded in §7, and his
@@ -80,7 +83,10 @@ client; `stub.py`, its stand-in). Everything else calls `gateway()` with an
 |---|---|
 | `check_connection(account)` | One authenticated read; proves the private key |
 | `sale(account, amount_cents, reference, payment_token= or vault_id=)` | One charge, carrying our reference in `merchant_defined_fields.field_1` |
-| `refund(account, transaction_id, amount_cents)` | A whole or partial refund; no void. Not called from any screen in the first build |
+| `refund(account, transaction_id, amount_cents)` | A whole or partial refund. Called by "Refund or cancel this payment" (§11) |
+| `void(account, transaction_id)` | Cancel a sale not yet settled (2026-11-16, §11) |
+| `test_mode(account)` | Whether the account is in the processor's own Test Mode: the Query API's `test_mode_status` (2026-11-16, §12) |
+| `actions_for_reference(account, reference)` | Every action on the transactions carrying our reference (the sale, a void, each refund): the lookup of a lost refund answer (§11) |
 | `get_transaction(account, id)` | The transaction, for the daily read-back |
 | `vault_add(account, payment_token, billing)`, `vault_delete` | A card stored or removed; returns the vault id, last four and expiry |
 
@@ -316,9 +322,11 @@ paused:
 - the connection test says real calls are off.
 
 The platform owner's **"Pause card payments"** switch (the Practices area,
-`card_payment_hold`) does the same while real calls stay on. Then a sale, a
-refund or a stored card is refused before it leaves, and reads go on: the
-connection test, lookups, the read-back, and deleting a card. A pause that
+`card_payment_hold`) does the same while real calls stay on. Then a sale or a
+stored card is refused before it leaves, and reads go on: the connection
+test, lookups, the read-back, Test Mode, and deleting a card. **A refund or a
+void still goes** (2026-11-16, §11): the pause stops money coming in, not
+going back. A pause that
 lands between the check and the sale removes the attempt it had written,
 because nothing left for the processor. Tests:
 `tests/test_card_payments_paused.py`, including that no path marks anything
@@ -512,7 +520,9 @@ the platform account's own read-back is not built. **Not proved against NMI:**
 the sandbox cannot make a chargeback, so the action names a live account uses
 for one (`chargeback` is assumed) are checked at the first real one.
 *(2026-11-14: the Query API does not recognize `chargeback` as an action type,
-and does recognize `return`; see §1.5, B7.)*
+and does recognize `return`; see §1.5, B7.)* *(2026-11-16: refunds and voids
+the app made itself are never flagged, and one made in the portal that
+matches a payment gets "Record this refund"; §11.)*
 
 ## 5. Data model
 
@@ -654,4 +664,204 @@ choices of the plan, all "as recommended".
 | 3 | Auto-pay | **On the due date, for invoices sent after consent, until revoked.** |
 | 4 | Part payments by card | **No: the full balance only.** |
 | 5 | Webhooks | **None; a daily read-back per account.** |
+
+---
+
+## 11. Void and refund from the app (2026-11-16)
+
+**Built 2026-11-16 on `dev`, not released.** Migrations `billing 0013` and
+`finance 0018`, both additive. Code: `apps/billing/refunds.py`; screens: the
+invoice page, Invoices ("From NMI: please look"), Practices.
+
+### What the owner sees and does
+
+- **"Refund or cancel this payment"**, on any card payment the app took (the
+  pay link, the portal's Pay, auto-pay), for the **practice owner** only: an
+  amount (all that is left, unless changed) and a **required reason**. A card
+  payment the app took has no "Remove" any more: money that went through the
+  processor comes back through it. A payment recorded by hand keeps "Remove".
+- **"Refund or cancel this charge"**, the same for the **platform owner** on a
+  practice's subscription charge (Practices, under each practice's
+  "Subscription charges"), on the platform's account.
+- **The processor is asked for the sale's state first** (`GET /payments/{id}`).
+  A sale `pendingsettlement`, given back **in full** and never refunded before,
+  is **voided**: nothing reaches the payer's statement. Anything else (settled,
+  or a part, or the rest after an earlier refund) is **refunded**.
+- **One at a time, recorded before the call.** The `card_refund` row is written
+  with the payment locked; the database allows one in flight per payment (and
+  per subscription invoice). One call, never retried. **Never more than was
+  paid**: what is left is the payment less every refund done or under way,
+  checked under the lock; the processor refuses more too.
+- **A lost answer** is "unknown" and the ten-minute job
+  (`billing.resolve_card_payments`) finds what the processor did by our
+  reference on the sale (a refund is its own transaction carrying the sale's
+  order id; a void is a "void" action on the sale). None after an hour: "not
+  done". A subscription refund's lost answer is found by the same job of the
+  practice it belongs to.
+- **Refused by the processor:** "not done", with its words; nothing changes.
+  If a void is refused because the sale settled in between, the owner is told
+  to try again, and it is then a refund.
+
+### Once done
+
+| | A client's payment | A practice's subscription charge |
+|---|---|---|
+| The record | a `card_refund` row on the invoice, with the processor's id (a refund's own; a void's is the sale's) | the same, on the subscription invoice |
+| The invoice | paid less by that amount, so its balance reopens (Paid → Partly paid or Sent); **"and void the invoice"** offered only with a full refund that leaves nothing paid | `amount_paid_cents` less by that amount, Open again; or Void, if chosen on a full refund |
+| The books | **a void takes the payment's entry out** (removed, with the reason); **a refund is its own entry**: income going out, the payment's category, dated the day of the refund (tax held back out in the payment's proportion) | none: subscriptions are in no books |
+| Mail | a receipt to whoever paid (the portal's payer, or the invoice's address), a notice to each practice owner | a receipt to the practice's billing email, a notice to the platform owner (platform mail) |
+
+If the books refuse (a closed month), a void is entered as a refund dated
+today instead; if that is refused too, the refund stands and the row and the
+notice say "Given back at the card processor, but not in the books: … Enter it
+by hand." A payment with a refund on it can no longer be removed by hand, and
+the books' backfill (F13) never re-enters a voided or test payment.
+
+### The read-back and the portal
+
+- The morning read-back (practice and platform) **recognises the app's own**
+  refunds (by the refund's transaction id) and voids (by the sale, with a void
+  done or under way); one under way whose id is not known yet is left for the
+  lookup. None of them is flagged.
+- A refund or void **made in the processor's portal** is still flagged. When it
+  matches a payment (or a subscription invoice), the flag has **"Record this
+  refund"**: the same bookkeeping as one made here (a void takes the entry out;
+  a refund is entered on the day the portal made it), with "and void the
+  invoice" when it leaves nothing paid. It calls nothing and emails no one,
+  and marks the flag seen. An unmatched one is still recorded by hand.
+
+### While card payments are paused
+
+**Refunds and voids still go** (owner's expectation, 2026-11-16): the pause
+switch refuses sales and saved cards only. With real calls off in production
+(`NMI_LIVE_CALLS`), nothing reaches the processor, refunds included.
+
+### Proved
+
+- **NMI's sandbox, by hand, 2026-11-16** (a probe, no app code): `POST
+  /api/v5/payments/{id}/void` with `{}` answers the sale with `status`
+  "canceled" and a "void" action; voiding again is 400 "Only transactions
+  pending settlement can be voided"; refunding a voided sale is 400 "Voided
+  Transaction Cannot be Refunded"; voiding a partly refunded one is 400
+  "Refunded transactions may not be voided"; a cent more than what is left is
+  400 "Refund amount may not exceed the transaction balance". Each refund is a
+  transaction of its own, `original_transaction_id` the sale's, the sale's
+  order id carried over; the Query API lists them all by that order id.
+- **Headless Chrome on the sandbox** (`scripts/nmi_token_proof.py --refunds`,
+  2026-11-16, the real pages built from the tree): paid by the pay link;
+  "Refund or cancel this payment" for the whole amount → **voided** ("Cancelled
+  before it settled"), the entry taken out, the invoice Sent again; paid again
+  (NMI's Mastercard test card: the same card and amount within minutes is a
+  duplicate); **$2.00 refunded**, then **the rest refunded with "and void the
+  invoice"**: two refund entries dated that day, the invoice Void; the
+  receipts and notices sent; the read-back run next: **none of this run's
+  transactions flagged**. Then a second invoice paid, $1.00 refunded straight
+  at NMI (the portal's stand-in), the read-back flagged it matched, and
+  **"Record this refund"** pressed in the browser: a portal-sourced refund with
+  its entry. The run reads the sandbox's Test Mode as off
+  (`NMI_SANDBOX_IGNORE_TEST_MODE`, laptop only, §12) to take the books path.
+- **Tests:** `tests/test_card_refunds.py` (void or refund, never more than paid,
+  one at a time, the lost answer found, refused changes nothing, void the
+  invoice, refunds while paused, role boundaries, practice isolation, the
+  read-back and "Record this refund", subscriptions).
+
+### Not proved
+
+- **A settled sale's refund at the processor.** The sandbox settles nothing
+  (§1.5 B6), so every refund there was of an unsettled sale; the code path for
+  a settled one is the same call, proved only by the tests' stand-in.
+- **A live account's void and refund**, and Vaultix's host for them: first at
+  the first real one.
+- **The portal's own refund as a live account lists it.** The stand-in is a v5
+  refund made outside the app, which the sandbox lists as its own transaction.
+
+## 12. Knowing when the processor is in Test Mode (2026-11-16)
+
+**Built 2026-11-16 on `dev`, not released.** Code: `apps/billing/gateway_mode.py`,
+`apps/billing/testmode.py`.
+
+### The reading
+
+- The Query API's **`report_type=test_mode_status`** answers
+  `<nm_response><test_mode_enabled>true</test_mode_enabled></nm_response>`.
+  The account profile (`report_type=profile`) carries the same tag under
+  `account_details`; the app reads either. **The sandbox answers true for every
+  account.** Secure.vaultixpay.com answers the Query API in the same shape (a
+  bad key: "Specified API key not found"); **what it answers for the live key
+  is production's to show.**
+- Read on **Test connection** (and on saving keys), and **before each sale,
+  card save and refund**, for a practice's account; before each subscription
+  charge and card save, and on "Read Test Mode now" (Practices), for the
+  platform's. The last answer is kept (`payment_account.gateway_test_mode`,
+  `platform_gateway_mode`).
+- **Unreadable** (no answer, or no tag): card payments behave as before (as if
+  not in Test Mode), and Billing says "Couldn't read whether the card
+  processor is in Test Mode, so card payments work as before" and why.
+
+### While it is on
+
+- **"The card processor is in Test Mode: no money moves."** for the practice
+  owner on Billing and Invoices, and for the platform owner on Practices.
+- **Pay pages and receipts** carry the sandbox's wording ("Test mode" on the
+  pay page; "(test mode: no real money moved)" in the receipt and notice).
+- **Every attempt, payment, refund and saved card** made then is marked a test
+  (`is_test`) and shown with the **Test** pill. A test payment counts on its
+  invoice (so the payer's pages read as they will: Paid) and **nowhere else**:
+  no entry in the books (so not in the P&L, reports or CPA export), not in the
+  Invoices totals (paid, outstanding, overdue), not in the cash forecast (the
+  invoice is still expected), not in the practice KPI feeds (invoices paid,
+  days to pay). `client_invoice.test_paid_cents` holds the test part.
+- **Refunds:** a test payment is given back only while the processor is in
+  Test Mode (a test refund, no books); a real payment is not given back while
+  it is (nothing would move). Afterwards a test payment is cleared, not
+  refunded.
+
+### Back in live mode
+
+The owner sees **"N test payments"** with one action, **Clear test payments**
+(on Billing and Invoices for a practice; on Practices for the platform's
+subscription charges), offered only once the last reading is "live"; it reads
+again first and refuses while it still says Test Mode. It:
+
+- removes each test payment from its invoice (kept, marked removed, with the
+  reason) and clears its test refunds;
+- **reopens or voids** their invoices, as chosen (one that also has real money
+  is reopened, never voided); a reopened subscription invoice is charged again
+  by the next daily run once a real card is on file;
+- **deletes test cards from the vault** (which turns their auto-pay off; a
+  test subscription card leaves the practice "Needs a card").
+
+### Proved
+
+- **Headless Chrome on the sandbox** (`scripts/nmi_token_proof.py --test-mode`,
+  2026-11-16): the sandbox's own answer (true): the banner on Billing and on
+  Invoices; a payment by the pay link marked a test with no entry in the books
+  and `test_paid_cents` equal to what was paid; a $1.00 refund "(a test: no
+  money moved)" with no entry; the client's saved card a test card; receipts
+  worded as tests. Then the server restarted reading the sandbox as live, the
+  owner pressed Test connection, saw "1 test payment" and pressed **Clear test
+  payments**: the payment removed, its refund cleared, the invoice reopened,
+  the card deleted from the sandbox's vault (it answers 404 after).
+- **Tests:** `tests/test_gateway_test_mode.py` (the reading and its banner, the
+  unreadable case, the laptop switch, test payments out of the books, totals,
+  forecast and KPIs, test cards, the refund rules, clearing reopen and void,
+  real money never voided, role boundaries, isolation, subscriptions).
+
+### Only production can show
+
+- What **secure.vaultixpay.com answers for the live key** while the account is
+  in Test Mode and after (the sandbox always says true). Until a reading is
+  seen there, it is assumed to be the same tag. To look, with the owner's yes
+  (read-only):
+  `railway ssh --service qcluster -- "python manage.py shell -c \"from apps.billing import gateway as gw; print(gw.gateway().test_mode(gw.platform_account()))\""`
+- A live account switched **into and out of** Test Mode, so the banner, the
+  test payments and "Clear test payments" are seen on real answers.
+- Whether simulated sales appear in the Query API at all (the lookup and the
+  read-back): the sandbox's own Test Mode lists them, a live account's may not.
+
+### `NMI_SANDBOX_IGNORE_TEST_MODE` (laptop only)
+
+True reads a sandbox account's Test Mode as off, so a proof can take the books
+path with real sandbox answers. Refused at start anywhere but a localhost
+server; never applies to a live account.
 

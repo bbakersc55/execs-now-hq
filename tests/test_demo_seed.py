@@ -392,7 +392,16 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         as_bruce.force_login(bruce.user)
         shown = as_bruce.get("/api/portal-invoices/").json()
         assert len(shown) >= 12
-        assert {"paid", "sent"} <= {row["status"] for row in shown}
+        statuses = {row["status"] for row in shown}
+        assert "paid" in statuses
+        # Wayne pays each month's invoice on its own day, the 5th to the 14th
+        # (`money._paid_on`): until then this month's is still sent, and after
+        # it every one is paid. Asserting "sent" always failed from that day to
+        # the month's end (found 2026-11-16).
+        from apps.tenancy.demo import money as demo_money
+
+        if demo_money._paid_on("Wayne Industries", today.replace(day=1)) >= today:
+            assert "sent" in statuses
         assert all(row["number"].startswith("SOP-") for row in shown)
         assert set(FinanceAccount.objects.values_list("kind", flat=True)) == {"bank", "card"}
         assert all(a.opening_balance_cents for a in FinanceAccount.objects.exclude(side="mixed"))
@@ -746,7 +755,16 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         mine_ahead = personal_forecast.build(ledger, today, snapshot=False)
         assert mine_ahead["ready"] and mine_ahead["floor_cents"] == 800_000
         planned = {row["label"]: row for row in mine_ahead["lines"] if row["kind"] == "planned"}
-        assert {"Car repairs", "Christmas", "Summer trip to the lake", "New roof"} <= set(planned)
+        # The seed dates Christmas next December from November 15 on
+        # (`demo/household.py`), past the forecast's twelve months until the
+        # new year: it is on the forecast only when its date is inside it
+        # (found 2026-11-16, when asserting it always failed).
+        from apps.finance.forecast import _spans
+
+        christmas_on = mine["PersonalGoal"].get(name="Christmas").target_on
+        expected = {"Car repairs", "Summer trip to the lake", "New roof"} | (
+            {"Christmas"} if christmas_on <= _spans(today)[2] else set())
+        assert expected <= set(planned)
         assert planned["New roof"]["counted"] is False and planned["Car repairs"]["counted"]
         assert [g["name"] for g in mine_ahead["goals_not_drawn"]] == ["Emergency fund"]
         known = {row["group"].split(":")[0] for row in mine_ahead["lines"]

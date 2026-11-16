@@ -1,10 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-14 UTC**, after Release 43. **The next session starts at
-"2026-11-14, evening: Release 43, SOP sections and the card form's words"
-just below**; then "2026-11-14: Release 42, the Operations Command Center's
-engines"; then "2026-11-13, later: the plans engine (P11)"; then
+2026-11-16 UTC**. **The next session starts at "2026-11-16: refunds and
+Test Mode, on `dev`" just below**; then "2026-11-14, evening: Release 43, SOP
+sections and the card form's words"; then "2026-11-14: Release 42, the
+Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
 "2026-11-12, late: where things stand"; then
 "2026-11-12: Release 40, Command Centers"; then
@@ -31,6 +31,26 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-16: refunds and Test Mode, on `dev`
+
+- **Built on `dev`, not released.** Spec as built: `docs/p4_billing.md` §11
+  (void and refund from the app) and §12 (knowing when the processor is in
+  Test Mode). Migrations `billing 0013_refunds_and_test_mode` and `finance
+  0018_refunds_and_test_mode`, additive; applied on the laptop's
+  `execsnowhq_local` after a green gate.
+- **Proved on NMI's sandbox in headless Chrome:** `nmi_token_proof.py
+  --refunds` (pay, cancel unsettled, pay again, $2.00 refund, the rest with the
+  invoice voided, the read-back flags none, a portal-made refund recorded with
+  one click) and `--test-mode` (banner, test payment and refund out of the
+  books, a test card, then back in live mode: Clear test payments).
+- **On release:** no new scheduled job; nothing to set in Railway. Refunds and
+  voids go while card payments are paused.
+- **Open, production only:** what secure.vaultixpay.com's `test_mode_status`
+  answers for the live key (the read-only line is in §12); a settled sale's
+  refund and a live void, at the first real one.
+- **Still not arrived:** the two HRIS prompts (part 1, security foundation;
+  part 2, records and checklists).
 
 ## 2026-11-14, evening: Release 43, SOP sections and the card form's words
 

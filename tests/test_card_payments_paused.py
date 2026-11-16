@@ -369,12 +369,18 @@ def test_the_switch_holds_charges_while_reads_go_on(settings, billing, fcc, api,
         g.sale(LIVE, amount_cents=100, reference="r", payment_token="t")
     with pytest.raises(gw.CardPaymentsPaused):
         g.vault_add(LIVE, payment_token="t", billing=gw.Billing("A", "B"))
-    with pytest.raises(gw.CardPaymentsPaused):
-        g.refund(LIVE, transaction_id="1", amount_cents=100)
+    # Giving money back still goes while paused (2026-11-16): the stub's own
+    # answer for an unknown sale, not the switch's refusal.
+    for give_back in (lambda: g.refund(LIVE, transaction_id="1", amount_cents=100),
+                      lambda: g.void(LIVE, transaction_id="1")):
+        with pytest.raises(gw.GatewayError) as passed:
+            give_back()
+        assert not isinstance(passed.value, gw.CardPaymentsPaused)
     assert g.check_connection(LIVE).ok
     g.find_by_reference(LIVE, "r")
-    assert [c[0] for c in stub_gateway.calls[before:]] == ["check_connection",
-                                                           "find_by_reference"]
+    assert g.test_mode(LIVE) is False
+    assert [c[0] for c in stub_gateway.calls[before:]] == ["refund", "void", "check_connection",
+                                                           "find_by_reference", "test_mode"]
     assert portal_row(api, fcc, billing)["pay_paused"] is True
     assert pay(api, fcc, billing).json()["detail"] == gw.PAUSED_MESSAGE
     assert sales(stub_gateway) == [] and not PaymentAttempt.all_objects.exists()

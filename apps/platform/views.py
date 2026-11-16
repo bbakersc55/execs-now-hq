@@ -341,6 +341,56 @@ def _visitor_row(pk):
     return next(r for r in visitors.rows() if r["id"] == str(pk))
 
 
+class PlatformChargeRefundView(APIView):
+    """POST /api/platform/practices/<id>/charges/<invoice id>/refund
+    (2026-11-16): the platform owner's "Refund or cancel this charge" on a
+    practice's subscription invoice. {amount_cents, reason, void_invoice}.
+    Answers the practice's subscription row and the sentence to show."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def post(self, request, pk, invoice_pk):
+        from django.http import Http404
+
+        from apps.billing import refunds
+        from apps.platform import billing
+
+        try:
+            done = billing.refund_charge(
+                pk, invoice_pk, amount_cents=request.data.get("amount_cents"),
+                reason=request.data.get("reason"),
+                void_invoice=request.data.get("void_invoice") is True, actor=request.user)
+        except refunds.RefundRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        if done is None:
+            raise Http404
+        row, message = done
+        return Response({"subscription": row, "message": message})
+
+
+class PlatformNmiEventRecordView(APIView):
+    """POST /api/platform/nmi-events/<id>/record (2026-11-16): "Record this
+    refund" on a refund or void of a subscription charge made in the
+    processor's portal. {void_invoice}."""
+
+    permission_classes = [IsPlatformOwnerInPracticesArea]
+
+    def post(self, request, pk):
+        from django.http import Http404
+
+        from apps.billing import refunds
+        from apps.platform import billing
+
+        try:
+            done = billing.record_nmi_event(
+                pk, user=request.user, void_invoice=request.data.get("void_invoice") is True)
+        except refunds.RefundRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        if done is None:
+            raise Http404
+        return Response(done)
+
+
 class PlatformNmiEventView(APIView):
     """POST /api/platform/nmi-events/<id>/seen: the platform owner has looked at
     what the platform's NMI read-back found (owner, 2026-10-26). The billing

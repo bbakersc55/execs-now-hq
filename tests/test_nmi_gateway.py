@@ -259,9 +259,12 @@ def test_the_owner_connects_and_no_response_holds_a_key(seeded_tenant, api, stub
     shown = client.get("/api/payment-account/").content.decode()
     for secret in (PRIVATE, PUBLIC):
         assert secret not in response.content.decode() and secret not in shown
-    assert [c[0] for c in stub_gateway.calls] == ["check_connection"]
+    # The keys tested, then the processor's own Test Mode read with them
+    # (2026-11-16).
+    assert [c[0] for c in stub_gateway.calls] == ["check_connection", "test_mode"]
     row = PaymentAccount.all_objects.get(tenant=seeded_tenant)
     assert row.check_ok and row.environment == "sandbox"
+    assert row.gateway_test_mode is False and row.gateway_mode_read_at is not None
     stored = TenantSecret.all_objects.filter(tenant=seeded_tenant,
                                              kind__in=["nmi_private_key", "nmi_public_key"])
     assert stored.count() == 2
