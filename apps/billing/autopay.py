@@ -82,6 +82,58 @@ def wording_for(company) -> str:
     return WORDING.format(practice=services.practice_name(company.tenant), company=company.name)
 
 
+def _agreements_billing(company, today: date):
+    """The company's automatic billing agreements still billing, judged by
+    the end date itself: not ended, not stopped by the practice, and not
+    past their last day (whether or not the 5:00 job has closed them yet)."""
+    from django.db.models import Q
+
+    from apps.billing.models import BillingAgreement
+
+    return BillingAgreement.all_objects.filter(
+        Q(ends_on__isnull=True) | Q(ends_on__gte=today), client_company=company,
+        ended_at__isnull=True, stopped_at__isnull=True)
+
+
+def _date(day: date) -> str:
+    return f"{day:%B} {day.day}, {day.year}"
+
+
+def card_hold(company, today: date | None = None) -> str:
+    """Why the card on file can't be removed today, or "" (2026-11-17): while
+    automatic billing is still billing, the card can be replaced, never
+    left missing. The reason fits the state: on, or ending on a date."""
+    today = today or timezone.localdate()
+    ends = list(_agreements_billing(company, today).values_list("ends_on", flat=True))
+    if not ends:
+        return ""
+    if any(end is None for end in ends):
+        return ("Automatic billing is on, so the card on file can't be removed. Replace it "
+                "with another card, or stop automatic billing first.")
+    return (f"Automatic billing continues through {_date(max(ends))}, so the card stays on "
+            "file until then. You can replace it with another card.")
+
+
+def automatic_billing(company, today: date | None = None) -> dict | None:
+    """What the auto-pay card needs to know of the company's automatic
+    billing (2026-11-17): None when there is none to agree to or still
+    billing; else whether any is billing and, when every one is ending,
+    through when."""
+    from apps.billing import recurring
+    from apps.billing.models import ClientInvoiceSchedule
+
+    today = today or timezone.localdate()
+    states = [recurring.state_of(schedule, today) for schedule in
+              ClientInvoiceSchedule.all_objects.filter(
+                  client_company=company, mode=ClientInvoiceSchedule.Mode.AUTO,
+                  is_active=True)]
+    billing = list(_agreements_billing(company, today).values_list("ends_on", flat=True))
+    if not billing and recurring.WAITING not in states:
+        return None
+    through = max(billing) if billing and None not in billing else None
+    return {"billing": bool(billing), "through": through.isoformat() if through else None}
+
+
 def expires_on(card) -> date:
     """The last day a card works: the end of its expiry month."""
     return date(card.exp_year, card.exp_month,
@@ -110,6 +162,11 @@ def state(company) -> dict:
             "since": consent.consented_at.isoformat(),
             "by": consent.consented_by.full_name or consent.consented_by.email},
         "wording": wording_for(company), "wording_version": WORDING_VERSION,
+        # 2026-11-17: why "Remove the card" is off, and the company's
+        # automatic billing, which auto-pay does not cover.
+        "card_hold": card_hold(company) if card else "",
+        "automatic": automatic_billing(company),
+        "practice": services.practice_name(company.tenant),
     }
 
 
@@ -171,14 +228,11 @@ def save_card(company, *, user, payment_token) -> ClientPaymentMethod:
 def remove_card(company, *, user) -> None:
     """Removed, and deleted from the vault. Not while the company bills
     automatically (2026-11-17): the card can be replaced, never left
-    missing."""
-    from apps.billing.models import BillingAgreement
-
+    missing, through the agreement's last day (`card_hold`)."""
     _refuse_acting()
-    if BillingAgreement.all_objects.filter(client_company=company, ended_at__isnull=True,
-                                           stopped_at__isnull=True).exists():
-        raise AutopayRefused("Automatic billing is on, so the card on file can't be removed. "
-                             "Replace it with another card, or stop automatic billing first.")
+    held = card_hold(company)
+    if held:
+        raise AutopayRefused(held)
     with transaction.atomic():
         card = (ClientPaymentMethod.all_objects.select_for_update()
                 .filter(client_company=company, removed_at__isnull=True).first())

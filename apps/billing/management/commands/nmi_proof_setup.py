@@ -66,7 +66,12 @@ class Command(BaseCommand):
                                  "job that charges them, as the worker runs them.")
         parser.add_argument("--billing-facts", action="store_true",
                             help="What the database holds of automatic billing: the "
-                                 "recurring invoice, its agreements, invoices, charges, mail.")
+                                 "recurring invoice, its agreements, invoices, charges, mail, "
+                                 "auto-pay consents and cards.")
+        # 2026-11-17: a fresh sign-in link for the client owner, made at the
+        # clock's moment (run through scripts/moved_clock.py to move it).
+        parser.add_argument("--client-link", action="store_true",
+                            help="A new sign-in link for the proof's client owner.")
 
     def handle(self, *args, **options):
         database = connection.settings_dict["NAME"] or ""
@@ -88,6 +93,8 @@ class Command(BaseCommand):
             return self.billing_run(options["billing_run"])
         if options["billing_facts"]:
             return self.billing_facts()
+        if options["client_link"]:
+            return self.client_link()
         if options["subscription"]:
             return self.subscription()
         if options["subscription_charge"]:
@@ -274,12 +281,31 @@ class Command(BaseCommand):
 
         with tenant_context(tenant.pk):
             state = recurring.state_of(schedule)
+        from apps.billing.models import AutopayConsent, ClientPaymentMethod
+
+        consents = [{"on": str(c.consented_at), "revoked": bool(c.revoked_at),
+                     "reason": c.revoke_reason}
+                    for c in AutopayConsent.all_objects.filter(tenant=tenant).order_by(
+                        "consented_at")]
+        cards = [{"last4": c.last4, "removed": bool(c.removed_at)}
+                 for c in ClientPaymentMethod.all_objects.filter(tenant=tenant).order_by(
+                     "created_at")]
         self.stdout.write(json.dumps({
             "state": state, "days": schedule.days_of_month,
             "first_billing_on": str(schedule.first_billing_on),
             "lines": schedule.lines, "pending": [schedule.pending_lines,
                                                  str(schedule.pending_from or "")],
-            "agreements": agreements, "invoices": invoices, "mail": mail}))
+            "agreements": agreements, "invoices": invoices, "mail": mail,
+            "consents": consents, "cards": cards}))
+
+    def client_link(self):
+        from apps.accounts.models import MagicLinkToken, User
+        from apps.tenancy.models import Tenant
+
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        client = User.objects.get(email="casey@proof-client.invalid")
+        _, raw = MagicLinkToken.issue(tenant=tenant, user=client, redirect_to="/invoices")
+        self.stdout.write(json.dumps({"sign_in_path": f"/auth/magic/{raw}"}))
 
     def subscription_charge(self):
         from apps.billing import subscriptions

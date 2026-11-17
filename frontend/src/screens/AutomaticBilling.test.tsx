@@ -6,6 +6,7 @@ import { WorkerWarning } from "../components/CardPaymentsSwitch";
 import { InvoiceSchedule, PortalBilling } from "../lib/api";
 import { aMe } from "../test/fixtures";
 import { mockApi, renderRoute } from "../test/render";
+import { ClientAutopay } from "./ClientAutopay";
 import { ClientBilling } from "./ClientBilling";
 import { Invoices } from "./Invoices";
 
@@ -200,6 +201,95 @@ describe("automatic billing in the portal", () => {
     const { container } = renderRoute(<ClientBilling />);
     await new Promise((r) => setTimeout(r, 20));
     expect(container).not.toHaveTextContent("Automatic billing");
+  });
+});
+
+describe("the box, auto-pay beside it, and the owner's end dates (2026-11-17)", () => {
+  const ROW: PortalBilling = {
+    id: "s2", state: "active", what: [{ description: "Operations support",
+                                        amount_cents: 150000 }],
+    total_cents: 150000, timing_words: "on the 1st and 15th of each month",
+    billed_words: "Billed on the 1st and 15th of each month",
+    stop_rule: "If you stop, billing continues through the end of the following month.",
+    words: "", version: "2026-11-17.2", key: "k", next_billing_on: "2026-12-01",
+    ends_on: null, last_charge_on: null, can_withdraw: false,
+    agreed_at: "2026-11-16T10:00:00Z", pending: null };
+  const CARD = { brand: "Visa", last4: "1111", expires: "10/29", added_by: "Wile",
+                 added_at: "2026-11-16T10:00:00Z" };
+  const STATE = { ready: true, test_mode: false, public_key: "pub", paused: false, card: CARD,
+                  autopay: null, wording: "I authorize Summit to charge the card on file.",
+                  wording_version: "2026-10-21", practice: "Summit",
+                  card_hold: "Automatic billing is on, so the card on file can't be removed. "
+                    + "Replace it with another card, or stop automatic billing first.",
+                  automatic: { billing: true, through: null } };
+
+  it("puts the schedule on its own line and says the stop rule before Stop", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/portal-billing/": [ROW],
+                                     "GET /api/portal-autopay/": STATE }));
+    renderRoute(<ClientBilling />);
+    expect(await screen.findByText("Billed on the 1st and 15th of each month"))
+      .toBeInTheDocument();
+    expect(screen.getByText("If you stop, billing continues through the end of the following "
+      + "month.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop automatic billing" })).toBeInTheDocument();
+  });
+
+  it("offers auto-pay for other invoices only when asked, and never as a second agreement",
+    async () => {
+      const fetchMock = mockApi({
+        "POST /api/portal-autopay/consent/": () => ({ body: { ...STATE,
+          autopay: { since: "2026-11-17T10:00:00Z", by: "Noble Baker" } } }),
+        "GET /api/portal-autopay/": STATE });
+      vi.stubGlobal("fetch", fetchMock);
+      renderRoute(<ClientAutopay />);
+      const box = await screen.findByRole("region", { name: "Auto-pay for other invoices" });
+      expect(box).toHaveTextContent("Automatic billing is charged under its own agreement");
+      expect(screen.queryByLabelText("I agree")).toBeNull();
+      expect(screen.queryByText(/I authorize Summit/)).toBeNull();
+      await userEvent.click(within(box).getByRole("button", {
+        name: "Also pay other invoices automatically?" }));
+      expect(within(box).getByText(/I authorize Summit/)).toBeInTheDocument();
+      await userEvent.click(within(box).getByLabelText("I agree"));
+      await userEvent.click(within(box).getByRole("button", {
+        name: "Turn auto-pay on for other invoices" }));
+      expect(await within(box).findByText(/Other invoices from Summit are charged to the card on/))
+        .toBeInTheDocument();
+      expect(within(box).getByRole("button", { name: "Turn auto-pay off for other invoices" }))
+        .toBeInTheDocument();
+      expect(box).toHaveTextContent("Automatic billing keeps running under its agreement; to "
+        + "end it, press Stop automatic billing above.");
+      expect(sent(fetchMock, "/consent/")).toEqual([{ agree: true, version: "2026-10-21" }]);
+    });
+
+  it("says billing runs through its end date, and keeps Remove the card off with why", async () => {
+    const hold = "Automatic billing continues through December 31, 2026, so the card stays on "
+      + "file until then. You can replace it with another card.";
+    vi.stubGlobal("fetch", mockApi({ "GET /api/portal-autopay/": { ...STATE, card_hold: hold,
+      automatic: { billing: true, through: "2026-12-31" },
+      autopay: { since: "2026-11-17T10:00:00Z", by: "Noble Baker" } } }));
+    renderRoute(<ClientAutopay />);
+    const remove = await screen.findByRole("button", { name: "Remove the card" });
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAccessibleDescription(hold);
+    expect(screen.getByText("Automatic billing continues through December 31, 2026."))
+      .toBeInTheDocument();
+  });
+
+  it("without automatic billing, auto-pay is as it was and the card can go", async () => {
+    vi.stubGlobal("fetch", mockApi({ "GET /api/portal-autopay/": { ...STATE, card_hold: "",
+      automatic: null } }));
+    renderRoute(<ClientAutopay />);
+    expect(await screen.findByRole("button", { name: "Remove the card" })).toBeEnabled();
+    expect(screen.getByLabelText("I agree")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Turn auto-pay on" })).toBeInTheDocument();
+  });
+
+  it("shows the practice owner the end and the last charge once notice is given", async () => {
+    owner([{ ...AUTO, automatic: { ...AUTO.automatic!, state: "ending",
+      state_label: "Notice given, ending December 31, 2026", ends_on: "2026-12-31",
+      ends_set_by: "client", last_charge_on: "2026-12-15" } }]);
+    expect(await screen.findByText("Billing ends December 31, 2026. Last charge December 15, "
+      + "2026.")).toBeInTheDocument();
   });
 });
 

@@ -1957,6 +1957,8 @@ export interface AutomaticBilling {
   state: AutomaticState; state_label: string;
   next_billing_on: string | null; last_billed_on: string | null; timing_words: string;
   ends_on: string | null; ends_set_by: "" | "client" | "owner";
+  /** 2026-11-17: once notice is given, the last charge beside the end. */
+  last_charge_on?: string | null;
   timeline: { what: string; on: string; by?: string; future?: boolean }[];
   pending: { from: string; total_cents: number } | null;
   invited_at: string | null;
@@ -1970,6 +1972,9 @@ export interface PortalBilling {
   id: string; state: AutomaticState;
   what: { description: string; amount_cents: number }[];
   total_cents: number; timing_words: string;
+  /** 2026-11-17: "Billed on the 1st and 15th of each month", and the standing
+   *  sentence on stopping, said before anyone presses Stop. */
+  billed_words?: string; stop_rule?: string;
   /** The terms in plain words, with what the agreement is checked against. */
   words: string; version: string; key: string;
   next_billing_on: string | null; ends_on: string | null; last_charge_on: string | null;
@@ -2041,6 +2046,13 @@ export interface AutopayState {
           added_at: string; is_test?: boolean } | null;
   autopay: { since: string; by: string } | null;
   wording: string; wording_version: string;
+  /** 2026-11-17: why "Remove the card" is off ("" when it can go), the
+   *  company's automatic billing (which auto-pay does not cover: null when
+   *  there is none waiting or billing; `through` when every one is ending),
+   *  and the practice's name. */
+  card_hold?: string;
+  automatic?: { billing: boolean; through: string | null } | null;
+  practice?: string;
 }
 
 /** GET /api/subscription/ — what the practice pays Execs NOW HQ (P4 part 5).

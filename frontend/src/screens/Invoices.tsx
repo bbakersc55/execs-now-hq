@@ -548,6 +548,16 @@ function AutomaticTiming({ form, set, locked, company }: {
   );
 }
 
+/** 2026-11-17: once notice is given, the end and the last charge, in the
+ *  list and the details alike. */
+function EndAndLastCharge({ a }: { a: NonNullable<InvoiceSchedule["automatic"]> }) {
+  return (
+    <>Billing ends {longDate(a.ends_on!)}.{" "}
+      {a.last_charge_on ? <>Last charge {longDate(a.last_charge_on)}.</>
+        : <>No further charge.</>}</>
+  );
+}
+
 /** What a recurring invoice billed automatically shows under its row: its
  *  timeline and the practice owner's actions. */
 function AutomaticDetails({ row, onChanged }: {
@@ -573,6 +583,7 @@ function AutomaticDetails({ row, onChanged }: {
       <p style={{ marginTop: 0 }}>{dollars(row.total_cents)} {a.timing_words}.
         {a.pending && <> From {longDate(a.pending.from)}: {dollars(a.pending.total_cents)} each
           time.</>}</p>
+      {a.state === "ending" && a.ends_on && <p><EndAndLastCharge a={a} /></p>}
       {a.timeline.length > 0 && (
         <ol aria-label={`Timeline for ${name}`}>
           {a.timeline.map((t, i) => (
@@ -672,7 +683,10 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
                   : <>Day {row.day_of_month} · {row.terms_label}
                     {row.terms_days === null && <span className="muted"> · the practice's</span>}</>}</td>
                 <td data-label="State">{row.automatic ? pill(row.automatic)
-                  : row.is_active ? <Pill kind="ok">Active</Pill> : <Pill>paused</Pill>}</td>
+                  : row.is_active ? <Pill kind="ok">Active</Pill> : <Pill>paused</Pill>}
+                  {row.automatic?.state === "ending" && row.automatic.ends_on && (
+                    <div className="tiny"><EndAndLastCharge a={row.automatic} /></div>
+                  )}</td>
                 <td data-label="Next">{row.automatic
                   ? (row.automatic.next_billing_on ? longDate(row.automatic.next_billing_on) : "")
                   : row.is_active ? longDate(row.next_on) : ""}</td>

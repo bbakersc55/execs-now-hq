@@ -16,7 +16,8 @@ import pytest
 
 from apps.billing import autopay, recurring, timing
 from apps.billing.models import (
-    BillingAgreement, ClientInvoice, ClientInvoiceSchedule, ClientPaymentMethod, PaymentAttempt,
+    AutopayConsent, BillingAgreement, ClientInvoice, ClientInvoiceSchedule, ClientPaymentMethod,
+    PaymentAttempt,
 )
 from apps.crm.models import OutboxMessage
 from apps.notify.models import Notice
@@ -220,9 +221,12 @@ def test_the_client_reads_short_terms_and_must_save_a_card_to_agree(waiting, api
     words = row["words"]
     assert "What is billed: Operations support ($1,500.00)." in words
     assert "Total each time: $1,500.00." in words
-    assert "When: on the 1st and 15th of each month, starting December 1, 2026." in words
+    # 2026-11-17.2: the schedule on its own line, and the standing sentence.
+    assert "\nBilled on the 1st and 15th of each month.\n" in words
+    assert "\nFirst billing date: December 1, 2026.\n" in words
     assert "Month to month." in words and "Stop automatic billing" in words
-    assert "last day of the next calendar month" in words
+    assert ("\nIf you stop, billing continues through the end of the following month. Every "
+            "billing date through then is billed, and nothing after.") in words
     no_card = agree(api, fcc, waiting)
     assert no_card.status_code == 409 and "Save a card first" in no_card.json()["detail"]
 
@@ -234,12 +238,16 @@ def test_a_contract_end_is_said_as_term_ends_then_month_to_month(owner_of, api, 
         [row] = get(api, fcc, PORTAL).json()
     assert row["id"] == made["id"]
     assert "Term ends June 30, 2027, then month to month." in row["words"]
+    assert row["stop_rule"] == (
+        "If you stop, billing continues through the end of the following month. If the term "
+        "ends later than that, on June 30, 2027, billing continues through the term's end.")
+    assert row["stop_rule"] in row["words"]
 
 
 @pytest.mark.django_db
 def test_the_agreement_is_kept_as_given(active, fcc):
     agreement = BillingAgreement.all_objects.get(schedule=active)
-    assert agreement.agreed_by_id == fcc.user_id and agreement.wording_version == "2026-11-17"
+    assert agreement.agreed_by_id == fcc.user_id and agreement.wording_version == "2026-11-17.2"
     assert "Total each time: $1,500.00." in agreement.wording
     assert agreement.card.last4 == "1111" and agreement.ip_address
     assert recurring.state_of(active, date(2026, 11, 16)) == "active"
@@ -601,3 +609,106 @@ def test_you_send_each_invoice_is_unchanged(owner_of, api, ff, fcc, connected):
         [draft] = services.run_schedules(connected, today=date(2026, 12, 1))
         assert recurring.make_due(connected, today=date(2026, 12, 1)) == []
     assert draft.status == "draft" and draft.billing_date is None
+
+
+# ------------------------------- the portal box, and auto-pay beside it (2026-11-17)
+
+AUTOPAY = "/api/portal-autopay/"
+
+
+@pytest.mark.django_db
+def test_the_box_says_the_schedule_and_the_stop_rule_before_anyone_presses_stop(waiting, api,
+                                                                                  fcc):
+    with at(date(2026, 11, 16)):
+        [row] = get(api, fcc, PORTAL).json()
+    assert row["billed_words"] == "Billed on the 1st and 15th of each month"
+    assert row["stop_rule"] == "If you stop, billing continues through the end of the following month."
+
+
+@pytest.mark.django_db
+def test_agreeing_never_turns_auto_pay_on(active, api, fcc):
+    assert not AutopayConsent.all_objects.exists()
+    with at(date(2026, 11, 16)):
+        state = get(api, fcc, AUTOPAY).json()
+    assert state["autopay"] is None
+    assert state["automatic"] == {"billing": True, "through": None}
+    assert state["card_hold"].startswith("Automatic billing is on, so the card on file can't "
+                                         "be removed.")
+
+
+@pytest.mark.django_db
+def test_turning_auto_pay_off_leaves_automatic_billing_charging(active, api, fcc, connected,
+                                                                stub_gateway):
+    with at(date(2026, 11, 20)):
+        on = post(api, fcc, AUTOPAY + "consent/",
+                  {"agree": True, "version": autopay.WORDING_VERSION})
+        assert on.status_code == 200, on.content
+        off = post(api, fcc, AUTOPAY + "revoke/")
+        assert off.status_code == 200 and off.json()["autopay"] is None
+    agreement = BillingAgreement.all_objects.get(schedule=active)
+    assert (agreement.ends_on, agreement.stopped_at, agreement.ended_at) == (None, None, None)
+    [invoice] = make(connected, date(2026, 11, 28))
+    assert invoice.autopay_consent_id is None             # never tied to the consent
+    assert charge(connected, date(2026, 12, 1)) == 1
+    invoice.refresh_from_db()
+    assert invoice.status == "paid" and len(sales(stub_gateway)) == 1
+
+
+@pytest.mark.django_db
+def test_the_card_stays_through_the_end_date_and_can_go_the_day_after(active, api, fcc,
+                                                                      connected):
+    with at(date(2026, 11, 16)):
+        assert post(api, fcc, f"{PORTAL}{active.pk}/stop/").status_code == 200
+    held = ("Automatic billing continues through December 31, 2026, so the card stays on file "
+            "until then. You can replace it with another card.")
+    with at(date(2026, 12, 31)):
+        assert get(api, fcc, AUTOPAY).json()["card_hold"] == held
+        refused = post(api, fcc, AUTOPAY + "remove-card/")
+        assert refused.status_code == 409 and refused.json()["detail"] == held
+    # The day after, by the end date itself: the 5:00 job has not closed it yet.
+    assert BillingAgreement.all_objects.get(schedule=active).ended_at is None
+    with at(date(2027, 1, 1)):
+        state = get(api, fcc, AUTOPAY).json()
+        assert state["card_hold"] == "" and state["automatic"] is None
+        assert post(api, fcc, AUTOPAY + "remove-card/").status_code == 200
+    assert not ClientPaymentMethod.all_objects.filter(removed_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_a_one_off_invoice_is_charged_only_under_a_consent_given_separately(
+        active, api, ff, fcc, owner_of, connected, stub_gateway):
+    from .test_autopay import send_invoice
+
+    def one_off():
+        invoice = send_invoice(_fresh(api, ff), ff, fcc, owner_of)
+        ClientInvoice.all_objects.filter(pk=invoice.pk).update(due_date=date(2026, 11, 20))
+        invoice.refresh_from_db()
+        return invoice
+
+    def run_autopay():
+        with tenant_context(connected.pk):
+            return autopay.run(connected, today=date(2026, 11, 20))
+
+    with at(date(2026, 11, 20)):
+        first = one_off()
+        assert first.autopay_consent_id is None
+        assert run_autopay()["charged"] == 0
+        assert post(api, fcc, AUTOPAY + "consent/",
+                    {"agree": True, "version": autopay.WORDING_VERSION}).status_code == 200
+        second = one_off()
+        assert second.autopay_consent_id is not None
+        assert run_autopay()["charged"] == 1
+    first.refresh_from_db(), second.refresh_from_db()
+    assert (first.status, second.status) == ("sent", "paid")
+
+
+@pytest.mark.django_db
+def test_once_notice_is_given_the_owner_sees_the_end_and_the_last_charge(active, api, ff,
+                                                                         fcc):
+    with at(date(2026, 11, 16)):
+        [before] = get(api, ff, ROOT).json()
+        assert before["automatic"]["last_charge_on"] is None
+        assert post(api, fcc, f"{PORTAL}{active.pk}/stop/").status_code == 200
+        [row] = get(api, ff, ROOT).json()
+    assert (row["automatic"]["ends_on"], row["automatic"]["last_charge_on"]) == (
+        "2026-12-31", "2026-12-15")

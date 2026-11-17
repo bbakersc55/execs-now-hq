@@ -14,6 +14,7 @@
     .venv/bin/python scripts/nmi_token_proof.py --test-mode   # the processor's own Test Mode
     .venv/bin/python scripts/nmi_token_proof.py --automatic   # recurring, billed automatically
     .venv/bin/python scripts/nmi_token_proof.py --run-now     # "Run the next billing now"
+    .venv/bin/python scripts/nmi_token_proof.py --beside      # auto-pay beside automatic billing
 
 **--automatic** (2026-11-17) walks automatic billing through the real pages
 built from this tree, with the worker's two daily jobs run with the clock
@@ -161,20 +162,29 @@ PROOF_DB = "execsnowhq_nmi_proof"
 PROOF_ENV = {"DATABASE_URL": f"postgres:///{PROOF_DB}", "APP_ROOT_URL": "/"}
 
 
-def manage(*args, env_extra=None) -> str:
+def _manage_py(clock=None) -> list[str]:
+    """manage.py, or (2026-11-17) manage.py with the app's clock moved to
+    `clock` (`scripts/moved_clock.py`)."""
+    python = str(ROOT / ".venv/bin/python")
+    if clock is None:
+        return [python, "manage.py"]
+    return [python, str(ROOT / "scripts/moved_clock.py"), clock.isoformat()]
+
+
+def manage(*args, env_extra=None, clock=None) -> str:
     env = {**os.environ, "NMI_LIVE_CALLS": "true", **(env_extra or {})}
-    done = subprocess.run([str(ROOT / ".venv/bin/python"), "manage.py", *args], cwd=ROOT,
+    done = subprocess.run([*_manage_py(clock), *args], cwd=ROOT,
                           env=env, capture_output=True, text=True)
     if done.returncode != 0:
         sys.exit(f"manage.py {args[0]} failed:\n{done.stderr[-3000:]}")
     return done.stdout
 
 
-def start_server(env_extra=None):
+def start_server(env_extra=None, clock=None):
     env = {**os.environ, "NMI_LIVE_CALLS": "true", "PYTHONUNBUFFERED": "1",
            **(env_extra or {})}
     server = subprocess.Popen(
-        [str(ROOT / ".venv/bin/python"), "manage.py", "runserver", f"127.0.0.1:{PORT}",
+        [*_manage_py(clock), "runserver", f"127.0.0.1:{PORT}",
          "--noreload"], cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     for _ in range(60):
         try:
@@ -921,6 +931,204 @@ def automatic_proof() -> dict:
         and dict(steps)["the next date, after the end"]["made"] == []
         and dict(steps)["the next date, after the end"]["charged"] == 0)
     return result
+
+
+def _long(day) -> str:
+    return f"{day:%B} {day.day}, {day.year}"
+
+
+def beside_proof() -> dict:
+    """2026-11-17: what the client owner sees of automatic billing and auto-pay
+    beside it, in the portal built from this tree, as a client owner: the
+    schedule on its own line and the stop rule before Stop, in the box and the
+    terms; saving the card to agree puts no second "I agree" in front of them;
+    "Auto-pay for other invoices" offered only when asked for, and what its
+    sentence and "Turn auto-pay off" say keeps running; "Remove the card" off
+    with a reason that fits the state; the practice owner's end and last
+    charge once notice is given; and, with the server's clock moved to the day
+    after the end date, before the 5:00 job has closed the agreement, the card
+    can go."""
+    import calendar
+    from datetime import date, datetime, timedelta, timezone
+
+    from playwright.sync_api import sync_playwright
+
+    env = {**PROOF_ENV, **IGNORE_TEST_MODE}
+    build_frontend()
+    fresh_proof_db()
+    setup = json.loads(manage("nmi_proof_setup", env_extra=env).strip().splitlines()[-1])
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=env).strip().splitlines()[-1])
+    today = datetime.now(timezone.utc).date()
+    first = _billing_days(today + timedelta(days=1), today + timedelta(days=20))[0]
+    year, month = (today.year + (today.month == 12), today.month % 12 + 1)
+    ends = date(year, month, calendar.monthrange(year, month)[1])   # notice given today
+    last = _billing_days(first, ends)[-1]
+    cents = 2000 + int(time.time() * 1000) % 2900
+    checks: list[tuple[str, bool, str]] = []
+    shots = Path(os.environ.get("PROOF_SHOTS", "/tmp"))
+
+    def check(label, ok, detail=""):
+        checks.append((label, bool(ok), detail))
+
+    def visible(page, text, exact=True):
+        try:
+            page.get_by_text(text, exact=exact).first.wait_for(timeout=30000)
+            return True
+        except Exception:
+            return False
+
+    stop_rule = "If you stop, billing continues through the end of the following month."
+    on_hold = ("Automatic billing is on, so the card on file can't be removed. Replace it with "
+               "another card, or stop automatic billing first.")
+    ending_hold = (f"Automatic billing continues through {_long(ends)}, so the card stays on "
+                   "file until then. You can replace it with another card.")
+    server = start_server(env)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            set_up_automatic(owner, first, f"{cents / 100:.2f}")
+            client_context = browser.new_context(viewport={"width": 1366, "height": 900})
+            client = client_context.new_page()
+            client.goto(BASE + setup["sign_in_path"], wait_until="domcontentloaded",
+                        timeout=90000)
+            client.get_by_role("button", name="Sign in").click()
+            client.get_by_text("First, save the card it is charged to.").wait_for(timeout=90000)
+            # 5: the schedule on its own line and the stop rule, before Stop.
+            check("box: the schedule on its own line",
+                  visible(client, "Billed on the 1st and 15th of each month"))
+            check("box: the stop rule, before anyone presses Stop", visible(client, stop_rule))
+            terms = client.get_by_label("The terms").inner_text()
+            check("terms: the schedule on its own line",
+                  "\nBilled on the 1st and 15th of each month.\n" in terms, terms)
+            check("terms: the stop rule",
+                  f"\n{stop_rule} Every billing date through then is billed, and nothing "
+                  "after." in terms)
+            # 1: the card saved to agree; no second "I agree" in front of them.
+            fill_card(client, button=re.compile(r"^Save this card$"))
+            try:
+                client.get_by_text(re.compile(r"Visa ending\s+1111")).first.wait_for(
+                    timeout=120000)
+            except Exception:
+                client.screenshot(path=str(shots / "beside_failed_card.png"), full_page=True)
+                raise
+            client.get_by_role("button", name="Also pay other invoices automatically?").wait_for(
+                timeout=60000)
+            check("card saved to agree: no auto-pay \"I agree\" shown, only the link",
+                  client.get_by_label("I agree", exact=True).count() == 0
+                  and client.get_by_text("I authorize").count() == 0
+                  and client.get_by_label("I agree to these terms").count() == 1)
+            client.screenshot(path=str(shots / "beside_1_waiting.png"), full_page=True)
+            client.get_by_label("I agree to these terms").check()
+            client.get_by_role("button", name="Agree and start automatic billing").click()
+            client.get_by_role("button", name="Stop automatic billing").wait_for(timeout=60000)
+            check("agreed: the stop rule still said before Stop", visible(client, stop_rule))
+            region = client.get_by_role("region", name="Auto-pay for other invoices")
+            check("agreed: auto-pay is \"for other invoices\", apart from the agreement",
+                  region.get_by_text("Automatic billing is charged under its own agreement")
+                  .count() == 1
+                  and client.get_by_role("heading", name="Card on file", exact=True).count() == 1)
+            remove = client.get_by_role("button", name="Remove the card")
+            # The reason first: the card's state is read again after agreeing.
+            check("agreed: Remove the card is off, with why",
+                  visible(client, on_hold) and remove.is_disabled(), on_hold)
+            # 1-2: asked for, turned on; what it says keeps running.
+            region.get_by_role("button", name="Also pay other invoices automatically?").click()
+            check("asked: the auto-pay wording, and that it doesn't cover automatic billing",
+                  visible(client, "This doesn't cover automatic billing, which is charged under "
+                          "its own agreement."))
+            region.get_by_label("I agree", exact=True).check()
+            region.get_by_role("button", name="Turn auto-pay on for other invoices").click()
+            check("on: the sentence says other invoices",
+                  visible(client, "turned on by Casey Client. Other invoices from Proof Practice "
+                          "are charged to the card on file on their due dates.", exact=False))
+            check("on: Turn auto-pay off says automatic billing keeps running",
+                  region.get_by_role("button", name="Turn auto-pay off for other invoices")
+                  .count() == 1
+                  and visible(client, "Automatic billing keeps running under its agreement; to "
+                              "end it, press Stop automatic billing above."))
+            client.screenshot(path=str(shots / "beside_2_active.png"), full_page=True)
+            # 3: stop; the card held through the end date, said so.
+            client.get_by_role("button", name="Stop automatic billing").click()
+            dialog = client.get_by_role("dialog", name="Stop automatic billing?")
+            said_stop = dialog.inner_text(timeout=60000)
+            dialog.get_by_role("button", name="Confirm: stop automatic billing").click()
+            client.get_by_role("button", name="Withdraw my notice").wait_for(timeout=60000)
+            check("notice: Remove the card off, through the end date",
+                  visible(client, ending_hold) and remove.is_disabled(), ending_hold)
+            check("notice: Turn auto-pay off says billing continues through the end",
+                  visible(client, f"Automatic billing continues through {_long(ends)}."))
+            # 2: turning auto-pay off leaves automatic billing as it was.
+            region.get_by_role("button", name="Turn auto-pay off for other invoices").click()
+            region.get_by_role("button", name="Also pay other invoices automatically?").wait_for(
+                timeout=60000)
+            client.reload(wait_until="domcontentloaded")
+            check("auto-pay off: automatic billing still ending on its date, its last charge "
+                  "kept", visible(client, f"Billing continues through {_long(ends)}. Your last "
+                                          f"charge will be on {_long(last)}.", exact=False)
+                  and client.get_by_role("button", name="Withdraw my notice").count() == 1)
+            client.screenshot(path=str(shots / "beside_3_ending.png"), full_page=True)
+            # 5: the practice owner sees the end and the last charge.
+            owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            check("owner: the end and the last charge once notice is given",
+                  visible(owner, f"Billing ends {_long(ends)}. Last charge {_long(last)}."))
+            owner.screenshot(path=str(shots / "beside_4_owner.png"), full_page=True)
+            client.close()
+            client_context.close()
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    # The day after the end date, at 9:00 Denver; the 5:00 job has not run.
+    after = datetime(ends.year, ends.month, ends.day, 16, tzinfo=timezone.utc) + timedelta(days=1)
+    before_close = json.loads(manage("nmi_proof_setup", "--billing-facts", env_extra=env,
+                                     clock=after).strip().splitlines()[-1])
+    check("day after the end: the agreement not yet closed by the 5:00 job",
+          not before_close["agreements"][0]["ended"])
+    link = json.loads(manage("nmi_proof_setup", "--client-link", env_extra=env,
+                             clock=after).strip().splitlines()[-1])
+    server = start_server(env, clock=after)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            client_context = browser.new_context(viewport={"width": 1366, "height": 900})
+            client = client_context.new_page()
+            client.goto(BASE + link["sign_in_path"], wait_until="domcontentloaded",
+                        timeout=90000)
+            client.get_by_role("button", name="Sign in").click()
+            client.get_by_text(re.compile(r"^Automatic billing ended")).first.wait_for(
+                timeout=90000)
+            remove = client.get_by_role("button", name="Remove the card")
+            check("day after the end: Remove the card is on",
+                  remove.is_enabled() and client.get_by_text(ending_hold).count() == 0)
+            remove.click()
+            check("day after the end: the card removed", visible(client, "No card on file.",
+                                                                 exact=False))
+            client.screenshot(path=str(shots / "beside_5_after.png"), full_page=True)
+            client.close()
+            client_context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    facts_ = json.loads(manage("nmi_proof_setup", "--billing-facts", env_extra=env,
+                               clock=after).strip().splitlines()[-1])
+    [agreement] = facts_["agreements"]
+    check("facts: agreeing made no consent; the one asked for was turned off",
+          [c["reason"] for c in facts_["consents"]] == ["Turned off"])
+    check("facts: the agreement kept its notice and end", agreement["notice_given"]
+          and agreement["ends_on"] == ends.isoformat() and agreement["ends_set_by"] == "client"
+          and agreement["version"] == "2026-11-17.2")
+    check("facts: the card removed only the day after", facts_["cards"] == [
+        {"last4": "1111", "removed": True}])
+    return {"dates": {"today": today.isoformat(), "first": first.isoformat(),
+                      "ends": ends.isoformat(), "last_charge": last.isoformat(),
+                      "clock_moved_to": after.isoformat()},
+            "checks": [f"{'PASS' if ok else 'FAIL'}  {label}" for label, ok, _ in checks],
+            "said_stop": said_stop, "terms": terms,
+            "ok": all(ok for _, ok, _ in checks)}
 
 
 def test_mode_proof() -> dict:
@@ -1859,6 +2067,8 @@ def run_mode():
         result = automatic_proof()
     elif "--run-now" in sys.argv:
         result = run_now_proof()
+    elif "--beside" in sys.argv:
+        result = beside_proof()
     elif "--link-collect" in sys.argv:
         host = sys.argv[sys.argv.index("--link-collect") + 1]
         if host not in ("secure.nmi.com", "secure.vaultixpay.com"):

@@ -62,7 +62,12 @@ S = ClientInvoice.Status
 
 #: The words a client owner agrees to. A change of wording is a new version;
 #: what each agreed to is kept on their agreement as they saw it.
-WORDING_VERSION = "2026-11-17"
+#: 2026-11-17.2: the schedule on its own line, and the standing sentence on
+#: stopping ("If you stop, billing continues through the end of the following
+#: month."). The rule did not change.
+WORDING_VERSION = "2026-11-17.2"
+#: Said before anyone presses Stop: in the terms and the portal's box.
+IF_YOU_STOP = "If you stop, billing continues through the end of the following month."
 #: A change of lines or price applies from a billing date at least this far out.
 CHANGE_NOTICE = timedelta(days=7)
 #: "Run the next billing now" waits this long after a charge of the same
@@ -181,6 +186,21 @@ def owner_contact(tenant) -> tuple[str, str]:
 
 # ------------------------------------------------------------- the words
 
+def billed_words(schedule) -> str:
+    """The schedule on its own line: "Billed on the 1st and 15th of each month"."""
+    return f"Billed {timing.describe(schedule)}"
+
+
+def stop_rule(schedule, today: date | None = None) -> str:
+    """The standing sentence on stopping; with a contract's end still to come,
+    what that changes (`timing.notice_end` bills through the later of the two)."""
+    today = today or timezone.localdate()
+    if schedule.term_ends_on and schedule.term_ends_on >= today:
+        return (f"{IF_YOU_STOP} If the term ends later than that, on "
+                f"{_date(schedule.term_ends_on)}, billing continues through the term's end.")
+    return IF_YOU_STOP
+
+
 def words(schedule, today: date | None = None) -> str:
     """What the client owner agrees to, in short plain words."""
     today = today or timezone.localdate()
@@ -200,13 +220,13 @@ def words(schedule, today: date | None = None) -> str:
         f"I agree that {practice} bills {company} automatically, on these terms:",
         f"What is billed: {what}.",
         f"Total each time: {money.dollars(total_of(lines))}.",
-        f"When: {timing.describe(schedule)}, starting {_date(start) if start else 'its first date'}.",
+        f"{billed_words(schedule)}.",
+        f"First billing date: {_date(start) if start else 'its first date'}.",
         term,
         f"How it is paid: each invoice is emailed {emailed} and charged to the card saved here "
         "on that date. If a charge fails, it is tried once more on a later day.",
         "How to stop: press Stop automatic billing here in the portal.",
-        "When billing ends after you stop: every billing date through the last day of the "
-        "next calendar month is billed (or through the term's end, if that is later), and "
+        f"{stop_rule(schedule, today)} Every billing date through then is billed, and "
         "nothing after.",
     ])
 
@@ -829,6 +849,8 @@ def represent(schedule, *, owner: bool = True, today: date | None = None) -> dic
         "ends_on": agreement.ends_on.isoformat() if agreement and agreement.ends_on
         and code in (ENDING,) else None,
         "ends_set_by": agreement.ends_set_by if agreement and code == ENDING else "",
+        # 2026-11-17: once notice is given, the last charge beside the end.
+        "last_charge_on": _last_charge_iso(schedule, agreement) if code == ENDING else None,
         "timeline": timeline(schedule, today),
         "pending": ({"from": schedule.pending_from.isoformat(),
                      "total_cents": total_of(schedule.pending_lines)}
@@ -838,6 +860,13 @@ def represent(schedule, *, owner: bool = True, today: date | None = None) -> dic
         "can_run_now": (owner and code in (ACTIVE, ENDING)
                         and gateway_mode.last_for_practice(schedule.tenant) is True),
     }
+
+
+def _last_charge_iso(schedule, agreement) -> str | None:
+    if agreement is None or agreement.ends_on is None or agreement.stopped_at:
+        return None
+    last = last_charge_on(schedule, agreement, agreement.ends_on)
+    return last.isoformat() if last else None
 
 
 def portal(company, today: date | None = None) -> list[dict]:
@@ -858,6 +887,7 @@ def portal(company, today: date | None = None) -> list[dict]:
                                                         line["unit_price_cents"])}
                      for line in schedule.lines],
             "total_cents": total_of(schedule.lines), "timing_words": timing.describe(schedule),
+            "billed_words": billed_words(schedule), "stop_rule": stop_rule(schedule, today),
             "words": text, "version": WORDING_VERSION, "key": words_key(text),
             "next_billing_on": None, "ends_on": None, "last_charge_on": None,
             "can_withdraw": False, "agreed_at": None,

@@ -11,6 +11,11 @@ the saved card is charged on each billing date. Also auto-pay never passes over
 an invoice silently, and web and the worker each report whether they can reach
 the processor (§14.1).
 
+**2026-11-17, later:** auto-pay beside automatic billing is "for other
+invoices", offered only when asked; Remove the card held through the end
+date; the schedule and the stop rule said in the box and the terms; and the
+daily jobs keep practice time through daylight-saving changes (§14.11).
+
 **2026-11-16, decided:** no card fee on invoices; an invoice stays one amount.
 The card-fee build is dropped. Bank (ACH) payments stay planned, on a separate
 ACH merchant ID, for the same total as a card (§13).
@@ -1119,3 +1124,61 @@ amount seconds later as a duplicate, and that decline emails the client.
   invoice email through the practice's real mailbox: only the first real one.
 - The clock moved in the proof is the app's own (`timezone.now`); a real
   month of 5:00 and 9:00 runs has not passed.
+
+### 14.11 Auto-pay beside automatic billing, and the box's words (2026-11-17)
+
+The rules did not change; what the client owner reads did. On production a
+client had agreed to automatic billing and, on the same page, also turned on
+auto-pay, whose offer appeared as soon as the card was saved to agree.
+
+- **Agreeing never turns auto-pay on**, as before: a consent is made only by
+  the auto-pay button. Beside automatic billing (waiting to be agreed, or
+  still billing), the card is titled **Card on file** and auto-pay is a
+  section of its own, **Auto-pay for other invoices**: "Automatic billing is
+  charged under its own agreement, in the Automatic billing box above, and
+  isn't changed here." Its offer shows only when the client presses **Also
+  pay other invoices automatically?**, with "This doesn't cover automatic
+  billing, which is charged under its own agreement." Without automatic
+  billing the card is as it was.
+- **What keeps running is said.** On: "Other invoices from <practice> are
+  charged to the card on file on their due dates." Under **Turn auto-pay off
+  for other invoices**: "Automatic billing keeps running under its agreement;
+  to end it, press Stop automatic billing above", or, once notice is given,
+  "Automatic billing continues through <end>." Turning auto-pay off never
+  touched an agreement's invoices (they are never tied to a consent), and
+  still does not.
+- **Remove the card** is off, with the reason under it, while automatic
+  billing is still billing, **judged by the end date itself** (`autopay.card_hold`):
+  "Automatic billing is on, so the card on file can't be removed. Replace it
+  with another card, or stop automatic billing first", or after notice
+  "Automatic billing continues through <end>, so the card stays on file until
+  then. You can replace it with another card." The day after the end date it
+  can go, whether or not the 5:00 job has closed the agreement yet. The
+  practice owner's Stop now frees it at once, as before.
+- **The box and the terms** put the schedule on its own line ("Billed on the
+  1st and 15th of each month") and say, before anyone presses Stop, "If you
+  stop, billing continues through the end of the following month." With a
+  contract's end still to come: "If the term ends later than that, on <date>,
+  billing continues through the term's end." The terms' wording is version
+  `2026-11-17.2`; agreements already given keep the words they agreed to.
+- **The practice owner**, once notice is given, sees "Billing ends <end>.
+  Last charge <date>." under the state in the list and in the details.
+
+Tests: `tests/test_automatic_billing.py` (agreeing makes no consent; auto-pay
+off leaves automatic billing charging; the card held through the end date and
+free the day after, before the job closes it; a one-off invoice charged only
+under a consent given separately; the box's words; the owner's last charge)
+and `frontend/src/screens/AutomaticBilling.test.tsx`. Proved in a real
+browser on the sandbox as a client owner: `scripts/nmi_token_proof.py
+--beside`, with the server's clock moved to the day after the end date by
+`scripts/moved_clock.py` (proof databases only).
+
+**Also, 2026-11-17: the daily jobs keep practice time.** Django-Q moves a
+daily job's next run by 24 hours in UTC (its own daylight-saving correction
+reads `TIME_ZONE`, which is UTC), so after the clocks went back on November 1
+the 5:00, 7:00 and 9:00 jobs ran at 4:00, 6:00 and 8:00. An hourly job per
+practice, `tenancy.keep_local_hours`, moves each daily job with a practice-time
+hour back onto that hour (the nearest occurrence, so a run is never skipped or
+doubled; one due within five minutes is left to the scheduler), and
+`ensure_schedules` does the same when it runs. It needs `ensure_schedules` once
+after release to register the new job (runbook R5b).

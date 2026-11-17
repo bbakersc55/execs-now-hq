@@ -22,7 +22,7 @@ the only thing that stopped it (Phase 3: `work.tick` was stuck at 12 Sep).
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.core.management.base import BaseCommand
@@ -106,6 +106,12 @@ SCHEDULES = [
     # two weeks ahead, read whole every fifteen minutes. A no-op for a
     # practice with no calendar connected.
     ("calendars.sync", "apps.calendars.tasks.sync_calendars", Schedule.MINUTES, 15, None),
+    # 2026-11-17: the daily jobs above keep their practice-time hour through
+    # daylight-saving changes. Django-Q adds 24 hours in UTC, so after the
+    # clocks went back 5:00, 7:00 and 9:00 ran at 4:00, 6:00 and 8:00. Hourly,
+    # it moves each one's next run back onto its hour (`keep_local_hours`).
+    ("tenancy.keep_local_hours", "apps.tenancy.tasks.keep_local_hours",
+     Schedule.HOURLY, None, None),
 ]
 
 
@@ -157,6 +163,41 @@ def realign_local_hours(tenant) -> int:
     return moved
 
 
+def on_local_hour(tenant, local_hour, next_run):
+    """The occurrence of the practice's `local_hour` nearest `next_run`: the
+    run Django-Q meant, put back on its hour after a daylight-saving change
+    moved it an hour (its next run is 24 hours on, in UTC)."""
+    zone = ZoneInfo(tenant.timezone)
+    day = next_run.astimezone(zone).date()
+    candidates = [datetime.combine(day + timedelta(days=shift), time(local_hour), tzinfo=zone)
+                  .astimezone(UTC) for shift in (-1, 0, 1)]
+    return min(candidates, key=lambda when: abs(when - next_run))
+
+
+#: A next run this close is left to the scheduler, which may be taking it.
+KEEP_CLEAR = timedelta(minutes=5)
+
+
+def keep_local_hours(tenant, now=None) -> int:
+    """Each daily job with a practice-time hour whose next run has drifted off
+    that hour, moved back onto it. The run it stands for is kept: one a day,
+    never skipped and never doubled. Returns how many moved."""
+    now = now or timezone.now()
+    moved = 0
+    for name, _func, schedule_type, _minutes, local_hour in SCHEDULES:
+        if schedule_type != Schedule.DAILY or local_hour is None:
+            continue
+        row = Schedule.objects.filter(name=f"{name}:{tenant.slug}").first()
+        if row is None or row.next_run is None or row.next_run <= now + KEEP_CLEAR:
+            continue
+        right = on_local_hour(tenant, local_hour, row.next_run)
+        if right != row.next_run:
+            # Only if the scheduler has not moved it meanwhile.
+            moved += Schedule.objects.filter(pk=row.pk, next_run=row.next_run).update(
+                next_run=right)
+    return moved
+
+
 def ensure_for(tenant, write=None, only=None) -> None:
     """Create or update one practice's schedules (P2: provisioning and
     unarchiving call this for the one practice). `only`: just those."""
@@ -185,6 +226,9 @@ def ensure_for(tenant, write=None, only=None) -> None:
             schedule.refresh_from_db()
         if write:
             write(f"{verb:8} {full_name:45} next run {schedule.next_run:%Y-%m-%d %H:%M %Z}")
+    moved = keep_local_hours(tenant)
+    if write and moved:
+        write(f"moved    {moved} daily job(s) of {tenant.slug} back onto their practice-time hour")
 
 
 def remove_for(tenant, keep=()) -> int:

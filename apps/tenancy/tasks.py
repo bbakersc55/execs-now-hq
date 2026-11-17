@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+from .claude import unattended_job
 from .context import tenant_context
 
 
@@ -30,3 +31,18 @@ def heartbeat(tenant_id: str, label: str = "scheduled") -> str:
         )
     return str(event.pk)
 
+
+
+@unattended_job("tenancy.keep_local_hours")
+def keep_local_hours(tenant_id: str) -> int:
+    """2026-11-17: the practice's daily jobs back on their practice-time hour
+    after a daylight-saving change (`ensure_schedules.keep_local_hours`).
+    Touches only the schedule table; no Claude, no mail."""
+    from apps.tenancy.management.commands.ensure_schedules import (
+        keep_local_hours as keep,
+    )
+
+    from .models import Tenant
+
+    with tenant_context(tenant_id):
+        return keep(Tenant.objects.get(pk=tenant_id))

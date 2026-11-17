@@ -65,13 +65,19 @@ function BillingRow({ row, card, onChanged, onCard }: {
   return (
     <section aria-label={`Automatic billing: ${what}`} style={{ marginBottom: "1rem" }}>
       {error && <div role="alert"><Banner kind="bad">{error}</Banner></div>}
-      <p style={{ marginTop: 0 }}>
-        <strong>{dollars(row.total_cents)}</strong> {row.timing_words}{" "}
+      <p style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+        <strong>{dollars(row.total_cents)}</strong> each time{" "}
         {row.state === "active" && <Pill kind="ok">On</Pill>}
         {row.state === "ending" && <Pill kind="warn">Ending</Pill>}
         {row.state === "ended" && <Pill>Ended</Pill>}
         {row.state === "waiting" && <Pill kind="warn">Waiting for you to agree</Pill>}
       </p>
+      {/* 2026-11-17: the schedule on its own line, and how stopping works,
+          said before anyone presses Stop. */}
+      <p style={{ marginTop: 0 }}>{row.billed_words ?? `Billed ${row.timing_words}`}</p>
+      {(row.state === "waiting" || row.state === "active") && row.stop_rule && (
+        <p className="small">{row.stop_rule}</p>
+      )}
       {row.pending && (
         <p className="small">From {longDate(row.pending.from)}: {dollars(row.pending.total_cents)}
           {" "}each time.</p>
