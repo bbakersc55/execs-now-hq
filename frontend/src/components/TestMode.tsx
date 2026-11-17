@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { GatewayMode, TestPayments } from "../lib/api";
 import { dollars } from "../lib/money";
@@ -39,7 +39,11 @@ export function ClearTestPayments({ summary, busy, onClear, what = "payments" }:
   /** "payments" for a practice's clients; "charges" for subscriptions. */
   what?: "payments" | "charges";
 }) {
-  const [choice, setChoice] = useState<"reopen" | "void">("reopen");
+  // No default (2026-11-17, INV-0005): a press with nothing chosen sent
+  // "reopen". Clear waits until one is chosen.
+  const [choice, setChoice] = useState<"reopen" | "void" | "">("");
+  // Its own group, so a second panel on a page never shares its radios.
+  const group = `clear-choice-${useId()}`;
   if (!summary?.can_clear) return null;
   const n = summary.payments;
   const noun = what === "charges" ? (n === 1 ? "test charge" : "test charges")
@@ -53,21 +57,25 @@ export function ClearTestPayments({ summary, busy, onClear, what = "payments" }:
           {" "}saved then. </>}
         The processor is back in live mode, so they can be cleared.
       </p>
-      <fieldset className="row tight" aria-label="What happens to their invoices">
+      <p id={`${group}-ask`} style={{ marginBottom: "0.25rem" }}>
+        <strong>Reopen their invoices, or void them?</strong> Choose one.</p>
+      <fieldset className="row tight" aria-labelledby={`${group}-ask`}>
         <label className="check">
-          <input type="radio" name="clear-choice" checked={choice === "reopen"}
+          <input type="radio" name={group} checked={choice === "reopen"}
             onChange={() => setChoice("reopen")} /> Reopen their invoices
         </label>
         <label className="check">
-          <input type="radio" name="clear-choice" checked={choice === "void"}
+          <input type="radio" name={group} checked={choice === "void"}
             onChange={() => setChoice("void")} /> Void their invoices
         </label>
       </fieldset>
       <p className="small muted">
-        An invoice that also has real money on it is reopened, never voided. Test cards are
-        deleted from the vault, which turns their auto-pay off.
+        An invoice that also has real money on it is reopened, never voided.
+        {what === "payments" && <> One dated after its automatic billing ended is voided
+          either way.</>} Test cards are deleted from the vault, which turns their auto-pay off.
       </p>
-      <button className="primary" disabled={busy} onClick={() => onClear(choice)}>
+      <button className="primary" disabled={busy || !choice}
+        onClick={() => { if (choice) onClear(choice); }}>
         {busy ? "Clearing…" : "Clear test payments"}</button>
     </Card>
   );

@@ -953,6 +953,22 @@ automatic billing", "Run the next billing now" and "Refused today".
 `NMI_LIVE_CALLS` is still off (the owner's step, `docs/p4_billing.md` §14.1):
 nothing is charged by schedule until it is set, and Practices shows it in red.
 
+**Observed at Release 46 (2026-11-17 UTC, no migration; `5db7eff`: auto-pay
+beside automatic billing, the box's words, and the daily jobs keeping practice
+time, `docs/p4_billing.md` §14.11):** R1: the owner ran the backup by hand:
+`execsnowhq_prod_20261117_200005.sql.gz`, 17.5 MB, landed 20:00:09. R2: `main`
+fast-forwarded `fb4b4d3..5db7eff`, pushed 20:01:44. R3–R5: nothing waited; the
+worker logged `migrations current` 20:02:51, **"worker: real calls to the card
+processor on."** (the owner had set `NMI_LIVE_CALLS` on `qcluster`, its redeploy
+at 15:55), running 20:02:58. **R5b, needed:** `ensure_schedules` created
+`tenancy.keep_local_hours` for both practices and moved 8 daily jobs each back
+onto practice time (a second run showed the 5:00, 7:00 and 9:00 jobs at 12:00,
+14:00 and 16:00 UTC, and moved nothing); the new job ran for both at 20:04.
+R6a: `mcp` `4d297a7e` SUCCESS, `/healthz` `ok`. R6: web `4e3defc2` SUCCESS by
+itself 20:03:06, `/healthz` 200, the served bundle carries "Auto-pay for other
+invoices" and "Last charge". `enhq-site` SKIPPED. **Push to serving: about
+1 min 22 s.**
+
 ---
 
 ## Part A — the owner's steps, in order

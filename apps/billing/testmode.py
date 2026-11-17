@@ -8,8 +8,10 @@ payments**, which:
 - removes each test payment from its invoice (kept, marked removed, with the
   reason), and its test refunds with it; there is nothing in the books to
   take out, since a test payment never went in;
-- reopens each invoice they paid, or voids it, as the owner chose (an invoice
-  that also has real money on it is reopened, never voided);
+- reopens each invoice they paid, or voids it, as the owner chose, with no
+  default (an invoice that also has real money on it is reopened, never
+  voided; one dated after its automatic billing ended is voided either way,
+  2026-11-17);
 - deletes each test card from the vault (and so turns its auto-pay off).
 
 The platform owner has the same on Practices for the platform account:
@@ -105,11 +107,12 @@ def clear_practice(tenant, *, actor, invoices: str) -> dict:
             cleared += 1
         for invoice in ClientInvoice.all_objects.select_for_update().filter(pk__in=touched):
             services._recount(invoice)
-            services.audit(invoice, "test_payments_cleared", actor, choice=invoices)
-            if invoices == "void" and invoice.paid_cents == 0 \
-                    and invoice.status != ClientInvoice.Status.VOID:
-                services.void(invoice, actor=actor,
-                              reason="Test payments cleared: no money moved.")
+            ended = after_its_end(invoice)
+            services.audit(invoice, "test_payments_cleared", actor, choice=invoices,
+                           **({"after_end": ended.isoformat()} if ended else {}))
+            if invoice.paid_cents == 0 and invoice.status != ClientInvoice.Status.VOID \
+                    and (invoices == "void" or ended):
+                services.void(invoice, actor=actor, reason=_void_reason(ended))
                 voided += 1
             elif invoice.status != ClientInvoice.Status.VOID:
                 reopened += 1
@@ -125,6 +128,31 @@ def clear_practice(tenant, *, actor, invoices: str) -> dict:
                   cards=cards)
     return {"payments": cleared, "reopened": reopened, "voided": voided, "cards": cards,
             "summary": practice_summary(tenant)}
+
+
+def after_its_end(invoice):
+    """The end of the automatic billing an invoice is dated after, or None.
+
+    "Stop now" and an earlier end void the invoices made for later dates,
+    but not one a test payment made look paid (2026-11-17, INV-0005): once
+    that payment is cleared it is voided whichever choice was sent, since
+    nothing will ever charge it."""
+    from apps.billing.models import BillingAgreement
+
+    if not invoice.billing_agreement_id or invoice.billing_date is None:
+        return None
+    ends_on = (BillingAgreement.all_objects.filter(pk=invoice.billing_agreement_id)
+               .values_list("ends_on", flat=True).first())
+    return ends_on if ends_on is not None and invoice.billing_date > ends_on else None
+
+
+def _void_reason(ended) -> str:
+    from apps.billing import recurring
+
+    if ended is None:
+        return "Test payments cleared: no money moved."
+    return ("Test payments cleared: no money moved. Automatic billing ended "
+            f"{recurring._date(ended)}, before this billing date, so it is not billed.")
 
 
 def _audit_tenant(tenant, actor, **payload) -> None:

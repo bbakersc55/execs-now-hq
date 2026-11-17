@@ -11,10 +11,14 @@ the saved card is charged on each billing date. Also auto-pay never passes over
 an invoice silently, and web and the worker each report whether they can reach
 the processor (§14.1).
 
-**2026-11-17, later:** auto-pay beside automatic billing is "for other
+**2026-11-17, released at Release 46:** auto-pay beside automatic billing is "for other
 invoices", offered only when asked; Remove the card held through the end
 date; the schedule and the stop rule said in the box and the terms; and the
 daily jobs keep practice time through daylight-saving changes (§14.11).
+
+**2026-11-17, evening (on `dev`):** "Clear test payments" asks reopen or void
+with no default, and an invoice dated after its automatic billing ended is
+voided whichever is chosen (§12, "Back in live mode"; INV-0005).
 
 **2026-11-16, decided:** no card fee on invoices; an invoice stays one amount.
 The card-fee build is dropped. Bank (ACH) payments stay planned, on a separate
@@ -845,9 +849,28 @@ again first and refuses while it still says Test Mode. It:
   reason) and clears its test refunds;
 - **reopens or voids** their invoices, as chosen (one that also has real money
   is reopened, never voided); a reopened subscription invoice is charged again
-  by the next daily run once a real card is on file;
+  by the next daily run once a real card is on file. **There is no default**
+  (2026-11-17): the owner picks one and Clear waits until then; a request with
+  neither is refused (400) and nothing is cleared;
+- **voids an invoice dated after its automatic billing ended, whichever is
+  chosen** (2026-11-17), with "Automatic billing ended {date}, before this
+  billing date, so it is not billed." An earlier end or "Stop now" voids the
+  invoices already made for later dates, but not one a test payment made look
+  paid; once that payment is cleared, nothing would ever charge it;
 - **deletes test cards from the vault** (which turns their auto-pay off; a
   test subscription card leaves the practice "Needs a card").
+
+**INV-0005 (production, 2026-11-17, read with the owner's yes).** A $12.34
+automatic-billing test was run now in Test Mode for December 1 and paid by a
+test; the end was moved to December 10, then "Stop now". Neither voided it,
+since the test payment made it look paid. "Clear test payments" at 17:45 UTC
+was sent with **"reopen"**, the dialog's default then, so it reopened an
+invoice dated after the end, and the owner voided it by hand. Tests:
+`test_inv_0005_stop_now_then_cleared_with_reopen_is_voided` and
+`test_clearing_voids_an_invoice_dated_after_the_end_whichever_choice`
+(`tests/test_automatic_billing.py`), `test_clear_test_payments_has_no_default_choice`
+(`tests/test_gateway_test_mode.py`), and the dialog's in
+`frontend/src/screens/CardRefunds.test.tsx`.
 
 ### Proved
 

@@ -28,6 +28,7 @@ from apps.finance import forecast
 from apps.finance.models import FinanceEntry
 from apps.scorecard import practice as practice_kpis
 from apps.tenancy.context import tenant_context
+from apps.tenancy.models import AuditEvent
 
 from . import registry_config  # noqa: F401
 from .conftest import _member
@@ -266,6 +267,19 @@ def test_clear_test_payments_can_void_their_invoices(two_test_payments, ff, api,
         invoice.refresh_from_db()
         assert invoice.status == S.VOID and invoice.void_reason.startswith("Test payments")
     assert clear(api, ff, "later").status_code == 400
+
+
+@pytest.mark.django_db
+def test_clear_test_payments_has_no_default_choice(two_test_payments, ff, api, stub_gateway):
+    """2026-11-17 (INV-0005): nothing chosen is refused, never taken as
+    "reopen", and nothing is cleared."""
+    stub_gateway.test_mode_on = False
+    for body in ({}, {"invoices": None}, {"invoices": ""}):
+        refused = post(api, ff, "/api/payment-account/clear-test-payments/", body)
+        assert refused.status_code == 400
+        assert refused.json()["detail"] == "Choose whether the invoices are reopened or voided."
+    assert ClientPayment.all_objects.filter(removed_at__isnull=True).count() == 2
+    assert not AuditEvent.all_objects.filter(verb="billing.test_payments_cleared").exists()
 
 
 @pytest.mark.django_db

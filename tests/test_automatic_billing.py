@@ -595,6 +595,77 @@ def test_run_the_next_billing_now_only_in_test_mode(active, api, ff, connected, 
         schedule=active, billing_date=date(2026, 12, 15), status="paid").exists()
 
 
+CLEAR = "/api/payment-account/clear-test-payments/"
+AFTER_END = ("Test payments cleared: no money moved. Automatic billing ended {}, before this "
+             "billing date, so it is not billed.")
+
+
+def _run_twice_in_test_mode(api, ff, schedule, stub_gateway):
+    """Two billing dates run now in Test Mode: December 1 and 15, both paid
+    by test payments."""
+    stub_gateway.test_mode_on = True
+    with at(date(2026, 11, 17)):
+        assert post(api, ff, f"{ROOT}{schedule.pk}/run-now/").status_code == 200
+    with at(moment(date(2026, 11, 17), 9, 25)):
+        assert post(api, ff, f"{ROOT}{schedule.pk}/run-now/").status_code == 200
+    return [ClientInvoice.all_objects.get(schedule=schedule, billing_date=date(2026, 12, day))
+            for day in (1, 15)]
+
+
+def _cleared(api, ff, stub_gateway, choice):
+    stub_gateway.test_mode_on = False
+    with at(moment(date(2026, 11, 17), 10, 0)):
+        done = post(api, ff, CLEAR, {"invoices": choice})
+    assert done.status_code == 200, done.content
+    return {k: done.json()["cleared"][k] for k in ("payments", "reopened", "voided")}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("choice", ["reopen", "void"])
+def test_clearing_voids_an_invoice_dated_after_the_end_whichever_choice(
+        choice, active, api, ff, connected, stub_gateway):
+    """An end moved earlier voids the invoices already made for later dates,
+    but not one a test payment made look paid. Once that payment is cleared,
+    the invoice is voided even with "reopen": nothing will ever charge it.
+    One dated within the agreement follows the choice."""
+    dec1, dec15 = _run_twice_in_test_mode(api, ff, active, stub_gateway)
+    with at(moment(date(2026, 11, 17), 9, 30)):
+        moved = post(api, ff, f"{ROOT}{active.pk}/set-end/", {"ends_on": "2026-12-10"})
+    assert moved.status_code == 200, moved.content
+    dec15.refresh_from_db()
+    assert dec15.status == "paid"                   # kept: its test payment looked like money
+    assert _cleared(api, ff, stub_gateway, choice) == {
+        "payments": 2, "reopened": 1 if choice == "reopen" else 0,
+        "voided": 1 if choice == "reopen" else 2}
+    dec1.refresh_from_db()
+    dec15.refresh_from_db()
+    assert (dec15.status, dec15.paid_cents) == ("void", 0)
+    assert dec15.void_reason == AFTER_END.format("December 10, 2026")
+    assert dec1.status == ("sent" if choice == "reopen" else "void")
+    if choice == "void":
+        assert dec1.void_reason == "Test payments cleared: no money moved."
+    event = AuditEvent.all_objects.get(verb="billing.test_payments_cleared", target_id=dec15.pk)
+    assert event.payload == {"number": dec15.number, "choice": choice, "after_end": "2026-12-10"}
+
+
+@pytest.mark.django_db
+def test_inv_0005_stop_now_then_cleared_with_reopen_is_voided(active, api, ff, connected,
+                                                             stub_gateway):
+    """Production, 2026-11-17: run now in Test Mode, "Stop now", then "Clear
+    test payments" sent "reopen" (the dialog's default then), which reopened
+    an invoice for December 1, after the end, for the owner to void by hand."""
+    dec1, dec15 = _run_twice_in_test_mode(api, ff, active, stub_gateway)
+    with at(moment(date(2026, 11, 17), 9, 40)):
+        assert post(api, ff, f"{ROOT}{active.pk}/set-end/", {"now": True}).status_code == 200
+    assert _cleared(api, ff, stub_gateway, "reopen") == {"payments": 2, "reopened": 0,
+                                                         "voided": 2}
+    for invoice in (dec1, dec15):
+        invoice.refresh_from_db()
+        assert invoice.status == "void"
+        assert invoice.void_reason == AFTER_END.format("November 17, 2026")
+    assert charge(connected, date(2026, 12, 1)) == 0
+
+
 @pytest.mark.django_db
 def test_you_send_each_invoice_is_unchanged(owner_of, api, ff, fcc, connected):
     from apps.billing import services

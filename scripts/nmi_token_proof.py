@@ -1171,7 +1171,12 @@ def test_mode_proof() -> dict:
             owner.goto(BASE + "/settings/billing", wait_until="domcontentloaded", timeout=90000)
             owner.get_by_role("button", name="Test connection").click(timeout=90000)
             owner.get_by_role("heading", name="1 test payment").wait_for(timeout=90000)
-            owner.get_by_role("button", name="Clear test payments").click()
+            # No default since 2026-11-17 (INV-0005): Clear waits for a choice.
+            clear = owner.get_by_role("button", name="Clear test payments")
+            seen["clear_waits_for_a_choice"] = clear.is_disabled()
+            # The radio, not the question above it ("Reopen their invoices, or …").
+            owner.get_by_role("radio", name="Reopen their invoices").check()
+            clear.click()
             seen["cleared"] = owner.get_by_text(re.compile(r"test payment cleared")).first \
                 .inner_text(timeout=90000)
             context.close()
@@ -1191,6 +1196,7 @@ def test_mode_proof() -> dict:
         and paid["refunds"][0]["is_test"] and not paid["refunds"][0]["books"]
         and during["cards"][0]["is_test"] and during["receipts_saying_test"] >= 1
         and after["gateway_mode"]["test_mode"] is False
+        and seen["clear_waits_for_a_choice"] is True
         and after["invoices"][0]["status"] == "sent"
         and after["invoices"][0]["payments"][0]["removed"]
         and after["invoices"][0]["refunds"][0]["cleared"]

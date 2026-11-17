@@ -162,6 +162,48 @@ describe("the card processor's Test Mode", () => {
     expect(onClear).toHaveBeenCalledWith("void");
   });
 
+  it("asks reopen or void with no default, and Clear waits for a choice (INV-0005)", async () => {
+    const onClear = vi.fn();
+    render(<ClearTestPayments busy={false} onClear={onClear}
+      summary={{ payments: 1, cards: 1, amount_cents: 1234, can_clear: true }} />);
+    expect(screen.getByRole("group", { name: "Reopen their invoices, or void them? Choose one." }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText("Reopen their invoices")).not.toBeChecked();
+    expect(screen.getByLabelText("Void their invoices")).not.toBeChecked();
+    const clear = screen.getByRole("button", { name: "Clear test payments" });
+    expect(clear).toBeDisabled();
+    await userEvent.click(clear);
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.getByText(/One dated after its automatic billing ended is voided either way/))
+      .toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Reopen their invoices"));
+    expect(clear).toBeEnabled();
+    await userEvent.click(clear);
+    expect(onClear).toHaveBeenCalledWith("reopen");
+  });
+
+  it("gives two panels on one page radios of their own", async () => {
+    const one = vi.fn(), two = vi.fn();
+    render(<>
+      <ClearTestPayments busy={false} onClear={one}
+        summary={{ payments: 1, cards: 0, amount_cents: 100, can_clear: true }} />
+      <ClearTestPayments busy={false} onClear={two} what="charges"
+        summary={{ payments: 1, cards: 0, amount_cents: 100, can_clear: true }} />
+    </>);
+    const [voidOne, voidTwo] = screen.getAllByLabelText("Void their invoices");
+    const [reopenOne] = screen.getAllByLabelText("Reopen their invoices");
+    expect(voidOne.getAttribute("name")).not.toEqual(voidTwo.getAttribute("name"));
+    await userEvent.click(voidOne);
+    await userEvent.click(screen.getAllByLabelText("Reopen their invoices")[1]);
+    expect(voidOne).toBeChecked();
+    expect(reopenOne).not.toBeChecked();
+    // Said for a practice's invoices only: subscriptions have no agreement.
+    expect(screen.getAllByText(/voided either way/)).toHaveLength(1);
+    await userEvent.click(screen.getAllByRole("button", { name: "Clear test payments" })[0]);
+    expect(one).toHaveBeenCalledWith("void");
+    expect(two).not.toHaveBeenCalled();
+  });
+
   it("shows the banner and the clearing on Invoices for the practice owner", async () => {
     const list: InvoiceList = {
       invoices: [], totals: { invoiced_cents: 0, paid_cents: 0, outstanding_cents: 0,
@@ -176,7 +218,8 @@ describe("the card processor's Test Mode", () => {
         cleared: { payments: 1, reopened: 1, voided: 0, cards: 0 } } }) });
     vi.stubGlobal("fetch", fetchMock);
     renderRoute(<Invoices me={aMe()} />, { path: "/invoices", route: "/invoices" });
-    await userEvent.click(await screen.findByRole("button", { name: "Clear test payments" }));
+    await userEvent.click(await screen.findByLabelText("Reopen their invoices"));
+    await userEvent.click(screen.getByRole("button", { name: "Clear test payments" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "1 test payment cleared, 1 invoice reopened.");
     expect(fetchMock.calls.find((c) => c.method === "POST")?.body).toEqual(

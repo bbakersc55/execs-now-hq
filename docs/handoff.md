@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-17 UTC**, after Release 45. **The next session starts at
-"2026-11-17: Release 45, automatic recurring billing" just below**; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-17 UTC**, after Release 46. **The next session starts at
+"2026-11-17, evening: Release 46, and INV-0005" just below**; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +32,29 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-17, evening: Release 46, and INV-0005
+
+- **Release 46 is live:** `main` at `5db7eff`, no migration (`docs/p4_billing.md`
+  §14.11: auto-pay beside automatic billing is "for other invoices", Remove
+  the card held through the end date, the schedule and the stop rule said,
+  and the daily jobs keep practice time). Backup `execsnowhq_prod_20261117_200005`
+  (the owner's run-now); pushed 20:01:44; worker, web and `mcp` SUCCESS
+  20:03:06. R5b: `tenancy.keep_local_hours` created for both practices and 8
+  daily jobs each moved back an hour (the 5:00, 7:00 and 9:00 jobs now 12:00,
+  14:00 and 16:00 UTC). Recorded in the runbook ("Observed at Release 46").
+- **The worker now says "real calls to the card processor on."** The owner set
+  `NMI_LIVE_CALLS` on `qcluster` (its redeploy at 15:55 UTC): scheduled card
+  jobs run from the next 9:00.
+- **INV-0005 (read-only look, the owner's yes):** a $12.34 automatic-billing
+  test for Acme, run now in Test Mode for December 1 and paid by a test; the
+  end moved to December 10, then "Stop now". "Clear test payments" at 17:45 UTC
+  was **sent with "reopen"**, the dialog's default then, so it reopened an
+  invoice dated after the end; the owner voided it by hand at 17:46 ("Test").
+  Fixed on `dev` (not released): the dialog has no default and Clear waits for
+  a choice, and an invoice dated after its agreement's end is voided by
+  clearing whichever choice is sent (`docs/p4_billing.md` §12). **INV-0003
+  ($3.33, Acme) is still open** from the 2026-11-17 01:02 clear, also "reopen".
 
 ## 2026-11-17: Release 45, automatic recurring billing
 
