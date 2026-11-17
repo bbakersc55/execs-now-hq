@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -78,7 +78,8 @@ describe("setting up automatic billing", () => {
       name: "Save the recurring invoice" }));
     await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/")).toHaveLength(1));
     expect(sent(fetchMock, "/api/invoice-schedules/")[0]).toEqual({
-      mode: "auto", client_company: "co1", contact: "c1", days_of_month: [1, 15],
+      mode: "auto", client_company: "co1", contact: "c1", cadence: "monthly", every: 1,
+      weekday: null, days_of_month: [1, 15],
       first_billing_on: "2026-12-01", term_ends_on: null, lead_days: 3,
       lines: [{ description: "Operations support", quantity: "1", unit_price_cents: 150000 }] });
   });
@@ -226,3 +227,81 @@ describe("the worker warning (2026-11-17)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("the schedule presets (2026-11-17)", () => {
+  async function open(kind: "send" | "auto") {
+    cleanup();
+    const fetchMock = owner([]);
+    await userEvent.click(await screen.findByRole("button", { name: "New recurring invoice" }));
+    const form = screen.getByRole("dialog", { name: "The new recurring invoice" });
+    await userEvent.selectOptions(
+      within(form).getByLabelText("Client company for the recurring invoice"), "co1");
+    await userEvent.selectOptions(
+      await within(form).findByLabelText("Recurring invoice addressed to"), "c1");
+    if (kind === "auto") await userEvent.click(within(form).getByLabelText("Bill automatically"));
+    await userEvent.type(within(form).getByLabelText("Description of line 1"), "Support");
+    await userEvent.type(within(form).getByLabelText("Price of line 1"), "2000");
+    return { fetchMock, form };
+  }
+  const saved = async (fetchMock: ReturnType<typeof mockApi>, form: HTMLElement) => {
+    await userEvent.click(within(form).getByRole("button", {
+      name: "Save the recurring invoice" }));
+    await waitFor(() => expect(sent(fetchMock, "/api/invoice-schedules/")).toHaveLength(1));
+    return sent(fetchMock, "/api/invoice-schedules/")[0] as Record<string, unknown>;
+  };
+
+  it("bills weekly on the chosen weekday, the first date filled in on it", async () => {
+    const { fetchMock, form } = await open("auto");
+    await userEvent.selectOptions(within(form).getByLabelText("Schedule"), "weekly");
+    await userEvent.selectOptions(within(form).getByLabelText("Weekday"), "4");
+    const first = within(form).getByLabelText("First billing date") as HTMLInputElement;
+    expect(new Date(`${first.value}T12:00:00`).getDay()).toBe(5);    // a Friday
+    const body = await saved(fetchMock, form);
+    expect(body).toMatchObject({ cadence: "weekly", every: 1, weekday: 4, days_of_month: [],
+                                 first_billing_on: first.value });
+  });
+
+  it("bills every two weeks, quarterly from a month, yearly on a date, or every N",
+     async () => {
+    let { fetchMock, form } = await open("auto");
+    await userEvent.selectOptions(within(form).getByLabelText("Schedule"), "quarterly");
+    await userEvent.clear(within(form).getByLabelText("Day of the month it bills on"));
+    await userEvent.type(within(form).getByLabelText("Day of the month it bills on"), "1");
+    await userEvent.type(within(form).getByLabelText("First month"), "2027-01");
+    expect(await saved(fetchMock, form)).toMatchObject({
+      cadence: "monthly", every: 3, days_of_month: [1], first_billing_on: "2027-01-01" });
+    ({ fetchMock, form } = await open("auto"));
+    await userEvent.selectOptions(within(form).getByLabelText("Schedule"), "yearly");
+    await userEvent.type(within(form).getByLabelText("Date each year"), "2027-03-31");
+    expect(await saved(fetchMock, form)).toMatchObject({
+      cadence: "yearly", every: 1, days_of_month: [], first_billing_on: "2027-03-31" });
+    ({ fetchMock, form } = await open("auto"));
+    await userEvent.selectOptions(within(form).getByLabelText("Schedule"), "custom");
+    await userEvent.clear(within(form).getByLabelText("Every how many"));
+    await userEvent.type(within(form).getByLabelText("Every how many"), "3");
+    await userEvent.selectOptions(within(form).getByLabelText("Weekday"), "2");
+    expect(await saved(fetchMock, form)).toMatchObject({ cadence: "weekly", every: 3,
+                                                          weekday: 2 });
+  });
+
+  it("gives You send each invoice the same presets, and keeps Monthly as its day", async () => {
+    let { fetchMock, form } = await open("send");
+    expect(within(form).getByLabelText("Day of the month")).toHaveValue(1);
+    expect(await saved(fetchMock, form)).toEqual({
+      client_company: "co1", contact: "c1", day_of_month: 1,
+      lines: [{ description: "Support", quantity: "1", unit_price_cents: 200000 }] });
+    ({ fetchMock, form } = await open("send"));
+    await userEvent.selectOptions(within(form).getByLabelText("Schedule"), "biweekly");
+    expect(within(form).queryByLabelText("Day of the month")).toBeNull();
+    expect(within(form).getByText("First invoice date")).toBeInTheDocument();
+    expect(await saved(fetchMock, form)).toMatchObject({ cadence: "weekly", every: 2 });
+  });
+
+  it("says a timed one's schedule in the list", async () => {
+    owner([{ ...AUTO, mode: "send", mode_label: "You send each invoice", automatic: null,
+             cadence: "weekly", every: 1, weekday: 4, days_of_month: [],
+             first_billing_on: "2026-11-20", timing_words: "every Friday" }]);
+    expect(await screen.findByText(/every Friday/)).toBeInTheDocument();
+  });
+});
+

@@ -29,7 +29,7 @@ from django.db import transaction
 from django.db.models import F, Q, Sum
 from django.utils import timezone
 
-from apps.billing import money
+from apps.billing import money, timing
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
 )
@@ -843,6 +843,7 @@ def _schedule_facts(schedule) -> dict:
         "pay_instructions": schedule.pay_instructions,
         "email_subject": schedule.email_subject, "email_body": schedule.email_body,
         "is_active": schedule.is_active,
+        "cadence": schedule.cadence, "every": schedule.every, "weekday": schedule.weekday,
         "days_of_month": list(schedule.days_of_month or []),
         "first_billing_on": schedule.first_billing_on.isoformat()
         if schedule.first_billing_on else "",
@@ -851,18 +852,14 @@ def _schedule_facts(schedule) -> dict:
     }
 
 
-#: What can't change on a recurring invoice that bills automatically while
-#: the client's agreement is in force: the client agreed to it as it was.
-AGREED_TIMING = ("days_of_month", "first_billing_on", "term_ends_on")
-
-
 @transaction.atomic
 def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=None,
                   day_of_month=None, starts_on=None, ends_on=..., lines=None, notes=None,
                   terms=None, is_active=None, income_category=..., terms_days=...,
                   pay_instructions=None, email_subject=None,
                   email_body=None, mode=None, days_of_month=None, first_billing_on=...,
-                  term_ends_on=..., lead_days=None) -> ClientInvoiceSchedule:
+                  term_ends_on=..., lead_days=None, cadence=None, every=None,
+                  weekday=...) -> ClientInvoiceSchedule:
     """Make a recurring invoice, or change one (owner, 2026-10-14: every part
     of it can be edited, where before it could only be paused).
 
@@ -880,12 +877,13 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
                                          contact=contact, created_by=actor,
                                          day_of_month=0, next_on=today,
                                          mode=mode or ClientInvoiceSchedule.Mode.SEND)
+        timed = _timing_given(cadence, every, weekday, days_of_month, first_billing_on)
         if schedule.mode == ClientInvoiceSchedule.Mode.AUTO:
-            if lines is None or days_of_month is None or first_billing_on in (None, ...):
-                raise BillingError("Automatic billing needs its lines, its days of the month "
-                                   "and its first billing date.")
-        elif lines is None or day_of_month is None:
-            raise BillingError("A schedule needs its lines and a day of the month.")
+            if lines is None or first_billing_on in (None, ...):
+                raise BillingError("Automatic billing needs its lines, its schedule and its "
+                                   "first billing date.")
+        elif lines is None or (day_of_month is None and not timed):
+            raise BillingError("A schedule needs its lines and when it writes a draft.")
         before = {}
     else:
         schedule = ClientInvoiceSchedule.all_objects.select_for_update().get(pk=schedule.pk)
@@ -911,14 +909,31 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
                                lead_days=lead_days, notes=notes, terms=terms,
                                pay_instructions=pay_instructions, email_subject=email_subject,
                                email_body=email_body, income_category=income_category,
-                               client_company=client_company)
+                               client_company=client_company, cadence=cadence, every=every,
+                               weekday=weekday)
     old_day = schedule.day_of_month
+    # 2026-11-17, cadences: a schedule given its timing (weekly, quarterly …)
+    # writes its drafts on its dates. One made before, with only a day of the
+    # month, keeps working exactly as it did until it is given a timing.
+    if _timing_given(cadence, every, weekday, days_of_month, first_billing_on):
+        _apply_timing(schedule, cadence=cadence, every=every, weekday=weekday,
+                      days_of_month=days_of_month, first_billing_on=first_billing_on,
+                      term_ends_on=..., made=made)
+        nxt = timing.next_date(schedule, max(today, schedule.first_billing_on))
+        schedule.next_on = nxt or schedule.first_billing_on
+        day_of_month = None
+        starts_on = None
+    if day_of_month is not None and schedule.first_billing_on is not None:
+        raise BillingError("This recurring invoice has a schedule: change its schedule rather "
+                           "than a day of the month.")
     if day_of_month is not None:
         if isinstance(day_of_month, bool) or not isinstance(day_of_month, int) \
                 or not 1 <= day_of_month <= 28:
             raise BillingError("The day of the month is from 1 to 28.")
         schedule.day_of_month = day_of_month
-    if made or starts_on is not None:
+    if schedule.first_billing_on is not None:
+        pass        # timed: its next draft was set above
+    elif made or starts_on is not None:
         # The first draft is written on the next such day, today included.
         start = _a_date(starts_on, "The first date") if starts_on else today
         first = start.replace(day=schedule.day_of_month)
@@ -967,10 +982,50 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
     return schedule
 
 
+def _timing_given(cadence, every, weekday, days_of_month, first_billing_on) -> bool:
+    return (cadence is not None or every is not None or weekday is not ...
+            or days_of_month is not None or first_billing_on not in (None, ...))
+
+
+def _apply_timing(schedule, *, cadence, every, weekday, days_of_month, first_billing_on,
+                  term_ends_on, made) -> bool:
+    """A schedule's timing from what was sent, checked (`timing.check`).
+    Returns whether it changed."""
+    was = (schedule.cadence, schedule.every, schedule.weekday, list(schedule.days_of_month or []),
+           schedule.first_billing_on, schedule.term_ends_on)
+    try:
+        if cadence is not None:
+            schedule.cadence = cadence
+        if every is not None:
+            schedule.every = every
+        if weekday is not ...:
+            schedule.weekday = weekday
+        if days_of_month is not None:
+            schedule.days_of_month = days_of_month
+        if first_billing_on is not ...:
+            schedule.first_billing_on = (_a_date(first_billing_on, "The first date")
+                                         if first_billing_on else None)
+        if term_ends_on is not ...:
+            schedule.term_ends_on = (_a_date(term_ends_on, "The contract end")
+                                     if term_ends_on else None)
+        timing.check(schedule)
+    except timing.TimingError as exc:
+        raise BillingError(str(exc)) from None
+    now = (schedule.cadence, schedule.every, schedule.weekday, list(schedule.days_of_month or []),
+           schedule.first_billing_on, schedule.term_ends_on)
+    if (made or now != was) and schedule.first_billing_on < timezone.localdate():
+        raise BillingError("The first date can't be in the past.")
+    # Kept within its check (1 to 28); a timed schedule never reads it.
+    schedule.day_of_month = (schedule.days_of_month[0] if schedule.days_of_month
+                             else min(schedule.first_billing_on.day, 28))
+    return now != was
+
+
 def _save_automatic(tenant, schedule, *, made, before, actor, lines, days_of_month,
                     first_billing_on, term_ends_on, lead_days, notes, terms,
                     pay_instructions, email_subject, email_body, income_category,
-                    client_company) -> ClientInvoiceSchedule:
+                    client_company, cadence=None, every=None,
+                    weekday=...) -> ClientInvoiceSchedule:
     """A recurring invoice that bills automatically (2026-11-17,
     `apps/billing/recurring.py`), made or changed. While the client's
     agreement is in force its days, first date and contract end are fixed,
@@ -979,45 +1034,38 @@ def _save_automatic(tenant, schedule, *, made, before, actor, lines, days_of_mon
     from apps.billing import recurring, timing
 
     agreement = None if made else recurring.in_force(schedule)
+    timing_changed = made
     if agreement is not None:
         if client_company is not None and client_company.pk != schedule.client_company_id:
             raise BillingError("The client can't change while its agreement is in force.")
-        asked = {"days_of_month": days_of_month,
-                 "first_billing_on": None if first_billing_on is ... else first_billing_on,
-                 "term_ends_on": ... if term_ends_on is ... else term_ends_on}
-        if asked["days_of_month"] is not None and \
-                timing.clean_days(asked["days_of_month"]) != schedule.days_of_month:
-            raise _agreed(schedule)
-        if asked["first_billing_on"] is not None and \
-                _a_date(asked["first_billing_on"], "The first billing date") \
-                != schedule.first_billing_on:
-            raise _agreed(schedule)
-        if asked["term_ends_on"] is not ... and \
-                (_a_date(asked["term_ends_on"], "The contract end") if asked["term_ends_on"]
-                 else None) != schedule.term_ends_on:
+        # What the client agreed to stays as it was: the same values may be
+        # sent back, a different one is refused.
+        probe = ClientInvoiceSchedule(
+            cadence=schedule.cadence, every=schedule.every, weekday=schedule.weekday,
+            days_of_month=list(schedule.days_of_month or []),
+            first_billing_on=schedule.first_billing_on, term_ends_on=schedule.term_ends_on,
+            lead_days=schedule.lead_days)
+        if _apply_timing(probe, cadence=cadence, every=every, weekday=weekday,
+                         days_of_month=days_of_month, first_billing_on=first_billing_on,
+                         term_ends_on=term_ends_on, made=False):
             raise _agreed(schedule)
     else:
-        try:
-            if days_of_month is not None:
-                schedule.days_of_month = timing.clean_days(days_of_month)
-            if first_billing_on is not ...:
-                schedule.first_billing_on = (_a_date(first_billing_on, "The first billing date")
-                                             if first_billing_on else None)
-            if term_ends_on is not ...:
-                schedule.term_ends_on = (_a_date(term_ends_on, "The contract end")
-                                         if term_ends_on else None)
-            timing.check(schedule)
-        except timing.TimingError as exc:
-            raise BillingError(str(exc)) from None
-        if made and schedule.first_billing_on < timezone.localdate():
-            raise BillingError("The first billing date can't be in the past.")
-        schedule.day_of_month = schedule.days_of_month[0]
+        timing_changed = _apply_timing(
+            schedule, cadence=cadence, every=every, weekday=weekday,
+            days_of_month=days_of_month, first_billing_on=first_billing_on,
+            term_ends_on=term_ends_on, made=made) or made
         schedule.next_on = schedule.first_billing_on
     if lead_days is not None:
         if isinstance(lead_days, bool) or not isinstance(lead_days, int) \
                 or not 0 <= lead_days <= 14:
             raise BillingError("The invoice is sent 0 to 14 days before each billing date.")
+        timing_changed = timing_changed or lead_days != schedule.lead_days
         schedule.lead_days = lead_days
+    if timing_changed:
+        try:
+            timing.check_lead(schedule, schedule.lead_days)
+        except timing.TimingError as exc:
+            raise BillingError(str(exc)) from None
     if lines is not None:
         cleaned = _schedule_lines(tenant, lines)
         if agreement is not None and cleaned != schedule.lines:
@@ -1055,7 +1103,7 @@ def _save_automatic(tenant, schedule, *, made, before, actor, lines, days_of_mon
 
 
 def _agreed(schedule) -> BillingError:
-    return BillingError(f"{schedule.client_company.name} agreed to these billing days, this "
+    return BillingError(f"{schedule.client_company.name} agreed to this schedule, this "
                         "first date and this contract end. They can't change while the "
                         "agreement is in force; end it and ask for a new agreement instead.")
 
@@ -1093,9 +1141,16 @@ def run_schedules(tenant, today=None) -> list[ClientInvoice]:
                                  if schedule.income_category_id
                                  and schedule.income_category.archived_at is None else None),
                 issue_date=today, **own))
-            upcoming = schedule.next_on
-            while upcoming <= today:
-                upcoming = _next_month(upcoming, schedule.day_of_month)
+            if schedule.first_billing_on is not None:
+                # Timed (2026-11-17, cadences): its next date after today.
+                upcoming = timing.next_date(schedule, today + timedelta(days=1))
+                if upcoming is None:
+                    schedule.is_active = False
+                    upcoming = schedule.next_on
+            else:
+                upcoming = schedule.next_on
+                while upcoming <= today:
+                    upcoming = _next_month(upcoming, schedule.day_of_month)
             schedule.next_on = upcoming
             if schedule.ends_on and upcoming > schedule.ends_on:
                 schedule.is_active = False

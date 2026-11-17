@@ -290,19 +290,81 @@ function NewInvoice({ clients, owner, preset, onClose }: {
 }
 
 /** A recurring invoice as its form holds it. `terms` null is the practice's.
- *  2026-11-17: `mode` "auto" bills automatically, on `days` from `first`. */
+ *  2026-11-17: `mode` "auto" bills automatically. Its schedule is one of the
+ *  presets, turned into the server's cadence fields by `timingBody`. */
+type Preset = "weekly" | "biweekly" | "twice" | "monthly" | "quarterly" | "yearly" | "custom";
 type ScheduleDraft = {
   company: string; contact: string; day: string; lines: InvoiceLine[];
   terms: number | null; income: string; pay_instructions: string;
   email_subject: string; email_body: string;
   mode: "send" | "auto"; days: string[]; first: string; term: string; lead: string;
+  preset: Preset; weekday: string; every: string; unit: "weeks" | "months";
+  qday: string; firstMonth: string;
 };
+
+const PRESETS: [Preset, string][] = [
+  ["weekly", "Weekly"], ["biweekly", "Every two weeks"],
+  ["twice", "Twice a month (1st and 15th)"], ["monthly", "Monthly"],
+  ["quarterly", "Quarterly"], ["yearly", "Yearly"], ["custom", "Custom"]];
+/** As the server counts them: 0 is Monday. */
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+                       "Sunday"];
+const pad2 = (n: number | string) => String(n).padStart(2, "0");
+const isoDay = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** The first day from today that passes `test`, as YYYY-MM-DD. */
+function nextDay(test: (d: Date) => boolean): string {
+  const d = new Date();
+  for (let i = 0; i < 400; i += 1) {
+    if (test(d)) return isoDay(d);
+    d.setDate(d.getDate() + 1);
+  }
+  return "";
+}
+const weekdayOf = (d: Date) => (d.getDay() + 6) % 7;
+
+/** What the server stores for a preset (`apps/billing/timing.py`). */
+function timingBody(f: ScheduleDraft) {
+  const weekday = Number(f.weekday);
+  const weekly = (every: number) => ({ cadence: "weekly", every, weekday, days_of_month: [],
+                                       first_billing_on: f.first });
+  switch (f.preset) {
+    case "weekly": return weekly(1);
+    case "biweekly": return weekly(2);
+    case "twice": return { cadence: "monthly", every: 1, weekday: null, days_of_month: [1, 15],
+                           first_billing_on: f.first };
+    case "quarterly": return { cadence: "monthly", every: 3, weekday: null,
+                               days_of_month: [Number(f.qday)],
+                               first_billing_on: f.firstMonth
+                                 ? `${f.firstMonth}-${pad2(f.qday)}` : "" };
+    case "yearly": return { cadence: "yearly", every: 1, weekday: null, days_of_month: [],
+                            first_billing_on: f.first };
+    case "custom": return f.unit === "weeks" ? weekly(Number(f.every)) : {
+      cadence: "monthly", every: Number(f.every), weekday: null,
+      days_of_month: [Number(f.qday)], first_billing_on: f.first };
+    default: return { cadence: "monthly", every: 1, weekday: null,
+                      days_of_month: f.days.filter((d) => d.trim()).map(Number),
+                      first_billing_on: f.first };
+  }
+}
+
+function presetOf(row: InvoiceSchedule): Preset {
+  if (!row.first_billing_on) return "monthly";
+  if (row.cadence === "weekly") return row.every === 1 ? "weekly" : row.every === 2
+    ? "biweekly" : "custom";
+  if (row.cadence === "yearly") return "yearly";
+  const days = row.days_of_month ?? [];
+  if (row.every === 1) return days.length === 2 && days[0] === 1 && days[1] === 15
+    ? "twice" : "monthly";
+  if (row.every === 3 && days.length === 1) return "quarterly";
+  return "custom";
+}
 
 const blankSchedule = (): ScheduleDraft => ({
   company: "", contact: "", day: "1",
   lines: [{ description: "", quantity: "1", unit_price_cents: 0 }],
   terms: null, income: "", pay_instructions: "", email_subject: "", email_body: "",
-  mode: "send", days: ["1"], first: "", term: "", lead: "3" });
+  mode: "send", days: ["1"], first: "", term: "", lead: "3",
+  preset: "monthly", weekday: "4", every: "2", unit: "weeks", qday: "1", firstMonth: "" });
 
 const scheduleDraft = (row: InvoiceSchedule): ScheduleDraft => ({
   company: row.client_company.id, contact: row.contact.id, day: String(row.day_of_month),
@@ -312,7 +374,11 @@ const scheduleDraft = (row: InvoiceSchedule): ScheduleDraft => ({
   email_body: row.email_body, mode: row.mode ?? "send",
   days: (row.days_of_month ?? []).length ? row.days_of_month.map(String) : ["1"],
   first: row.first_billing_on ?? "", term: row.term_ends_on ?? "",
-  lead: String(row.lead_days ?? 3) });
+  lead: String(row.lead_days ?? 3),
+  preset: presetOf(row), weekday: String(row.weekday ?? 4), every: String(row.every ?? 2),
+  unit: row.cadence === "weekly" ? "weeks" : "months",
+  qday: String((row.days_of_month ?? [])[0] ?? 1),
+  firstMonth: (row.first_billing_on ?? "").slice(0, 7) });
 
 /**
  * The one form a recurring invoice is made and changed in (owner, 2026-10-14:
@@ -337,14 +403,18 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
   // While the client's agreement is in force, what they agreed to is fixed.
   const agreed = !!editing?.automatic
     && (editing.automatic.state === "active" || editing.automatic.state === "ending");
+  // "You send each invoice", monthly on one day, made before cadences or now:
+  // its day of the month, exactly as before (2026-11-17).
+  const oneDay = !auto && form.preset === "monthly" && !editing?.first_billing_on;
   const save = useMutation({
     mutationFn: () => {
       const body = auto ? {
         mode: "auto", client_company: form.company, contact: form.contact,
-        days_of_month: form.days.filter((d) => d.trim()).map(Number),
-        first_billing_on: form.first, term_ends_on: form.term || null,
-        lead_days: Number(form.lead), lines: cleanLines(form.lines) } : {
+        ...timingBody(form), term_ends_on: form.term || null,
+        lead_days: Number(form.lead), lines: cleanLines(form.lines) } : oneDay ? {
         client_company: form.company, contact: form.contact, day_of_month: Number(form.day),
+        lines: cleanLines(form.lines) } : {
+        client_company: form.company, contact: form.contact, ...timingBody(form),
         lines: cleanLines(form.lines) };
       if (auto) {
         const extra = {
@@ -411,16 +481,16 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
             {offered.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </Field>
+        {oneDay && (
+          <Field label="Day of the month (1 to 28)">
+            <input type="number" min={1} max={28} aria-label="Day of the month"
+              value={form.day} style={{ width: "5rem" }}
+              onChange={(e) => set({ day: e.target.value })} />
+          </Field>
+        )}
         {!auto && (
-          <>
-            <Field label="Day of the month (1 to 28)">
-              <input type="number" min={1} max={28} aria-label="Day of the month"
-                value={form.day} style={{ width: "5rem" }}
-                onChange={(e) => set({ day: e.target.value })} />
-            </Field>
-            <TermsPicker label="Payment terms for the recurring invoice" value={form.terms}
-              practice={practice?.terms_days} onChange={(terms) => set({ terms })} />
-          </>
+          <TermsPicker label="Payment terms for the recurring invoice" value={form.terms}
+            practice={practice?.terms_days} onChange={(terms) => set({ terms })} />
         )}
       </div>
       {!editing && owner && (
@@ -435,10 +505,8 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
           </label>
         </fieldset>
       )}
-      {auto && (
-        <AutomaticTiming form={form} set={set} locked={agreed}
-          company={clients.find((c) => c.id === form.company)?.name ?? "the client"} />
-      )}
+      <ScheduleTiming form={form} set={set} locked={agreed} auto={auto} oneDay={oneDay}
+        company={clients.find((c) => c.id === form.company)?.name ?? "the client"} />
       <p className="small muted" style={{ marginTop: 0 }}>
         {auto ? "Once the client owner agrees in the portal, each invoice is made, numbered "
           + "and emailed by itself before its billing date, and the saved card is charged on "
@@ -480,7 +548,7 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
       <div className="row tight" style={{ marginTop: "var(--s3)" }}>
         <button className="primary"
           disabled={!form.company || !form.contact || cleanLines(form.lines).length === 0
-            || (auto && (!form.first || !form.days.some((d) => d.trim())))
+            || (!oneDay && !timingBody(form).first_billing_on)
             || save.isPending}
           onClick={() => save.mutate()}>
           {editing ? "Save the changes" : "Save the recurring invoice"}</button>
@@ -490,60 +558,139 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
   );
 }
 
-/** 2026-11-17: when a recurring invoice billed automatically bills. Monthly,
- *  on one or more days (1 to 28), from a first billing date; an optional
- *  contract end; how many days before each date the invoice is emailed. */
-function AutomaticTiming({ form, set, locked, company }: {
+/** 2026-11-17: when a recurring invoice bills or writes its draft, for both
+ *  kinds: a preset (Weekly, Every two weeks, Twice a month, Monthly,
+ *  Quarterly, Yearly, Custom) and the few fields it needs; for automatic
+ *  billing also an optional contract end and how many days before each date
+ *  the invoice is emailed. */
+function ScheduleTiming({ form, set, locked, auto, oneDay, company }: {
   form: ScheduleDraft; set: (patch: Partial<ScheduleDraft>) => void; locked: boolean;
-  company: string;
+  auto: boolean; oneDay: boolean; company: string;
 }) {
   const setDay = (index: number, value: string) =>
     set({ days: form.days.map((d, i) => (i === index ? value : d)) });
+  const onWeekday = (weekday: string) =>
+    nextDay((d) => weekdayOf(d) === Number(weekday));
+  const choose = (preset: Preset) => {
+    const patch: Partial<ScheduleDraft> = { preset };
+    if (preset === "weekly" || preset === "biweekly"
+        || (preset === "custom" && form.unit === "weeks")) {
+      patch.first = onWeekday(form.weekday);
+    } else if (preset === "twice") {
+      patch.first = nextDay((d) => d.getDate() === 1 || d.getDate() === 15);
+    }
+    set(patch);
+  };
+  const weekdays = form.preset === "weekly" || form.preset === "biweekly"
+    || (form.preset === "custom" && form.unit === "weeks");
+  const oneMonthDay = form.preset === "quarterly"
+    || (form.preset === "custom" && form.unit === "months");
+  const daysList = form.preset === "monthly" && !oneDay;
+  const firstBox = !oneDay && form.preset !== "quarterly" && form.preset !== "yearly";
   return (
     <div className="card-inset" aria-label="When it bills">
       {locked && (
-        <p className="small muted" style={{ marginTop: 0 }}>{company} agreed to these days,
+        <p className="small muted" style={{ marginTop: 0 }}>{company} agreed to this schedule,
           this first date and this contract end, so they can't change while the agreement
           is in force.</p>
       )}
-      <Field label="Billing days of the month (1 to 28)">
-        <div className="row tight" style={{ flexWrap: "wrap" }}>
-          {form.days.map((day, index) => (
-            <span key={index} className="row tight">
-              <input type="number" min={1} max={28} value={day} disabled={locked}
-                aria-label={`Billing day ${index + 1}`} style={{ width: "4.5rem" }}
-                onChange={(e) => setDay(index, e.target.value)} />
-              {form.days.length > 1 && !locked && (
-                <button type="button" className="ghost small"
-                  aria-label={`Remove billing day ${index + 1}`}
-                  onClick={() => set({ days: form.days.filter((_, i) => i !== index) })}>
-                  ✕</button>
-              )}
-            </span>
-          ))}
-          {!locked && form.days.length < 28 && (
-            <button type="button" className="small"
-              onClick={() => set({ days: [...form.days, ""] })}>Add a day</button>
-          )}
-        </div>
-      </Field>
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <Field label="First billing date">
-          <input type="date" aria-label="First billing date" value={form.first}
-            disabled={locked} onChange={(e) => set({ first: e.target.value })} />
+        <Field label="Schedule">
+          <select aria-label="Schedule" value={form.preset} disabled={locked}
+            onChange={(e) => choose(e.target.value as Preset)}>
+            {PRESETS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
         </Field>
-        <Field label="Contract end date (optional; then month to month)">
-          <input type="date" aria-label="Contract end date" value={form.term}
-            disabled={locked} onChange={(e) => set({ term: e.target.value })} />
-        </Field>
-        <Field label="Email each invoice this many days before (0 to 14)">
-          <input type="number" min={0} max={14} aria-label="Days before each billing date"
-            value={form.lead} style={{ width: "5rem" }}
-            onChange={(e) => set({ lead: e.target.value })} />
-        </Field>
+        {form.preset === "custom" && (
+          <Field label="Every">
+            <span className="row tight">
+              <input type="number" min={1} max={form.unit === "weeks" ? 52 : 12}
+                aria-label="Every how many" value={form.every} disabled={locked}
+                style={{ width: "4.5rem" }} onChange={(e) => set({ every: e.target.value })} />
+              <select aria-label="Weeks or months" value={form.unit} disabled={locked}
+                onChange={(e) => set({ unit: e.target.value as "weeks" | "months",
+                  ...(e.target.value === "weeks" ? { first: onWeekday(form.weekday) } : {}) })}>
+                <option value="weeks">weeks</option><option value="months">months</option>
+              </select>
+            </span>
+          </Field>
+        )}
+        {weekdays && (
+          <Field label="Weekday">
+            <select aria-label="Weekday" value={form.weekday} disabled={locked}
+              onChange={(e) => set({ weekday: e.target.value, first: onWeekday(e.target.value) })}>
+              {WEEKDAY_NAMES.map((name, i) => <option key={name} value={i}>{name}</option>)}
+            </select>
+          </Field>
+        )}
+        {oneMonthDay && (
+          <Field label="Day of the month (1 to 28)">
+            <input type="number" min={1} max={28} aria-label="Day of the month it bills on"
+              value={form.qday} disabled={locked} style={{ width: "4.5rem" }}
+              onChange={(e) => set({ qday: e.target.value })} />
+          </Field>
+        )}
+        {form.preset === "quarterly" && (
+          <Field label="First month">
+            <input type="month" aria-label="First month" value={form.firstMonth}
+              disabled={locked} onChange={(e) => set({ firstMonth: e.target.value })} />
+          </Field>
+        )}
+        {form.preset === "yearly" && (
+          <Field label="Date each year (not February 29)">
+            <input type="date" aria-label="Date each year" value={form.first} disabled={locked}
+              onChange={(e) => set({ first: e.target.value })} />
+          </Field>
+        )}
       </div>
-      <p className="tiny muted" style={{ marginBottom: 0 }}>Monthly for now. The first billing
-        date is on one of the billing days.</p>
+      {daysList && (
+        <Field label="Billing days of the month (1 to 28)">
+          <div className="row tight" style={{ flexWrap: "wrap" }}>
+            {form.days.map((day, index) => (
+              <span key={index} className="row tight">
+                <input type="number" min={1} max={28} value={day} disabled={locked}
+                  aria-label={`Billing day ${index + 1}`} style={{ width: "4.5rem" }}
+                  onChange={(e) => setDay(index, e.target.value)} />
+                {form.days.length > 1 && !locked && (
+                  <button type="button" className="ghost small"
+                    aria-label={`Remove billing day ${index + 1}`}
+                    onClick={() => set({ days: form.days.filter((_, i) => i !== index) })}>
+                    ✕</button>
+                )}
+              </span>
+            ))}
+            {!locked && form.days.length < 28 && (
+              <button type="button" className="small"
+                onClick={() => set({ days: [...form.days, ""] })}>Add a day</button>
+            )}
+          </div>
+        </Field>
+      )}
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        {firstBox && (
+          <Field label={auto ? "First billing date" : "First invoice date"}>
+            <input type="date" aria-label="First billing date" value={form.first}
+              disabled={locked} onChange={(e) => set({ first: e.target.value })} />
+          </Field>
+        )}
+        {auto && (
+          <>
+            <Field label="Contract end date (optional; then month to month)">
+              <input type="date" aria-label="Contract end date" value={form.term}
+                disabled={locked} onChange={(e) => set({ term: e.target.value })} />
+            </Field>
+            <Field label="Email each invoice this many days before (0 to 14)">
+              <input type="number" min={0} max={14} aria-label="Days before each billing date"
+                value={form.lead} style={{ width: "5rem" }}
+                onChange={(e) => set({ lead: e.target.value })} />
+            </Field>
+          </>
+        )}
+      </div>
+      {auto && (
+        <p className="tiny muted" style={{ marginBottom: 0 }}>Never more days before than the
+          gap between two billing dates.</p>
+      )}
     </div>
   );
 }
@@ -669,6 +816,7 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
                 <td data-label="How">{row.mode === "auto" ? "Bills automatically"
                   : "You send each"}</td>
                 <td data-label="When">{row.automatic ? row.automatic.timing_words
+                  : row.timing_words ? <>{row.timing_words} · {row.terms_label}</>
                   : <>Day {row.day_of_month} · {row.terms_label}
                     {row.terms_days === null && <span className="muted"> · the practice's</span>}</>}</td>
                 <td data-label="State">{row.automatic ? pill(row.automatic)

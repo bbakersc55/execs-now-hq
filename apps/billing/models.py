@@ -64,9 +64,12 @@ class ClientInvoiceSchedule(TenantScopedModel):
         AUTO = "auto", "Bill automatically"
 
     class Cadence(models.TextChoices):
-        #: On one or more days of the month. Weekly, every two weeks,
-        #: quarterly and yearly are meant to come next (`timing.py`).
+        #: On one or more days of the month (quarterly is every 3).
         MONTHLY = "monthly", "Monthly"
+        #: On a weekday (every two weeks is every 2). 2026-11-17, later.
+        WEEKLY = "weekly", "Weekly"
+        #: On the first date's month and day, each year.
+        YEARLY = "yearly", "Yearly"
 
     mode = models.CharField(max_length=8, choices=Mode.choices, default=Mode.SEND,
                             db_default=Mode.SEND)
@@ -74,9 +77,13 @@ class ClientInvoiceSchedule(TenantScopedModel):
                                db_default=Cadence.MONTHLY)
     #: Every this many of the cadence's units (1: every month).
     every = models.PositiveSmallIntegerField(default=1, db_default=1)
-    #: "auto": the billing days of the month, 1 to 28, sorted ([1, 15]).
+    #: The billing days of the month, 1 to 28, sorted ([1, 15]): monthly.
     days_of_month = models.JSONField(default=list, blank=True)
-    #: "auto": the first billing date. Nothing before it is billed.
+    #: The weekday, 0 (Monday) to 6: weekly.
+    weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: The first billing date (a draft's date, for "You send each
+    #: invoice"). Nothing before it is billed. Empty on a "You send each
+    #: invoice" made before cadences, which keeps `day_of_month` and `next_on`.
     first_billing_on = models.DateField(null=True, blank=True)
     #: "auto": the contract's end, if there is one. After it, month to month.
     term_ends_on = models.DateField(null=True, blank=True)
@@ -127,6 +134,9 @@ class ClientInvoiceSchedule(TenantScopedModel):
             models.CheckConstraint(condition=Q(every__gte=1), name="invoice_schedule_every_1"),
             models.CheckConstraint(condition=Q(lead_days__lte=14),
                                    name="invoice_schedule_lead_days_14"),
+            models.CheckConstraint(
+                condition=Q(weekday__isnull=True) | Q(weekday__gte=0, weekday__lte=6),
+                name="invoice_schedule_weekday_0_to_6"),
             models.CheckConstraint(
                 condition=Q(mode="send") | Q(first_billing_on__isnull=False),
                 name="invoice_schedule_auto_has_first_date"),

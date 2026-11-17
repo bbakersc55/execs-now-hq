@@ -1945,6 +1945,10 @@ export interface InvoiceSchedule {
   mode: "send" | "auto"; mode_label: string;
   days_of_month: number[]; first_billing_on: string | null; term_ends_on: string | null;
   lead_days: number;
+  /** 2026-11-17, cadences: weekly (on `weekday`, 0 is Monday), monthly or
+   *  yearly, every N; and the schedule in words ("" before cadences). */
+  cadence?: "weekly" | "monthly" | "yearly"; every?: number; weekday?: number | null;
+  timing_words?: string;
   /** Bill automatically only; null for "You send each invoice". */
   automatic: AutomaticBilling | null;
 }

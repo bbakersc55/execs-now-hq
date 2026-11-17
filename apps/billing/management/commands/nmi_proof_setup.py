@@ -64,6 +64,11 @@ class Command(BaseCommand):
                             help="With the clock moved to DAY (YYYY-MM-DD): the 5:00 job "
                                  "that makes and emails automatic invoices, then the 9:00 "
                                  "job that charges them, as the worker runs them.")
+        parser.add_argument("--vary", action="store_true",
+                            help="With --billing-run: first raise the recurring invoice's "
+                                 "price by one cent, because NMI refuses the same card for "
+                                 "the same amount within minutes as a duplicate, and the "
+                                 "proof runs billing dates seconds apart.")
         parser.add_argument("--billing-facts", action="store_true",
                             help="What the database holds of automatic billing: the "
                                  "recurring invoice, its agreements, invoices, charges, mail.")
@@ -85,7 +90,7 @@ class Command(BaseCommand):
         if options["refund_facts"]:
             return self.refund_facts()
         if options["billing_run"]:
-            return self.billing_run(options["billing_run"])
+            return self.billing_run(options["billing_run"], vary=options["vary"])
         if options["billing_facts"]:
             return self.billing_facts()
         if options["subscription"]:
@@ -213,17 +218,24 @@ class Command(BaseCommand):
         self.stdout.write(json.dumps({"cookie": dj.SESSION_COOKIE_NAME,
                                       "session": session.session_key}))
 
-    def billing_run(self, raw):
+    def billing_run(self, raw, *, vary=False):
         """The two daily jobs on DAY, the clock moved as the demo moves it."""
         from datetime import date
 
         from apps.billing import recurring
+        from apps.billing.models import ClientInvoiceSchedule
         from apps.tenancy.context import tenant_context
         from apps.tenancy.demo.clock import at, moment
         from apps.tenancy.models import Tenant
 
         day = date.fromisoformat(raw)
         tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        if vary:
+            for row in ClientInvoiceSchedule.all_objects.filter(tenant=tenant, mode="auto"):
+                for lines in (row.lines, row.pending_lines or []):
+                    if lines:
+                        lines[0]["unit_price_cents"] += 1
+                row.save(update_fields=["lines", "pending_lines", "updated_at"])
         with tenant_context(tenant.pk):
             with at(moment(day, 5, 0)):
                 made = recurring.make_due(tenant, today=day)

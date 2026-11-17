@@ -13,6 +13,8 @@
     .venv/bin/python scripts/nmi_token_proof.py --refunds     # void and refund from the app
     .venv/bin/python scripts/nmi_token_proof.py --test-mode   # the processor's own Test Mode
     .venv/bin/python scripts/nmi_token_proof.py --automatic   # recurring, billed automatically
+    .venv/bin/python scripts/nmi_token_proof.py --automatic weekly     # every Friday
+    .venv/bin/python scripts/nmi_token_proof.py --automatic quarterly  # a later contract end
     .venv/bin/python scripts/nmi_token_proof.py --run-now     # "Run the next billing now"
 
 **--automatic** (2026-11-17) walks automatic billing through the real pages
@@ -701,8 +703,9 @@ def refunds_proof() -> dict:
     return result
 
 
-def billing_run(env, day) -> dict:
+def billing_run(env, day, vary=False) -> dict:
     return json.loads(manage("nmi_proof_setup", "--billing-run", day.isoformat(),
+                             *(["--vary"] if vary else []),
                              env_extra=env).strip().splitlines()[-1])
 
 
@@ -717,9 +720,10 @@ def _billing_days(start, through, days=(1, 15)):
     return found
 
 
-def set_up_automatic(owner, first, price) -> str:
+def set_up_automatic(owner, first, price, schedule="monthly", term=None) -> str:
     """The practice owner's clicks: a recurring invoice that bills
-    automatically on the 1st and the 15th, and the link emailed."""
+    automatically (on the 1st and the 15th; or weekly on Fridays; or
+    quarterly on the 1st from the first date's month), and the link emailed."""
     owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
     owner.get_by_role("button", name="New recurring invoice").click(timeout=90000)
     form = owner.get_by_role("dialog", name="The new recurring invoice")
@@ -728,10 +732,21 @@ def set_up_automatic(owner, first, price) -> str:
     form.get_by_label("Recurring invoice addressed to").select_option(
         label="Casey Client", timeout=30000)
     form.get_by_label("Bill automatically").check()
-    form.get_by_label("Billing day 1", exact=True).fill("1")
-    form.get_by_role("button", name="Add a day").click()
-    form.get_by_label("Billing day 2", exact=True).fill("15")
-    form.get_by_label("First billing date").fill(first.isoformat())
+    if schedule == "weekly":
+        form.get_by_label("Schedule", exact=True).select_option("weekly")
+        form.get_by_label("Weekday", exact=True).select_option(str(first.weekday()))
+        form.get_by_label("First billing date").fill(first.isoformat())
+    elif schedule == "quarterly":
+        form.get_by_label("Schedule", exact=True).select_option("quarterly")
+        form.get_by_label("Day of the month it bills on").fill(str(first.day))
+        form.get_by_label("First month").fill(first.isoformat()[:7])
+    else:
+        form.get_by_label("Billing day 1", exact=True).fill("1")
+        form.get_by_role("button", name="Add a day").click()
+        form.get_by_label("Billing day 2", exact=True).fill("15")
+        form.get_by_label("First billing date").fill(first.isoformat())
+    if term is not None:
+        form.get_by_label("Contract end date").fill(term.isoformat())
     form.get_by_label("Description of line 1").fill("Operations support (proof)")
     form.get_by_label("Price of line 1").fill(price)
     form.get_by_role("button", name="Save the recurring invoice").click()
@@ -815,11 +830,45 @@ def run_now_proof() -> dict:
     return result
 
 
-def automatic_proof() -> dict:
-    """2026-11-17: set up, agree in the portal, the invoice sent by itself,
-    the charge, a price change, stop, the last charge, Ended."""
+def _month_end(year, month):
     import calendar
-    from datetime import date, datetime, timedelta, timezone
+    from datetime import date
+
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
+def _plan(schedule, today):
+    """The proof's dates for a schedule, notice given today: the first
+    billing date, the contract's end if any, the last day billed, every date
+    billed, and the next date, which is not."""
+    from datetime import date, timedelta
+
+    year, month = (today.year + (today.month == 12), today.month % 12 + 1)
+    rule_end = _month_end(year, month)                  # the last day of next month
+    if schedule == "weekly":
+        first = today + timedelta(days=(4 - today.weekday()) % 7 or 7)   # a Friday
+        billed, day = [], first
+        while day <= rule_end:
+            billed.append(day)
+            day += timedelta(days=7)
+        return first, None, rule_end, billed, day
+    if schedule == "quarterly":
+        first = date(year, month, 1)                     # the 1st of next month
+        quarters = [date(first.year + (first.month + k - 1) // 12,
+                         (first.month + k - 1) % 12 + 1, 1) for k in (0, 3, 6, 9)]
+        term = _month_end(quarters[2].year, quarters[2].month)   # a later contract end
+        return first, term, term, quarters[:3], quarters[3]
+    first = _billing_days(today + timedelta(days=1), today + timedelta(days=20))[0]
+    billed = _billing_days(first, rule_end)
+    after = _billing_days(rule_end + timedelta(days=1), rule_end + timedelta(days=20))[0]
+    return first, None, rule_end, billed, after
+
+
+def automatic_proof(schedule="monthly") -> dict:
+    """2026-11-17: set up, agree in the portal, the invoice sent by itself,
+    the charge, a price change, stop, the last charge, Ended; on the 1st and
+    15th, weekly on Fridays, or quarterly with a later contract end."""
+    from datetime import datetime, timedelta, timezone
 
     from playwright.sync_api import sync_playwright
 
@@ -831,11 +880,11 @@ def automatic_proof() -> dict:
                                 env_extra=env).strip().splitlines()[-1])
     # The server's day (UTC, as the app counts it), and the dates that follow.
     today = datetime.now(timezone.utc).date()
-    first = _billing_days(today + timedelta(days=1), today + timedelta(days=20))[0]
-    year, month = (today.year + (today.month == 12), today.month % 12 + 1)
-    ends = date(year, month, calendar.monthrange(year, month)[1])   # notice given today
-    billed = _billing_days(first, ends)
-    after = _billing_days(ends + timedelta(days=1), ends + timedelta(days=20))[0]
+    first, term, ends, billed, after = _plan(schedule, today)
+    # Billing dates seconds apart here: each a cent more, or NMI refuses the
+    # same card for the same amount as a duplicate (not on the 1st and 15th,
+    # where the price change already makes the two amounts differ).
+    vary = schedule != "monthly"
     cents = 2000 + int(time.time() * 1000) % 2900
     price, new_price = f"{cents / 100:.2f}", f"{(cents + 111) / 100:.2f}"
     steps, said = [], {}
@@ -844,7 +893,7 @@ def automatic_proof() -> dict:
         with sync_playwright() as p:
             browser = p.chromium.launch(channel="chrome", headless=True)
             context, owner = owner_page(browser, session)
-            said["link"] = set_up_automatic(owner, first, price)
+            said["link"] = set_up_automatic(owner, first, price, schedule, term)
             steps.append(("set up, waiting", "Waiting for Proof Client Co to agree"))
             client_context, client, said["terms"] = agree_in_portal(browser, setup)
             steps.append(("agreed in the portal", True))
@@ -874,7 +923,8 @@ def automatic_proof() -> dict:
             # Every billing date through the end; then the day after; then
             # the next billing date, which is not billed.
             for day in billed[1:]:
-                steps.append((f"made {day}", billing_run(env, day - timedelta(days=3))))
+                steps.append((f"made {day}", billing_run(env, day - timedelta(days=3),
+                                                         vary=vary)))
                 steps.append((f"charged {day}", billing_run(env, day)))
             steps.append(("the day after the end", billing_run(env, ends + timedelta(days=1))))
             steps.append(("the next date, after the end", billing_run(env, after)))
@@ -892,7 +942,9 @@ def automatic_proof() -> dict:
     finally:
         server.terminate()
         server.wait(timeout=10)
-    result = {"dates": {"today": today.isoformat(), "first": first.isoformat(),
+    result = {"schedule": schedule, "varied_by_a_cent_each": vary,
+              "dates": {"today": today.isoformat(), "first": first.isoformat(),
+                        "term": term.isoformat() if term else None,
                         "billed": [d.isoformat() for d in billed], "ends": ends.isoformat(),
                         "not_billed": after.isoformat()},
               "steps": steps, "said": said,
@@ -907,13 +959,18 @@ def automatic_proof() -> dict:
         and all(i["status"] == "paid" and len(i["attempts"]) == 1
                 and i["attempts"][0][0] == "approved" and i["attempts"][0][1] == "autopay"
                 and i["attempts"][0][2] for i in invoices)
-        and invoices[0]["total_cents"] == cents and invoices[-1]["total_cents"] == cents + 111
+        and invoices[0]["total_cents"] == cents
+        and invoices[-1]["total_cents"] >= cents + 111
+        and all(a["total_cents"] < b["total_cents"] or not vary
+                for a, b in zip(invoices, invoices[1:]))
         and invoices[0]["issue_date"] == (first - timedelta(days=3)).isoformat()
         and invoices[0]["email"]["state"] == "sent"
         and "will be charged to the card ending 1111 on" in invoices[0]["email"]["says_charged"]
         and agreement["browser_kept"] and agreement["address_kept"]
         and agreement["card"] == "1111" and agreement["notice_given"]
         and agreement["ends_on"] == ends.isoformat() and agreement["ends_set_by"] == "client"
+        and f"Your last charge will be on {billed[-1]:%B} {billed[-1].day}, {billed[-1].year}"
+        in said["stop"]
         and agreement["ended"]
         and said["ended"].startswith("Automatic billing ended")
         and said["stop"].startswith(f"Billing continues through ")
@@ -1856,7 +1913,11 @@ def run_mode():
     elif "--test-mode" in sys.argv:
         result = test_mode_proof()
     elif "--automatic" in sys.argv:
-        result = automatic_proof()
+        index = sys.argv.index("--automatic")
+        schedule = sys.argv[index + 1] if len(sys.argv) > index + 1 else "monthly"
+        if schedule not in ("monthly", "weekly", "quarterly"):
+            schedule = "monthly"
+        result = automatic_proof(schedule)
     elif "--run-now" in sys.argv:
         result = run_now_proof()
     elif "--link-collect" in sys.argv:

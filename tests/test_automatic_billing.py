@@ -378,7 +378,7 @@ def test_a_price_change_applies_from_the_next_billing_date_7_days_out(active, ap
 @pytest.mark.django_db
 def test_the_agreed_days_cant_change_while_it_is_in_force(active, api, ff):
     refused = patch(api, ff, f"{ROOT}{active.pk}/", {"days_of_month": [1]})
-    assert refused.status_code == 400 and "agreed to these billing days" in \
+    assert refused.status_code == 400 and "agreed to this schedule" in \
         refused.json()["detail"]
 
 

@@ -5,6 +5,10 @@
 **2026-11-16:** void and refund from the app (§11) and knowing when the
 processor is in Test Mode (§12), released at Release 44.
 
+**2026-11-17, branch `billing-cadences` (not merged):** every schedule for
+recurring invoices, both kinds: weekly, every two weeks, twice a month,
+monthly, quarterly, yearly and custom (§15).
+
 **2026-11-17, released at Release 45:** recurring invoices that bill automatically (§14): the client
 owner agrees in the portal, each invoice is made and emailed by itself, and
 the saved card is charged on each billing date. Also auto-pay never passes over
@@ -1119,3 +1123,100 @@ amount seconds later as a duplicate, and that decline emails the client.
   invoice email through the practice's real mailbox: only the first real one.
 - The clock moved in the proof is the app's own (`timezone.now`); a real
   month of 5:00 and 9:00 runs has not passed.
+
+---
+
+## 15. Every schedule, for both kinds of recurring invoice (2026-11-17)
+
+On branch `billing-cadences`, not merged into `dev`. Migration
+`billing 0015_cadences`: one nullable column (`weekday`) and one check
+constraint; the cadence's new values are choices only. Code:
+`apps/billing/timing.py` (the only place billing dates are worked out),
+`services.save_schedule`, and the form on Invoices → Recurring invoices.
+
+### 15.1 The presets
+
+The form's **Schedule** offers presets, and each fills the same few fields
+(`cadence`, `every`, `weekday`, `days_of_month`, `first_billing_on`):
+
+| Preset | What is asked | Stored as |
+|---|---|---|
+| Weekly | the weekday (the first date is filled in on the next one) | weekly, every 1, the weekday |
+| Every two weeks | the weekday and the first date | weekly, every 2 |
+| Twice a month | the first date (a 1st or a 15th) | monthly, every 1, days 1 and 15 |
+| Monthly | the days, 1 to 28, as before | monthly, every 1, the days |
+| Quarterly | the day of the month (1 to 28) and the first month | monthly, every 3, that day |
+| Yearly | a date, any but February 29 | yearly, on that month and day |
+| Custom | every N weeks on a weekday (N up to 52), or every N months on a day (N up to 12) | weekly or monthly, every N |
+
+The first date is always on the schedule (a Friday for a Friday schedule, one
+of the days for a monthly one) and, when the timing is set or changed, not in
+the past. Every two weeks and every N count from the first date; quarterly
+and every N months count from the first date's month.
+
+### 15.2 Both kinds
+
+- **Bill automatically**: everything in §14 holds for every schedule. The
+  agreement states the schedule in plain words: "every Friday", "every two
+  weeks on Friday", "on the 1st and 15th of each month", "on the 1st of
+  January, April, July and October", "every year on March 31", "every three
+  weeks on Wednesday", "every five months on the 10th", each with "starting
+  <the next date>". While the agreement is in force the schedule is fixed.
+- **The invoice is emailed the set number of days before each charge, never
+  more than the gap between billing dates** (the shortest gap over a year of
+  them: 7 for weekly, 14 for every two weeks and for the 1st and 15th, one
+  day for the 1st and 28th). More is refused when the schedule or the days
+  change, in plain words.
+- **You send each invoice**: the same presets; its draft is written on each
+  date. Monthly on one day is the day of the month exactly as before, so a
+  recurring invoice made before cadences, which has no first date, keeps its
+  day and its next draft and is edited as it was.
+- **Stopping** is the same rule on every schedule (§14.5): billing ends on the
+  last day of the calendar month after the month notice is given, or on the
+  contract end date if later; every billing date up to it is billed, none
+  after.
+
+### 15.3 The owner's case, exactly (a test)
+
+Billed every Friday at $2,000, agreed before, notice given on Monday November
+16, 2026: the portal says, before the client confirms, "Billing continues
+through December 31, 2026. Your last charge will be on December 25, 2026."
+The cards are charged on November 20 and 27 and December 4, 11, 18 and 25
+(six charges of $2,000.00), nothing after December 31, and it is Ended on
+January 1 (`tests/test_billing_cadences.py`).
+
+### 15.4 Choices made (the simplest reading)
+
+- Quarterly and custom months take a day from 1 to 28, as monthly does; only
+  yearly takes a day 29 to 31 (in its own month). Custom months take one day.
+- Weekly's first date is filled in on the next such weekday and can be
+  changed; every other preset shows its first date (or month, or date).
+- Every N weeks counts from the first date; every N months from its month.
+- "Never more than the gap" is checked when the schedule or the days before
+  change, so an existing recurring invoice keeps working until it is changed.
+- The words list the months when every 2, 3, 4 or 6 months lands on the same
+  months each year; otherwise "every five months on the 10th".
+- A recurring invoice made before cadences shows Monthly and its one day,
+  and is saved as before unless another preset is chosen.
+
+### 15.5 Proved
+
+- **Tests:** `tests/test_billing_cadences.py` (each preset's dates across a
+  month end, a year end and February 29, 2028; refusals; the gap rule; the
+  words; the stop rule on each preset, and a later contract end on quarterly
+  and yearly; the Friday case above through the app; the agreed schedule
+  fixed; You send each invoice weekly; one made before cadences unchanged);
+  `frontend/src/screens/AutomaticBilling.test.tsx` (the presets, both kinds).
+- **On NMI's sandbox, in headless Chrome, with the clock moved**
+  (`scripts/nmi_token_proof.py --automatic weekly` and `--automatic
+  quarterly`): from set-up to Ended, as in §14.9. Billing dates there are run
+  seconds apart, so the proof raises the price a cent before each invoice is
+  made: NMI refuses the same card for the same amount within minutes as a
+  duplicate.
+
+### 15.6 Not proved
+
+- A weekly or quarterly charge by the worker in production (its
+  `NMI_LIVE_CALLS` is the owner's step, §14.1).
+- A real year: the proof moves the app's own clock.
+

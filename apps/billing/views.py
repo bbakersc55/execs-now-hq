@@ -19,7 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.ratelimit import RateLimit, client_ip, too_many
-from apps.billing import money, readback, recurring, services
+from apps.billing import money, readback, recurring, services, timing
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, NmiEvent,
     PaymentAttempt,
@@ -596,6 +596,11 @@ class ScheduleViewSet(BillingViewSet):
             **books_category(row, self._role()),
             # 2026-11-17: "You send each invoice" or "Bill automatically".
             "mode": row.mode, "mode_label": row.get_mode_display(),
+            # 2026-11-17, cadences: weekly (a weekday), monthly (days) or
+            # yearly, every N; null first date on a "You send each invoice"
+            # made before, which keeps its day of the month.
+            "cadence": row.cadence, "every": row.every, "weekday": row.weekday,
+            "timing_words": timing.describe(row) if row.first_billing_on else "",
             "days_of_month": list(row.days_of_month or []),
             "first_billing_on": row.first_billing_on.isoformat() if row.first_billing_on
             else None,
@@ -618,7 +623,7 @@ class ScheduleViewSet(BillingViewSet):
         fields = {}
         for name in ("day_of_month", "starts_on", "lines", "notes", "terms", "is_active",
                      "pay_instructions", "email_subject", "email_body", "mode",
-                     "days_of_month", "lead_days"):
+                     "days_of_month", "lead_days", "cadence", "every", "weekday"):
             if name in data:
                 fields[name] = data[name]
         for name in ("first_billing_on", "term_ends_on"):
