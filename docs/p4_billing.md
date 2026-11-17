@@ -1059,7 +1059,10 @@ given, billing ends, last billing date, ended) and the actions: email the
 link; set an earlier end; stop now (asked twice); and, **only while the
 processor last said Test Mode, "Run the next billing now"**: it reads Test
 Mode again, then makes, sends and charges the next billing date's invoice at
-once, so the whole path can be proved without waiting for the clock.
+once, so the whole path can be proved without waiting for the clock. It
+refuses for 20 minutes after a charge of the same amount under the same
+recurring invoice: on the sandbox, NMI refused the same card for the same
+amount seconds later as a duplicate, and that decline emails the client.
 
 ### 14.8 Choices made (the simplest reading)
 
@@ -1102,7 +1105,10 @@ once, so the whole path can be proved without waiting for the clock.
   the price changed (from the next date), Stop automatic billing with the
   dates read first, the last charge at the new price, nothing after the end,
   Ended on both pages. `--run-now` presses Run the next billing now with the
-  sandbox's own Test Mode on.
+  sandbox's own Test Mode on: the first press made, sent and charged the next
+  invoice at once, a test payment; a second press seconds later was refused
+  by NMI as a duplicate (same card, same amount), which is why it now waits
+  20 minutes after a charge of the same amount.
 
 ### 14.10 Not proved
 

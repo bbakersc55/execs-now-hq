@@ -21,7 +21,7 @@ from apps.billing.models import (
 from apps.crm.models import OutboxMessage
 from apps.notify.models import Notice
 from apps.tenancy.context import tenant_context
-from apps.tenancy.demo.clock import at
+from apps.tenancy.demo.clock import at, moment
 from apps.tenancy.models import AuditEvent
 
 from . import registry_config  # noqa: F401
@@ -574,8 +574,15 @@ def test_run_the_next_billing_now_only_in_test_mode(active, api, ff, connected, 
     assert ran.status_code == 200, ran.content
     invoice = ClientInvoice.all_objects.get(schedule=active, billing_date=date(2026, 12, 1))
     assert invoice.status == "paid" and invoice.test_paid_cents == invoice.total_cents
+    # Pressed again at once: the same card for the same amount would be a
+    # duplicate at NMI, and its decline would email the client.
     with at(date(2026, 11, 20)):
-        post(api, ff, f"{ROOT}{active.pk}/run-now/")
+        again = post(api, ff, f"{ROOT}{active.pk}/run-now/")
+    assert again.status_code == 409 and "duplicate" in again.json()["detail"]
+    assert not ClientInvoice.all_objects.filter(schedule=active,
+                                                billing_date=date(2026, 12, 15)).exists()
+    with at(moment(date(2026, 11, 20), 9, 25)):
+        assert post(api, ff, f"{ROOT}{active.pk}/run-now/").status_code == 200
     assert ClientInvoice.all_objects.filter(
         schedule=active, billing_date=date(2026, 12, 15), status="paid").exists()
 

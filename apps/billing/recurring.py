@@ -65,6 +65,11 @@ S = ClientInvoice.Status
 WORDING_VERSION = "2026-11-17"
 #: A change of lines or price applies from a billing date at least this far out.
 CHANGE_NOTICE = timedelta(days=7)
+#: "Run the next billing now" waits this long after a charge of the same
+#: amount: NMI refused the same card for the same amount seconds later as a
+#: duplicate on the sandbox (2026-11-17), and that decline would email the
+#: client. How long NMI's own window is was not measured.
+RUN_NOW_GAP = timedelta(minutes=20)
 
 WAITING, ACTIVE, ENDING, ENDED = "waiting", "active", "ending", "ended"
 
@@ -478,6 +483,18 @@ def run_next_now(schedule, *, actor) -> tuple[ClientInvoice, str]:
     nxt = next((d for d in timing.dates(schedule, start, through) if d not in done), None)
     if nxt is None:
         raise BillingRefused("There is no billing date left to bill.")
+    amount = total_of(lines_for(schedule, nxt))
+    recent = (PaymentAttempt.all_objects
+              .filter(invoice__schedule=schedule, via=PaymentAttempt.Via.AUTOPAY,
+                      amount_cents=amount, created_at__gte=timezone.now() - RUN_NOW_GAP)
+              .order_by("-created_at").first())
+    if recent is not None:
+        again = timezone.localtime(recent.created_at + RUN_NOW_GAP)
+        raise BillingRefused(
+            f"The card was charged {money.dollars(amount)} under this a few minutes ago. The "
+            "card processor refuses the same card for the same amount within minutes as a "
+            f"duplicate, which would email the client a decline, so wait until "
+            f"{again:%-I:%M %p} and press it again. Nothing was made or charged.")
     invoice = make_one(schedule, agreement, nxt, today, actor=actor)
     if invoice is None:
         raise BillingRefused("The invoice for the next billing date could not be made.")
