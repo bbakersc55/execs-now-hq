@@ -109,11 +109,16 @@ def test_post_completes_login_end_to_end(client, tenant_a, client_membership):
 
 
 @pytest.mark.django_db
-def test_client_session_is_thirty_days(client, tenant_a, client_membership, settings):
-    """C3.5 — client users get a 30-day rolling session."""
+def test_client_session_lasts_twelve_hours(client, tenant_a, client_membership, settings):
+    """C3.5 gave client users 30 days; since 2026-11-17 everyone's sign-in ends
+    12 hours after it began, theirs included, and the twelve hours start at
+    the sign-in."""
+    from apps.accounts.middleware import SIGNED_IN_KEY
+
     _, raw = MagicLinkToken.issue(tenant=tenant_a, user=client_membership.user)
     client.post(f"/auth/magic/{raw}")
-    assert client.session.get_expiry_age() > 60 * 60 * 24 * 29
+    assert 60 * 60 * 11 < client.session.get_expiry_age() <= 60 * 60 * 12
+    assert client.session.get(SIGNED_IN_KEY)
 
 
 @pytest.mark.django_db

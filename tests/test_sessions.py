@@ -180,13 +180,20 @@ def test_a_page_request_after_twelve_hours_comes_back_signed_out(seeded_tenant, 
 
 
 @pytest.mark.django_db
-def test_client_portal_sessions_are_left_as_they_were(client_user):
-    """Thirty days, and no idle rule, until the owner decides otherwise."""
-    assert client_user.get("/api/me").status_code == 200
-    backdate(client_user, 5 * 24 * HOURS)
+def test_client_portal_sessions_have_no_idle_rule_but_end_12_hours_after_sign_in(client_user):
+    """No idle rule for client users; and since 2026-11-17 their sign-in, like
+    everyone's, ends 12 hours after it began (it lasted 30 days before)."""
+    from apps.accounts.middleware import SIGNED_IN_KEY
 
-    assert idle(client_user, "/api/me", 5 * 24 * HOURS).status_code == 200
-    assert client_user.session.get_expiry_age() > 29 * 24 * HOURS
+    assert client_user.get("/api/me").status_code == 200
+    backdate(client_user, 11 * HOURS)
+    assert idle(client_user, "/api/me", 11 * HOURS).status_code == 200
+    assert client_user.session.get_expiry_age() <= 12 * HOURS
+    session = client_user.session
+    session[SIGNED_IN_KEY] = time.time() - 12 * HOURS - 60
+    session.save()
+    ended = client_user.get("/api/me")
+    assert ended.status_code == 401 and ended.json()["authenticated"] is False
 
 
 @pytest.mark.django_db

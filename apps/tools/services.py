@@ -209,6 +209,19 @@ def definition_for(run) -> dict:
         found = says.get(result.get("key"))
         if not result.get("says") and found and set(D.placeholders(found)) <= keys:
             result["says"] = found
+    # 2026-11-17: a shipped tool's sentences said by sign ("4.3 hours a week to
+    # spare") reach its runs made before, in place of the sentence that read
+    # a minus sign aloud. Only where they fit the run's own results.
+    current_by_key = {r.get("key"): r for r in current.get("results") or [] if r.get("key")}
+    for result in out.get("results") or []:
+        shipped_result = current_by_key.get(result.get("key")) or {}
+        if not any(shipped_result.get(name) for name in D.SIGNED_SAYS):
+            continue
+        sentences = [shipped_result.get("says")] + [shipped_result.get(n) for n in D.SIGNED_SAYS]
+        if all(set(D.placeholders(t)) <= keys for t in sentences if t):
+            for name in ("says", *D.SIGNED_SAYS):
+                if shipped_result.get(name):
+                    result[name] = shipped_result[name]
     return out
 
 

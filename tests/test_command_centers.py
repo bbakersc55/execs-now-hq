@@ -48,14 +48,18 @@ def lines(tenant, period):
 # ============================================================ the switch
 
 @pytest.mark.django_db
-def test_the_catalog_has_eight_and_only_operations_is_available(seeded_tenant, ff, api):
+def test_the_catalog_has_eight_and_operations_and_people_are_available(seeded_tenant, ff,
+                                                                        api):
+    """2026-11-17: People is available, with its security foundation."""
     state = api.as_(ff).get(ROOT).json()
     assert [c["short_name"] for c in state["centers"]] == [
         "Operations", "People", "Technology", "Finance", "Sales", "Marketing", "Projects",
         "Training"]
-    assert {c["code"]: c["status"] for c in state["centers"]}["operations"] == "available"
-    assert all(c["status"] == "coming" for c in state["centers"] if c["code"] != "operations")
-    assert [c["code"] for c in state["centers"] if c["next"]] == ["people", "technology"]
+    status = {c["code"]: c["status"] for c in state["centers"]}
+    assert status["operations"] == status["people"] == "available"
+    assert all(c["status"] == "coming" for c in state["centers"]
+               if c["code"] not in ("operations", "people"))
+    assert [c["code"] for c in state["centers"] if c["next"]] == ["technology"]
     assert all(c["name"].endswith("Command Center") and c["price_cents"] == 5000
                for c in state["centers"])
     assert state["cap_cents"] == 15000 and state["can_switch"] is True
@@ -106,7 +110,7 @@ def test_the_platform_owners_practice_pays_nothing(seeded_tenant, ff, api):
 @pytest.mark.django_db
 def test_only_the_owner_switches_and_a_coming_one_is_refused(seeded_tenant, ff, cf, api):
     assert turn_on(api, cf).status_code == 403
-    assert turn_on(api, ff, "people").status_code == 409
+    assert turn_on(api, ff, "technology").status_code == 409
     assert not services.enabled(seeded_tenant.pk)
 
 

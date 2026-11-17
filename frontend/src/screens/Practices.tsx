@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModelTiersCard } from "../components/AiApps";
 import { RefundForm, RefundsList } from "../components/CardRefunds";
 import { CardPaymentsSwitchCard } from "../components/CardPaymentsSwitch";
+import { TwoFactorResets } from "../components/TwoFactor";
 import { useState } from "react";
 
 import { PageHead } from "../components/shell";
@@ -405,6 +406,8 @@ export function Practices({ me }: { me?: Me }) {
 
       <ModelTiersCard />
       <CardPaymentsSwitchCard />
+      {/* 2026-11-17: a practice owner who lost their phone. */}
+      <TwoFactorResets platform />
 
       <Card title="Add a practice">
         <p className="muted small" style={{ marginTop: 0 }}>

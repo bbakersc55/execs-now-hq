@@ -369,6 +369,13 @@ register(CardRefund, factories.CardRefundFactory, api_exposed=False)
 # 2026-11-17: a client owner's agreement to automatic billing, read through
 # its recurring invoice (the practice's) or the portal (the client owner's).
 register(BillingAgreement, factories.BillingAgreementFactory, api_exposed=False)
+# 2026-11-17: People, read only through /api/people/<scope>/ after its own gates
+# (tests/test_people_security.py).
+from apps.people.models import HRGrant, PeopleAccessLog, PersonRecord  # noqa: E402
+
+register(PersonRecord, factories.PersonRecordFactory, api_exposed=False)
+register(HRGrant, factories.HRGrantFactory, api_exposed=False)
+register(PeopleAccessLog, factories.PeopleAccessLogFactory, api_exposed=False)
 
 # M5 part 4: a company's Track connection and a KPI's Track measure, served by
 # /api/scorecard/track/ through `access.company_for` (tests/test_scorecard_track.py).

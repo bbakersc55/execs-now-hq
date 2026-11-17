@@ -148,6 +148,10 @@ def check(definition) -> list[dict]:
         if isinstance(result, dict) and result.get("says") not in (None, ""):
             errors += _check_says(result["says"], f"results.{r}", result_keys,
                                   str(result.get("label") or ""))
+        for name in SIGNED_SAYS:
+            if isinstance(result, dict) and result.get(name) not in (None, ""):
+                errors += _check_says(result[name], f"results.{r}.{name}", result_keys,
+                                      str(result.get("label") or ""))
     if errors:
         return errors
     errors += _check_sample(definition, definition.get("sample"))
@@ -378,6 +382,25 @@ def says(template, results) -> str:
     return _PLACEHOLDER.sub(lambda m: texts.get(m.group(1).strip(), ""), template).strip()
 
 
+#: A result's other sentences, by its value's sign (2026-11-17): a negative
+#: value is said with its number shown without the sign ("4.3 hours a week to
+#: spare", never "-4.3 hours ... a minus means"), and zero in words of its own.
+SIGNED_SAYS = ("says_if_negative", "says_if_zero")
+
+
+def _sentence_for(out, result, results):
+    """The template, and the results it is filled from, for one result."""
+    value = out.get("value")
+    if out.get("numeric") and not out.get("error") and isinstance(value, (int, float)):
+        if value < 0 and result.get("says_if_negative"):
+            unsigned = text_of(Decimal(str(-value)), out.get("format", "number"))
+            return result["says_if_negative"], [
+                dict(r, text=unsigned) if r is out else r for r in results]
+        if value == 0 and result.get("says_if_zero"):
+            return result["says_if_zero"], results
+    return result.get("says"), results
+
+
 def _plain(value):
     if isinstance(value, Decimal):
         return float(value)
@@ -464,7 +487,7 @@ def evaluate(definition, values) -> dict:
                         "note": result.get("note", ""),
                         "numeric": isinstance(value, Decimal)})
     for out, result in zip(results, definition.get("results") or []):
-        out["says"] = says(result.get("says"), results)
+        out["says"] = says(*_sentence_for(out, result, results))
     computed = {key: {"value": _plain(env.get(key)),
                       "text": text_of(env.get(key), field.get("format", "number"))
                       if key not in errors else "–", "error": errors.get(key, "")}

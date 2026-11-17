@@ -324,7 +324,28 @@ def me(request):
         # A demo visitor's own copy (2026-10-17): its state, its end, and why
         # its AI is off, if it is. Null everywhere else.
         "demo_visitor": _demo_visitor(membership),
+        # 2026-11-17: the code after sign-in, still to be entered; when this
+        # sign-in ends (12 hours after it), for the warning beforehand; and
+        # whether a People page opens for this person.
+        **_security(request, membership),
     })
+
+
+def _security(request, membership) -> dict:
+    from datetime import datetime, timezone as dt_timezone
+
+    from apps.accounts import two_factor
+    from apps.accounts.middleware import session_ends_at
+    from apps.people import access as people_access
+
+    ends = session_ends_at(request)
+    pending = two_factor.pending(request)
+    return {
+        "two_factor_pending": pending,
+        "session_ends_at": (datetime.fromtimestamp(ends, tz=dt_timezone.utc).isoformat()
+                            if ends else None),
+        "people": (not pending and bool(people_access.scopes_for(membership))),
+    }
 
 
 def _has_scorecard(request) -> bool:

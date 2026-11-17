@@ -40,7 +40,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const data = text ? JSON.parse(text) : null;
   // A demo visitor's copy that started being set up again (a reset) answers
   // so: asking who we are again shows its setup page (2026-10-17).
-  if ((response.status === 401 && path !== "/api/me") || data?.demo_setting_up) {
+  // 2026-11-17: the code after sign-in is still to be entered; asking who we
+  // are again shows the prompt.
+  if ((response.status === 401 && path !== "/api/me") || data?.demo_setting_up
+      || (response.status === 403 && data?.two_factor_pending)) {
     window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   }
   if (!response.ok) {
@@ -140,6 +143,12 @@ export interface Me {
   portal?: PortalRights | null;
   /** A demo visitor's own copy (2026-10-17); null everywhere else. */
   demo_visitor?: DemoVisitorInfo | null;
+  /** 2026-11-17: the code after sign-in, still to be entered. */
+  two_factor_pending?: boolean;
+  /** When this sign-in ends, 12 hours after it began (ISO), for the warning. */
+  session_ends_at?: string | null;
+  /** Whether a People page opens for this person. */
+  people?: boolean;
 }
 
 /** apps/tenancy/demo/visitors.py `describe`. */
@@ -3059,3 +3068,65 @@ export interface LibraryEntry {
 export interface LibraryState {
   pages: { code: string; label: string }[]; entries: LibraryEntry[]; can_edit: boolean;
 }
+
+// ------------------------------------------------ 2026-11-17: two-factor, People
+
+export interface TwoFactorState {
+  enabled: boolean; since: string | null; backup_codes_left: number;
+  /** Holds an HR permission: can't turn it off. */
+  required: boolean;
+  /** The demo: set up and tried, never asked for. */
+  demo: boolean;
+  backup_codes?: string[];
+}
+
+export interface TwoFactorStart { key: string; uri: string; qr_svg: string }
+
+export interface ResettablePerson {
+  membership: string; name: string; email: string; role_label: string; company: string;
+  practice?: string;
+}
+
+export type PeopleLevel = "director" | "generalist" | "directory" | "reports" | "self";
+
+export interface PeopleScopeRow {
+  key: string; name: string; level: PeopleLevel; level_label: string; manages: boolean;
+}
+
+export interface PersonSensitive {
+  pay_rate: string; home_address: string; date_of_birth: string; personal_phone: string;
+  personal_email: string; emergency_contact: string;
+  /** A list for an HR Director or the person; "2 documents" masked. */
+  documents: string[] | string;
+}
+
+export interface PersonRow {
+  id: string; name: string; first_name: string; last_name: string; title: string;
+  team: string; work_email: string; manager: { id: string; name: string } | null;
+  own: boolean; placeholder: boolean;
+  /** Absent for a directory view. */
+  sensitive?: PersonSensitive; masked?: boolean;
+}
+
+export interface PeopleScopePage {
+  guidance: string; key: string; name: string; level: PeopleLevel; level_label: string;
+  manages: boolean; may_add: boolean; may_export: boolean; records: PersonRow[];
+  members: { id: string; name: string; email: string }[];
+}
+
+export interface HRGrantRow {
+  id: string; user: string; email: string; level: "director" | "generalist";
+  level_label: string; scope: string; scope_label: string; granted_at: string;
+  two_factor: boolean;
+}
+
+export interface PeoplePermissionsPage {
+  guidance: string; grants: HRGrantRow[];
+  grantable: { id: string; name: string; email: string }[]; may_grant_all: boolean;
+}
+
+export interface AccessLogEntry {
+  at: string; who: string; person: string; action: "view" | "change" | "export";
+  action_label: string; fields: string[]; from: string; browser: string;
+}
+

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { ConnectedAiApps } from "../components/AiApps";
+import { TwoFactorCard } from "../components/TwoFactor";
 import { BrowserNotifications } from "../components/Notifications";
 import { CalendarCard } from "./CalendarCard";
 import { PageHead } from "../components/shell";
@@ -88,6 +89,8 @@ export function Profile({ staff = false }: { staff?: boolean }) {
           {p.client_company_name && <><dt>Company</dt><dd>{p.client_company_name}</dd></>}
         </dl>
       </Card>
+      {/* 2026-11-17: anyone may turn it on; never while acting as someone. */}
+      {p.editable && <TwoFactorCard />}
       {p.practice && <BrowserNotifications editable={p.editable} />}
       {/* One's own calendar (2026-10-27): the practice's team only. */}
       {staff && p.practice && <CalendarCard />}

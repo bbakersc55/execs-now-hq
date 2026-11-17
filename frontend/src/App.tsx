@@ -13,6 +13,8 @@ import { ToolEditorScreen, ToolRunScreen, ToolsScreen } from "./screens/Tools";
 import { SopScreen, SopsScreen } from "./screens/Sops";
 import { SopBrainstormScreen } from "./screens/SopBrainstorm";
 import { Landing } from "./components/Landing";
+import { SessionEndsBanner, TwoFactorPrompt } from "./components/TwoFactor";
+import { PeopleHome, PeopleScope } from "./screens/People";
 
 import { ActingBanner } from "./components/ActAs";
 import { useNarrowWindow, useRemembered } from "./components/shell";
@@ -167,6 +169,10 @@ export const NAV: NavItem[] = [
   { to: "/centers/operations", label: "Operations", roles: ["FF", "CF", "VA"],
     group: "Command Centers", icon: Compass,
     when: (me) => (me.command_centers ?? []).includes("operations") },
+  // 2026-11-17: People, for whoever a People page opens for (the server's
+  // answer; anyone else is refused with 404 and sees no entry).
+  { to: "/people", label: "People", roles: ["FF", "CF", "VA"], icon: Users,
+    when: (me) => !!me.people },
   // P11: the plans, while any Command Center is on.
   { to: "/plans", label: "Plans", roles: ["FF", "CF", "VA"], icon: CalendarRange,
     when: (me) => !!me.has_plan },
@@ -230,6 +236,8 @@ export const NAV: NavItem[] = [
   { to: "/invoices", label: "Invoices", roles: CLIENT, icon: Receipt },
   // E-signature (2026-10-29): what was sent to their company to sign.
   { to: "/documents", label: "Documents", roles: CLIENT, icon: FileSignature },
+  // 2026-11-17: People: their own company's, at their level.
+  { to: "/people", label: "People", roles: CLIENT, icon: Users, when: (me) => !!me.people },
   // P7 phase 3: the client owner sets up their company's teams.
   { to: "/team", label: "Your team", roles: ["FCC"], icon: Users },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
@@ -363,6 +371,10 @@ export function App() {
       microsoft={Boolean(brand?.microsoft_sign_in)} />;
   }
 
+  // 2026-11-17: after any sign-in, with two-factor on, the code comes first:
+  // the server answers nothing else until it is entered.
+  if (me.two_factor_pending) return <TwoFactorPrompt email={me.email} />;
+
   // P2: a practice owner reads and accepts the beta agreement before anything
   // else; the server refuses every other call until then.
   if (me.agreement_required) return <AgreementGate />;
@@ -437,6 +449,7 @@ export function App() {
       <main>
         <TopScrollbars />
         <DemoBanner me={me} />
+        <SessionEndsBanner endsAt={me.session_ends_at} />
         <ErrorBoundary>
           {me.role && TENANT.includes(me.role) && <PendingUploads />}
           {platform ? (
@@ -482,6 +495,8 @@ export function App() {
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/outbox" element={<Outbox />} />
+            <Route path="/people" element={<PeopleHome />} />
+            <Route path="/people/:scope" element={<PeopleScope />} />
             <Route path="/import" element={<ImportDoor />} />
             <Route path="/import/contacts" element={<ImportWizard />} />
             {/* Everyone signed in, client users included (UI 3 spec §5). The

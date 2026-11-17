@@ -79,6 +79,8 @@ INSTALLED_APPS = [
     "apps.plans",
     "apps.tools",
     "apps.sops",
+    # 2026-11-17: People, its security foundation (docs/p9_people_hris.md).
+    "apps.people",
 ]
 
 MIDDLEWARE = [
@@ -96,6 +98,10 @@ MIDDLEWARE = [
     # After the practice is bound, so a sign-out for idleness that ends an
     # acting-as session can say who was acting as whom.
     "apps.accounts.middleware.StaffIdleSignOut",
+    # 2026-11-17: everyone signed out 12 hours after signing in; and, with
+    # two-factor on, nothing answers until the code is entered.
+    "apps.accounts.middleware.SignInLifetime",
+    "apps.accounts.middleware.TwoFactorGate",
     "apps.platform.middleware.AgreementGate",
     "apps.platform.middleware.SuspendedGate",
     # A demo visitor's copy: being set up, or ended and read-only (2026-10-17).
@@ -237,7 +243,9 @@ SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 TRUSTED_PROXY_HOPS = env.int("TRUSTED_PROXY_HOPS", default=0)
 CSRF_TRUSTED_ORIGINS = ([] if IS_LOCAL else [PUBLIC_BASE_URL.rstrip("/")]) + env.list(
     "CSRF_TRUSTED_ORIGINS", default=[])
-CLIENT_SESSION_AGE = 60 * 60 * 24 * 30
+# 2026-11-17: a client's sign-in lasts twelve hours, as everyone's does
+# (apps.accounts.middleware.SignInLifetime); it lasted 30 days before.
+CLIENT_SESSION_AGE = 60 * 60 * 12
 
 REST_FRAMEWORK = {
     # G2: session cookies, CSRF enforced. No JWT.

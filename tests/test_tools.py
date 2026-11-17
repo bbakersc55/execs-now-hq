@@ -156,6 +156,47 @@ def test_capacity_model_by_role_with_its_what_ifs():
     assert out["tables"]["roles"][0]["gap"]["value"] == 0
 
 
+def test_capacity_says_short_or_to_spare_in_plain_words_with_no_minus_sign():
+    """2026-11-17: "-4.3 hours a week short. A minus means … to spare" read the
+    sign aloud. Now: "short by 4.3 hours a week", or "4.3 hours a week to spare"."""
+    def roles(people):
+        return {"roles": [{"role": "Machinists", "people": people, "hours": 40,
+                           "productive": 75, "added": 0}],
+                "work": [{"item": "Parts", "role": "Machinists", "volume": 300,
+                          "hours_per_unit": 0.4}]}
+    r, _ = results("ops_capacity", roles(4))          # 120 hours against 120
+    assert r["gap_hours"]["says"] == "So the team's time matches the work exactly."
+    r, _ = results("ops_capacity", roles(3))          # 90 against 120: short
+    assert r["gap_hours"]["says"] == "So the team is short by 30 hours a week."
+    assert r["gap_people"]["says"] == "In people, that is 1 short across the roles."
+    spare = roles(5)                                  # 150 against 125.7: to spare
+    spare["work"][0]["hours_per_unit"] = 0.419
+    r, _ = results("ops_capacity", spare)
+    assert r["gap_hours"]["value"] < 0
+    assert r["gap_hours"]["says"] == "So the team has 24.3 hours a week to spare."
+    assert r["gap_people"]["says"].startswith("In people, that is 0.8") and \
+        r["gap_people"]["says"].endswith("to spare across the roles.")
+    assert not any("-" in (x["says"] or "") or "minus" in (x["says"] or "") for x in r.values())
+
+
+def test_a_capacity_run_made_before_reads_the_plain_sentence(on):
+    from apps.tools import services
+    from apps.tools.models import ToolRun
+
+    run = ToolRun.all_objects.get(pk=start(on, "ops_capacity")["id"])
+    # As saved before 2026-11-17: the old sentence in its own snapshot.
+    for result in run.definition["results"]:
+        if result["key"] == "gap_hours":
+            result["says"] = ("So the team is {gap_hours} a week short of the work. A minus "
+                              "means that many hours to spare.")
+            result.pop("says_if_negative", None)
+    ToolRun.all_objects.filter(pk=run.pk).update(definition=run.definition)
+    run.refresh_from_db()
+    shown = {r["key"]: r for r in services.definition_for(run)["results"]}
+    assert shown["gap_hours"]["says"] == "So the team is short by {gap_hours} a week."
+    assert shown["gap_hours"]["says_if_negative"] == "So the team has {gap_hours} a week to spare."
+
+
 def test_meeting_cadence_adds_up_agendas_and_hours():
     r, out = results("ops_meetings", {
         "meetings": [{"name": "Weekly leadership meeting", "cadence": "Weekly", "day": "Monday",
@@ -715,7 +756,7 @@ def test_the_capacity_model_says_plainly_how_to_run_it():
         assert words in steps, words
     r, _ = results("ops_capacity", shipped.SHIPPED["ops_capacity"]["definition"]["sample"])
     assert r["tightest"]["says"].startswith("Production is the most stretched role")
-    assert r["gap_hours"]["says"].startswith("So the team is 19.5 hours a week short")
+    assert r["gap_hours"]["says"] == "So the team is short by 19.5 hours a week."
 
 
 def test_a_sentence_is_left_out_when_a_result_it_names_has_no_value():

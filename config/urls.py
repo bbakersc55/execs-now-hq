@@ -5,6 +5,7 @@ from apps.aiconnect import urls as aiconnect_urls
 
 from apps.accounts import google_external, microsoft_signin
 from apps.accounts import views as account_views
+from apps.accounts import views_two_factor as account_tf
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
@@ -51,6 +52,17 @@ urlpatterns = [
     path("api/branding/mark", account_views.branding_mark, name="branding-mark"),
     path("api/me", account_views.me, name="me"),
     path("api/me/profile", account_views.profile, name="profile"),
+    # 2026-11-17: two-factor sign-in (apps/accounts/two_factor.py).
+    path("api/me/two-factor", account_tf.state, name="two-factor"),
+    path("api/me/two-factor/start", account_tf.start, name="two-factor-start"),
+    path("api/me/two-factor/confirm", account_tf.confirm, name="two-factor-confirm"),
+    path("api/me/two-factor/verify", account_tf.verify, name="two-factor-verify"),
+    path("api/me/two-factor/backup-codes", account_tf.backup_codes,
+         name="two-factor-backup-codes"),
+    path("api/me/two-factor/off", account_tf.turn_off, name="two-factor-off"),
+    path("api/two-factor/resets", account_tf.resets, name="two-factor-resets"),
+    path("api/platform/two-factor/resets", account_tf.platform_resets,
+         name="platform-two-factor-resets"),
     path("api/", include("apps.crm.urls")),
     path("api/", include("apps.tenancy.urls")),
     path("api/", include("apps.notes.urls")),
@@ -70,6 +82,7 @@ urlpatterns = [
     path("api/", include("apps.sops.urls")),
     path("api/", include("apps.scorecard.urls")),
     path("api/", include("apps.esign.urls")),
+    path("api/", include("apps.people.urls")),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed
     # token IS the authentication, and it grants that one capability. Under
     # /api/ so the app's own page can render it (the dev proxy forwards /api);

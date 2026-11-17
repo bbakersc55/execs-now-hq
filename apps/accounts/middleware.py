@@ -62,3 +62,84 @@ class StaffIdleSignOut:
         if last is None or seen > last:
             session[LAST_ACTIVE_KEY] = seen
         return self.get_response(request)
+
+
+# ------------------------------------------------ 2026-11-17: twelve hours
+
+#: Session key: when the person signed in (epoch seconds).
+SIGNED_IN_KEY = "signed_in_at"
+SIGNED_IN_SECONDS = 60 * 60 * 12
+SIGNED_OUT_12H = ("You were signed out: it has been 12 hours since you signed in. Sign in again "
+                  "to continue.")
+
+
+def stamp_sign_in(sender, request, user, **kwargs):
+    """`user_logged_in`: every sign-in, whatever the method, starts the
+    twelve hours, and a new session has entered no code yet."""
+    from apps.accounts.two_factor import SESSION_VERIFIED
+
+    if request is None or not hasattr(request, "session"):
+        return
+    request.session[SIGNED_IN_KEY] = time.time()
+    request.session.pop(SESSION_VERIFIED, None)
+
+
+def session_ends_at(request) -> float | None:
+    started = request.session.get(SIGNED_IN_KEY) if hasattr(request, "session") else None
+    return float(started) + SIGNED_IN_SECONDS if started else None
+
+
+class SignInLifetime:
+    """Everyone, staff and client users alike, is signed out twelve hours
+    after signing in (2026-11-17). A session from before this rule is given
+    its twelve hours from the first request it makes after it. Token routes
+    (connected AI apps, pay and signing links) carry no session and are not
+    touched."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return self.get_response(request)
+        session = request.session
+        started = session.get(SIGNED_IN_KEY)
+        now = time.time()
+        if started is None:
+            session[SIGNED_IN_KEY] = now
+        elif now - float(started) > SIGNED_IN_SECONDS:
+            logout(request)
+            if request.path.startswith("/api/") or request.path.startswith("/auth/"):
+                return JsonResponse({"authenticated": False, "detail": SIGNED_OUT_12H},
+                                    status=401)
+            return HttpResponseRedirect(request.get_full_path())
+        return self.get_response(request)
+
+
+#: What answers while the code after sign-in is still to be entered.
+TWO_FACTOR_OPEN = ("/api/me", "/api/branding", "/api/me/two-factor/verify")
+TWO_FACTOR_PENDING = "Enter the code from your authenticator app to finish signing in."
+
+
+class TwoFactorGate:
+    """After any sign-in, a person with two-factor on reaches nothing but
+    who they are, the branding, the code prompt and signing out until a code
+    is entered (`two_factor.pending`). Pages (an AI app's consent page among
+    them) go back to the app, which shows the prompt."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from apps.accounts import two_factor
+
+        path = request.path
+        if (path.startswith("/api/") or path.startswith("/oauth/")) and \
+                not (path in TWO_FACTOR_OPEN or path.startswith("/api/branding")) and \
+                two_factor.pending(request):
+            if path.startswith("/api/"):
+                return JsonResponse({"detail": TWO_FACTOR_PENDING, "two_factor_pending": True},
+                                    status=403)
+            return HttpResponseRedirect(settings.APP_ROOT_URL)
+        return self.get_response(request)

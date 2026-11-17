@@ -217,3 +217,44 @@ class RateCount(models.Model):
                                     name="rate_count_one_per_window"),
         ]
         indexes = [models.Index(fields=["prefix", "window_start"])]
+
+
+class TwoFactor(models.Model):
+    """A person's authenticator app, for two-factor sign-in (2026-11-17,
+    `apps/accounts/two_factor.py`). One per person, whatever practices they
+    are in. The key is encrypted like the other secrets (Fernet, its key in
+    the environment). Until `confirmed_at` it is an enrollment begun and not
+    finished, and asks nothing at sign-in."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField("accounts.User", on_delete=models.CASCADE,
+                                related_name="two_factor")
+    secret_ciphertext = models.BinaryField()
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    #: The 30-second step of the last code accepted: an earlier or equal one
+    #: is never accepted again.
+    last_step = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "two_factor"
+
+
+class BackupCode(models.Model):
+    """One of a person's ten single-use backup codes, for a lost phone. Kept
+    hashed; shown once, when made. Replaced all at once."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey("accounts.User", on_delete=models.CASCADE,
+                             related_name="backup_codes")
+    code_hash = models.CharField(max_length=64)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "two_factor_backup_code"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "code_hash"],
+                                    name="backup_code_once_per_person"),
+        ]

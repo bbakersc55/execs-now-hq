@@ -1,6 +1,7 @@
 """The eight Command Centers (P8), as the migration seeds the platform's
-catalog and as the code knows each one's content. Operations is available;
-People and Technology are next; the rest are coming."""
+catalog and as the code knows each one's content. Operations and People
+(2026-11-17, its security foundation) are available; Technology is next; the
+rest are coming."""
 
 from __future__ import annotations
 
@@ -16,8 +17,10 @@ CENTERS = [
     ("operations", "Operations Command Center", "Operations", "Operations", "available",
      "A session template in plain words, an operations KPI list, six playbooks, an SOP, a "
      "weekly note and a quarterly review, the recommended feeds and three AI actions."),
-    ("people", "People Command Center", "People", "People", "coming",
-     "For a fractional CHRO. Next."),
+    ("people", "People Command Center", "People", "People", "available",
+     "For a fractional CHRO: People pages per company, HR permissions by person, two-factor "
+     "sign-in for HR access, and an access log of every view, change and export. The "
+     "employee records come next."),
     ("technology", "Technology Command Center", "Technology", "Technology", "coming",
      "For a fractional CTO or CIO. Next."),
     ("finance", "Finance Command Center", "Finance", "Finance", "coming",
@@ -32,7 +35,7 @@ CENTERS = [
      "For a fractional training and development lead."),
 ]
 CODES = [c[0] for c in CENTERS]
-NEXT = ("people", "technology")
+NEXT = ("technology",)
 NAMES = {c[0]: c[1] for c in CENTERS}
 SHORT = {c[0]: c[2] for c in CENTERS}
 

@@ -1,4 +1,5 @@
 import { ClientTeamsCard } from "../components/ClientTeams";
+import { TwoFactorResets } from "../components/TwoFactor";
 import { PageHead } from "../components/shell";
 import { Me } from "../lib/api";
 
@@ -17,6 +18,7 @@ export function YourTeam({ me }: { me: Me }) {
       <PageHead title="Your team"
         sub="Who sees and changes which work in the portal, team by team." />
       <ClientTeamsCard me={me} company={{ id: me.client_company, is_client_company: true }} />
+      <TwoFactorResets />
     </>
   );
 }

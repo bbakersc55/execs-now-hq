@@ -2,6 +2,7 @@ import { PageHead } from "../components/shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { TwoFactorResets } from "../components/TwoFactor";
 import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import { api, Me, StaffMember } from "../lib/api";
 import { STAFF_ROLES, roleLabel } from "../lib/roles";
@@ -120,6 +121,7 @@ export function Staff({ me }: { me: Me }) {
           disconnects their Gmail. Their contacts, {w.tasks}, notes, and sent mail remain.
         </p>
       </Card>
+      {me.role === "FF" && <TwoFactorResets />}
     </>
   );
 }

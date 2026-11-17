@@ -128,12 +128,14 @@ CAPACITY = {
              "says": "The work coming in needs {demand} a week."},
             {"key": "gap_hours", "label": "Hours short (a minus is spare)", "format": "hours",
              "formula": "sum(roles.demand) - sum(roles.capacity)",
-             "says": "So the team is {gap_hours} a week short of the work. A minus means that "
-                     "many hours to spare."},
+             "says": "So the team is short by {gap_hours} a week.",
+             "says_if_negative": "So the team has {gap_hours} a week to spare.",
+             "says_if_zero": "So the team's time matches the work exactly."},
             {"key": "gap_people", "label": "People short (a minus is spare)", "format": "number",
              "formula": "sum(roles.gap_people)",
-             "says": "In people, that is {gap_people} short across the roles. A minus means "
-                     "spare people."},
+             "says": "In people, that is {gap_people} short across the roles.",
+             "says_if_negative": "In people, that is {gap_people} to spare across the roles.",
+             "says_if_zero": "In people, the roles match the work."},
             {"key": "tightest", "label": "Most stretched role", "format": "text",
              "formula": "argmax(roles.role, roles.gap_people)",
              "says": "{tightest} is the most stretched role: the first place to hire or to "

@@ -2376,3 +2376,41 @@ class PackPromptsFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     prompts = factory.LazyFunction(lambda: [{"title": "Ours", "prompt": "Our own prompt."}])
+
+
+# ------------------------------------------------------------ People (2026-11-17)
+
+class PersonRecordFactory(TenantScopedFactory):
+    """A placeholder person at a client company."""
+
+    class Meta:
+        model = "people.PersonRecord"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    first_name = factory.Sequence(lambda n: f"Person{n}")
+    last_name = "Placeholder"
+
+
+class HRGrantFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.HRGrant"
+
+    tenant = factory.SubFactory(TenantFactory)
+    user = factory.SubFactory(UserFactory)
+    level = "generalist"
+    all_companies = True
+
+
+class PeopleAccessLogFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.PeopleAccessLog"
+
+    tenant = factory.SubFactory(TenantFactory)
+    person = factory.SubFactory(PersonRecordFactory, tenant=factory.SelfAttribute("..tenant"))
+    person_name = "Person Placeholder"
+    actor_name = "Someone"
+    action = "view"
+    fields = ["pay_rate"]
+
