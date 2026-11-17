@@ -27,8 +27,10 @@ class Kind(models.TextChoices):
     #: P10: an SOP read after its read-by day, or a change suggested.
     SOP = "sop", "An SOP read late, or a change suggested"
     #: 2026-11-13: a payer's card form that would not load (the practice
-    #: owner's, or the platform owner's for a subscription card).
-    PAYMENTS = "payments", "A card form that would not load"
+    #: owner's, or the platform owner's for a subscription card). 2026-11-17:
+    #: also a card charge passed over, automatic billing's news, and
+    #: scheduled card jobs refused.
+    PAYMENTS = "payments", "Card payments that need you"
 
 
 class Notice(TenantScopedModel):

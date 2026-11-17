@@ -206,6 +206,11 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         documents(world)
         foundation.stage_rules(world)
         foundation.introductions(world)
+        # 2026-11-17: Acme Fasteners bills automatically: one active on the
+        # 1st and 15th, one with notice given.
+        from .autobill import autobill
+
+        autobill(world)
         foundation.practice_scorecard(world)
         # P8: the Operations Command Center, on, with a playbook and library
         # KPIs in use at Acme Fasteners.

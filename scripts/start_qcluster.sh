@@ -17,4 +17,9 @@ until python manage.py migrate --check > /dev/null 2>&1; do
   sleep 30
 done
 echo "==> $(date -u +%FT%TZ) migrations current"
+# 2026-11-17: this service says whether it can reach the card processor, so
+# Practices and Settings -> Billing warn when web and the worker disagree
+# (apps/billing/worker_state.py). Its jobs report again as they run.
+export APP_SERVICE=worker
+python manage.py report_service || true
 exec python manage.py qcluster

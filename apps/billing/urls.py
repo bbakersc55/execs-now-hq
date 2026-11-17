@@ -9,6 +9,7 @@ router.register("invoice-schedules", views.ScheduleViewSet, basename="invoice-sc
 router.register("portal-invoices", views.PortalInvoiceViewSet, basename="portal-invoice")
 router.register("payment-account", views.PaymentAccountView, basename="payment-account")
 router.register("portal-autopay", views.PortalAutopayView, basename="portal-autopay")
+router.register("portal-billing", views.PortalBillingView, basename="portal-billing")
 router.register("subscription", views.SubscriptionView, basename="subscription")
 router.register("nmi-events", views.NmiEventViewSet, basename="nmi-event")
 router.register("platform/card-payments", views.CardPaymentsSwitchView,

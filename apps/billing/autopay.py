@@ -169,7 +169,16 @@ def save_card(company, *, user, payment_token) -> ClientPaymentMethod:
 
 
 def remove_card(company, *, user) -> None:
+    """Removed, and deleted from the vault. Not while the company bills
+    automatically (2026-11-17): the card can be replaced, never left
+    missing."""
+    from apps.billing.models import BillingAgreement
+
     _refuse_acting()
+    if BillingAgreement.all_objects.filter(client_company=company, ended_at__isnull=True,
+                                           stopped_at__isnull=True).exists():
+        raise AutopayRefused("Automatic billing is on, so the card on file can't be removed. "
+                             "Replace it with another card, or stop automatic billing first.")
     with transaction.atomic():
         card = (ClientPaymentMethod.all_objects.select_for_update()
                 .filter(client_company=company, removed_at__isnull=True).first())
@@ -247,7 +256,13 @@ def _audit(company, verb, user, **payload) -> None:
 
 def email_line(invoice) -> tuple[AutopayConsent | None, str]:
     """For an invoice email being queued: the standing consent it will be
-    charged under, and the sentence that says so; or (None, "")."""
+    charged under, and the sentence that says so; or (None, ""). An invoice
+    billed automatically (2026-11-17) is charged under its agreement, not a
+    consent: its sentence is `recurring.email_line`'s."""
+    if invoice.billing_agreement_id:
+        from apps.billing import recurring
+
+        return None, recurring.email_line(invoice)
     if not invoice.client_company_id:
         return None, ""
     consent = standing_consent(invoice.client_company)
@@ -302,29 +317,140 @@ def due_invoices(tenant, today):
 
 
 def charge_due(tenant, *, today) -> int:
+    """Each invoice due under a standing consent, charged; and, 2026-11-17,
+    **never passed over silently**: every invoice due that is not charged,
+    for any reason but "nothing owed" or the try rule's own (tried today, in
+    flight, or both tries used, each already told), gets the reason on its
+    history and its practice owner is told."""
     made = 0
     for invoice in due_invoices(tenant, today):
         consent = invoice.autopay_consent
+        if invoice.balance_cents <= 0:
+            continue
         # Sent after consent, to the company that gave it.
-        if invoice.sent_at < consent.consented_at \
-                or consent.client_company_id != invoice.client_company_id \
-                or invoice.balance_cents <= 0:
+        if invoice.sent_at < consent.consented_at:
+            passed_over(invoice, "It was sent before auto-pay was turned on, so its email did "
+                                 "not say the card would be charged.", today)
+            continue
+        if consent.client_company_id != invoice.client_company_id:
+            passed_over(invoice, "Its auto-pay consent is another company's.", today)
+            continue
+        if not _another_try_due(invoice, today):
             continue
         card = card_on_file(invoice.client_company)
-        if card is None or not _another_try_due(invoice, today):
-            continue
-        account_row = payment_accounts.PaymentAccount.all_objects.filter(tenant=tenant).first()
-        if account_row is None or account_row.environment != card.environment:
-            # Saved in the other environment's vault: it cannot be charged there.
+        reason = unusable_card(tenant, card)
+        if reason:
+            passed_over(invoice, reason, today)
             continue
         try:
             attempt, message = card_payments.charge_on_file(invoice, card=card)
-        except card_payments.PaymentRefused:
+        except card_payments.PaymentRefused as exc:
+            passed_over(invoice, refusal_reason(exc), today)
             continue
         made += 1
         if attempt.status in (A.DECLINED, A.FAILED):
             _tell_failure(attempt, card, message)
+    # Tied to a consent that was turned off since: not charged, and said so.
+    revoked = (ClientInvoice.all_objects
+               .filter(tenant=tenant, status__in=ClientInvoice.OPEN, due_date__lte=today,
+                       sent_at__isnull=False, autopay_consent__revoked_at__isnull=False)
+               .select_related("autopay_consent", "client_company", "tenant"))
+    for invoice in revoked:
+        if invoice.balance_cents > 0:
+            consent = invoice.autopay_consent
+            passed_over(invoice, f"Auto-pay was turned off "
+                                 f"({consent.revoke_reason or 'by the client'}) on "
+                                 f"{timezone.localtime(consent.revoked_at):%B %-d, %Y}, so the "
+                                 "card was not charged.", today, daily=False)
     return made
+
+
+def unusable_card(tenant, card) -> str:
+    """Why the card on file can't be charged today, or "". Checks what the
+    app itself knows; the processor's Test Mode is read at the charge."""
+    if card is None:
+        return "There is no card on file for the company, so nothing was charged."
+    if gw.stand_in_refused():
+        return ("Real calls to the card processor are off where scheduled charges run (the "
+                "worker's NMI_LIVE_CALLS), so nothing was charged. The platform owner has been "
+                "told.")
+    if gw.held():
+        return "Card payments are paused by the platform owner, so nothing was charged."
+    if not payment_accounts.is_ready(tenant):
+        return ("The practice's card account isn't ready (its keys or its last connection test, "
+                "under Settings, Billing), so nothing was charged.")
+    account_row = payment_accounts.PaymentAccount.all_objects.filter(tenant=tenant).first()
+    if account_row is None or account_row.environment != card.environment:
+        return (f"The card ending {card.last4} was saved in the card processor's "
+                f"{card.environment} environment, and the practice's account is now "
+                f"{account_row.environment if account_row else 'not connected'}, so it can't be "
+                "charged. The client needs to save the card again.")
+    return ""
+
+
+def refusal_reason(exc) -> str:
+    text = str(exc)
+    if text == gw.PAUSED_MESSAGE:
+        return unusable_card_paused()
+    return text
+
+
+def unusable_card_paused() -> str:
+    if gw.stand_in_refused():
+        return ("Real calls to the card processor are off where scheduled charges run (the "
+                "worker's NMI_LIVE_CALLS), so nothing was charged.")
+    return "Card payments are paused, so nothing was charged."
+
+
+PASSED_OVER = "autopay_passed_over"
+
+
+def passed_over(invoice, reason: str, today, *, daily: bool = True) -> bool:
+    """The reason on the invoice's history, once a day for each reason (once
+    in all, not `daily`); and its practice owner told, once for the invoice:
+    a Notice and an email. The client is not emailed. True if newly
+    recorded."""
+    from apps.tenancy.models import AuditEvent
+
+    seen = AuditEvent.all_objects.filter(
+        tenant_id=invoice.tenant_id, target_type="client_invoice", target_id=invoice.pk,
+        verb=f"billing.{PASSED_OVER}", payload__reason=reason)
+    if (seen.filter(payload__day=today.isoformat()) if daily else seen).exists():
+        return False
+    services.audit(invoice, PASSED_OVER, None, reason=reason, day=today.isoformat())
+    log.warning("auto-pay passed over invoice %s: %s", invoice.pk, reason)
+    try:
+        _tell_passed_over(invoice, reason)
+    except Exception as exc:  # noqa: BLE001 — recorded on the invoice either way
+        log.warning("auto-pay pass-over notice for %s not sent (%s)", invoice.pk,
+                    type(exc).__name__)
+    return True
+
+
+def _tell_passed_over(invoice, reason: str) -> None:
+    from apps.crm.models import OutboxMessage
+    from apps.notify import service as notify
+    from apps.notify.models import Kind
+    from apps.tenancy.context import tenant_context
+    from apps.tenancy.models import Membership, Role
+
+    company = invoice.client_company.name if invoice.client_company_id else "A client"
+    amount = money.dollars(invoice.balance_cents)
+    title = f"Not charged: invoice {invoice.number}"
+    text = f"{company}'s invoice {invoice.number} ({amount}) was not charged. {reason}"
+    owners = Membership.all_objects.filter(tenant=invoice.tenant, role=Role.FF,
+                                           revoked_at__isnull=True).select_related("user")
+    with tenant_context(invoice.tenant_id):
+        for owner in owners:
+            notice = notify.tell(tenant_id=invoice.tenant_id, recipient_id=owner.user_id,
+                                 kind=Kind.PAYMENTS, title=title, text=text,
+                                 url=f"/invoices/{invoice.pk}", source_type=PASSED_OVER,
+                                 source_id=invoice.pk)
+            if notice is not None and owner.user.email:
+                _mail(invoice, OutboxMessage.Producer.PAYMENT_NOTICE, owner.user.email, title,
+                      [text, "The invoice is still open, with its pay link. Nothing was sent "
+                             "to the client about this."], invoice, internal=True,
+                      source_type="client_invoice")
 
 
 def _another_try_due(invoice, today) -> bool:
@@ -385,7 +511,9 @@ def _send_failure(attempt, card, message) -> None:
 def _client_addresses(invoice) -> list[str]:
     seen = []
     consent = invoice.autopay_consent
-    for address in (invoice.email_to, consent.consented_by.email if consent else ""):
+    agreement = invoice.billing_agreement
+    for address in (invoice.email_to, consent.consented_by.email if consent else "",
+                    agreement.agreed_by.email if agreement else ""):
         if address and address.lower() not in (s.lower() for s in seen):
             seen.append(address)
     return seen
@@ -399,7 +527,8 @@ def _owner_addresses(tenant) -> list[str]:
         if m.user.email]
 
 
-def _mail(invoice, producer, to, subject, lines, source, *, internal=False) -> None:
+def _mail(invoice, producer, to, subject, lines, source, *, internal=False,
+          source_type="payment_attempt") -> None:
     from apps.crm.services import email_layout, outbox
 
     outbox.create_message(
@@ -408,7 +537,7 @@ def _mail(invoice, producer, to, subject, lines, source, *, internal=False) -> N
         body_html=email_layout.document(
             invoice.tenant, subject=subject, preheader=lines[0], internal=internal,
             content_html="".join(f"<p>{escape(line)}</p>" for line in lines)),
-        thread=services._thread_for(invoice), source_type="payment_attempt",
+        thread=services._thread_for(invoice), source_type=source_type,
         source_id=source.pk, force_direct=True)
 
 

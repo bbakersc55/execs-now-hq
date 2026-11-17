@@ -326,10 +326,19 @@ def _store_pdf(invoice):
 
 # ------------------------------------------------------------ charging
 
+TEST_CARD_LIVE = ("The card on file was saved while the card processor was in Test Mode, so "
+                  "it is never charged now that the processor is live. Add the card again.")
+
+
 def charge(invoice, *, by=None) -> tuple[PracticeInvoice, str]:
     """One sale on the platform's vault record for the invoice's balance,
     carrying its reference. Never two at once, never one after a lost answer
-    until the lookup has settled it."""
+    until the lookup has settled it. 2026-11-17: a card saved in Test Mode is
+    charged only while the platform account still says Test Mode."""
+    card = subscription_for(invoice.tenant)
+    if card.card_is_test and card.nmi_vault_id and not gw.paused() \
+            and gateway_mode.for_platform() is not True:
+        raise SubscriptionRefused(TEST_CARD_LIVE)
     with transaction.atomic():
         invoice = PracticeInvoice.all_objects.select_for_update().get(pk=invoice.pk)
         if invoice.status != I.OPEN or invoice.balance_cents <= 0:
@@ -458,9 +467,31 @@ def run(tenant, *, today=None) -> dict:
         try:
             charge(invoice)
             charged = 1
-        except SubscriptionRefused:
-            pass
+        except SubscriptionRefused as exc:
+            if str(exc) == TEST_CARD_LIVE:
+                _test_card_passed_over(invoice)
     return {"charged": charged, "looked_up": looked_up}
+
+
+def _test_card_passed_over(invoice) -> None:
+    """Never silent (2026-11-17): the reason on the invoice, and the platform
+    owner told once for it."""
+    from apps.notify import service as notify
+    from apps.notify.models import Kind
+    from apps.tenancy.models import Membership, Role
+
+    PracticeInvoice.all_objects.filter(pk=invoice.pk).update(last_charge_text=TEST_CARD_LIVE)
+    home = owners_practice()
+    if home is None:
+        return
+    for owner in Membership.all_objects.filter(tenant=home, role=Role.FF,
+                                               revoked_at__isnull=True):
+        notify.tell(tenant_id=home.pk, recipient_id=owner.user_id, kind=Kind.PAYMENTS,
+                    title=f"Not charged: {invoice.number}",
+                    text=f"{invoice.tenant.name}'s subscription invoice {invoice.number} was "
+                         f"not charged. {TEST_CARD_LIVE}",
+                    url="/practices", source_type="subscription_test_card",
+                    source_id=invoice.pk)
 
 
 def resolve_unknown(tenant) -> int:

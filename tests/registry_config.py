@@ -42,7 +42,7 @@ from apps.tenancy.models import (
 )
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, InvoiceSettings,
-    NmiEvent, CardRefund,
+    NmiEvent, CardRefund, BillingAgreement,
     AutopayConsent, ClientPaymentMethod, PaymentAccount, PaymentAttempt, PracticeInvoice,
     PracticeInvoiceLine, PracticeSubscription, PracticeSubscriptionAddon,
 )
@@ -366,6 +366,9 @@ register(NmiEvent, factories.NmiEventFactory, api_exposed=False)
 # 2026-11-16: money given back on a card payment, read through its invoice
 # (the practice owner's) or the Practices area (the platform owner's).
 register(CardRefund, factories.CardRefundFactory, api_exposed=False)
+# 2026-11-17: a client owner's agreement to automatic billing, read through
+# its recurring invoice (the practice's) or the portal (the client owner's).
+register(BillingAgreement, factories.BillingAgreementFactory, api_exposed=False)
 
 # M5 part 4: a company's Track connection and a KPI's Track measure, served by
 # /api/scorecard/track/ through `access.company_for` (tests/test_scorecard_track.py).

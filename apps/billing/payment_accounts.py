@@ -21,7 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing import gateway as gw
-from apps.billing import gateway_mode, testmode
+from apps.billing import gateway_mode, testmode, worker_state
 from apps.billing.models import PaymentAccount
 from apps.tenancy.models import SecretKind, TenantSecret
 
@@ -93,6 +93,9 @@ def state(tenant) -> dict:
         # test payments waiting to be cleared once it is off.
         "gateway_mode": gateway_mode.practice_state(tenant),
         "test_payments": testmode.practice_summary(tenant),
+        # 2026-11-17: in production, a red warning when the worker (which
+        # charges by schedule) can't reach the processor.
+        "worker": worker_state.state(for_practice=True),
     }
 
 

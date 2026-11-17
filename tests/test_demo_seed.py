@@ -143,9 +143,22 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         clients = Company.objects.filter(is_client_company=True)
         assert clients.count() == 11
         fees = [row.lines[0]["unit_price_cents"] for row in
-                ClientInvoiceSchedule.objects.filter(is_active=True)]
+                ClientInvoiceSchedule.objects.filter(is_active=True, mode="send")]
         assert len(fees) == 11 and min(fees) == 200_000 and max(fees) == 800_000
         assert sum(fees) / len(fees) == 400_000
+        # 2026-11-17: Acme Fasteners also bills automatically: one active on
+        # the 1st and 15th, one with notice given; nothing billed yet.
+        from apps.billing import recurring
+
+        auto = {s.days_of_month and tuple(s.days_of_month): s for s in
+                ClientInvoiceSchedule.objects.filter(mode="auto",
+                                                     client_company__name="Acme Fasteners")}
+        assert set(auto) == {(1, 15), (15,)}
+        assert recurring.state_of(auto[(1, 15)]) == "active"
+        assert recurring.state_of(auto[(15,)]) == "ending"
+        ending = recurring.in_force(auto[(15,)])
+        assert ending.ends_set_by == "client" and ending.notice_given_by is not None
+        assert not ClientInvoice.objects.filter(billing_date__isnull=False).exists()
         portal = Membership.objects.filter(role__in=("FCC", "ECC"))
         assert all(clients.filter(pk=m.client_company_id).exists() for m in portal)
         assert portal.filter(role="FCC").count() == 11

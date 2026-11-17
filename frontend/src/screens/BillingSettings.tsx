@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PageHead } from "../components/shell";
 import { ClearTestPayments, GatewayModeBanner } from "../components/TestMode";
 import { Banner, Card, Field, Pill, when } from "../components/ui";
-import { GatewayMode, TestPayments, api } from "../lib/api";
+import { GatewayMode, TestPayments, WorkerState, api } from "../lib/api";
 import { Cleared, cleared } from "./Invoices";
 import { YourSubscription } from "./YourSubscription";
 
@@ -29,6 +29,8 @@ export interface PaymentAccountState {
    *  payments waiting to be cleared once it is off. */
   gateway_mode?: GatewayMode;
   test_payments?: TestPayments;
+  /** 2026-11-17: in production, why scheduled card charges aren't running. */
+  worker?: WorkerState;
 }
 
 /**
@@ -86,6 +88,9 @@ export function BillingSettings() {
     <>
       <PageHead title="Billing"
         sub="Your own NMI account, which your clients' card payments will go to." />
+      {s.worker?.warning && (
+        <div role="alert"><Banner kind="bad"><strong>{s.worker.warning}</strong></Banner></div>
+      )}
       {s.gateway === "stub" && (
         <Banner kind="warn">Card payments are switched off on this server. The connection
           test answers from a stand-in, and nothing reaches NMI.</Banner>

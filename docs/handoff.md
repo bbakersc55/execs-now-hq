@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-16 UTC**, after Release 44 and the card-fee decision. **The next
-session starts at "2026-11-16, later: no card fee on invoices" just below**;
-then "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
+2026-11-17 UTC**, after automatic recurring billing was built on `dev`. **The
+next session starts at "2026-11-17: automatic recurring billing, on dev" just
+below**; then "2026-11-16, later: no card fee on invoices"; then
+"2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
 "2026-11-13: Release 41, the SkyRun bonus"; then
@@ -32,6 +33,41 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-17: automatic recurring billing, on dev
+
+- **Built on `dev`, not released.** Spec as built: `docs/p4_billing.md` §14.
+  Migrations `billing 0014_automatic_billing` (additive) and `notify
+  0006_payments_notices` (choices only), applied on the laptop's
+  `execsnowhq_local` after a green gate.
+- **What skipped INV-0004 on 2026-11-16:** `NMI_LIVE_CALLS` is true on web
+  and not on the worker (`qcluster`) in production. **Waiting on the owner:**
+  set `NMI_LIVE_CALLS=true` on `qcluster` in Railway (it redeploys the
+  worker). Until then nothing is charged by schedule (auto-pay, automatic
+  billing, subscriptions, lookups, the read-back). After this release,
+  Practices and Settings → Billing say so in red, and the platform owner gets
+  a Notice and an email once a day. Before setting it, look at what the
+  worker's first 7:00 and 9:00 runs would charge across practices: every
+  practice subscription left open since the 1st, and any invoice due under
+  auto-pay.
+- **Auto-pay never passes over an invoice silently** now: the reason goes on
+  the invoice's history and the practice owner is told. A card saved in Test
+  Mode is never charged once the processor is live.
+- **Automatic billing:** "Bill automatically" beside "You send each invoice";
+  monthly on days 1 to 28 (the 1st and 15th in one); the client owner agrees
+  in the portal with a card; invoices made and emailed by themselves (3 days
+  before, by default) at 5:00 and charged at 9:00 on the date; Stop with
+  notice to the end of the next month; the owner can end it earlier or stop
+  now; price changes from the first date at least 7 days out; "Run the next
+  billing now" only in Test Mode.
+- **Proved:** the tests (§14.9) and NMI's sandbox in headless Chrome
+  (`nmi_token_proof.py --automatic` and `--run-now`).
+- **Demo:** Acme Fasteners has one active recurring invoice billed
+  automatically on the 1st and 15th, and one with notice given.
+- **On release:** no new scheduled job; the start scripts now set
+  `APP_SERVICE` (web, worker) and run `manage.py report_service`. Nothing to
+  set in Railway for the release itself; `NMI_LIVE_CALLS` on `qcluster` is
+  the owner's separate step above.
 
 ## 2026-11-16, later: no card fee on invoices (a decision; no code)
 

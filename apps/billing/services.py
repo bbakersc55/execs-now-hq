@@ -843,7 +843,17 @@ def _schedule_facts(schedule) -> dict:
         "pay_instructions": schedule.pay_instructions,
         "email_subject": schedule.email_subject, "email_body": schedule.email_body,
         "is_active": schedule.is_active,
+        "days_of_month": list(schedule.days_of_month or []),
+        "first_billing_on": schedule.first_billing_on.isoformat()
+        if schedule.first_billing_on else "",
+        "term_ends_on": schedule.term_ends_on.isoformat() if schedule.term_ends_on else "",
+        "lead_days": schedule.lead_days,
     }
+
+
+#: What can't change on a recurring invoice that bills automatically while
+#: the client's agreement is in force: the client agreed to it as it was.
+AGREED_TIMING = ("days_of_month", "first_billing_on", "term_ends_on")
 
 
 @transaction.atomic
@@ -851,7 +861,8 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
                   day_of_month=None, starts_on=None, ends_on=..., lines=None, notes=None,
                   terms=None, is_active=None, income_category=..., terms_days=...,
                   pay_instructions=None, email_subject=None,
-                  email_body=None) -> ClientInvoiceSchedule:
+                  email_body=None, mode=None, days_of_month=None, first_billing_on=...,
+                  term_ends_on=..., lead_days=None) -> ClientInvoiceSchedule:
     """Make a recurring invoice, or change one (owner, 2026-10-14: every part
     of it can be edited, where before it could only be paused).
 
@@ -863,10 +874,17 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
     today = timezone.localdate()
     if made:
         _recipient(tenant, kind=K.RECURRING, company=client_company, contact=contact)
+        if mode not in (None, *ClientInvoiceSchedule.Mode.values):
+            raise BillingError("A recurring invoice is sent by you or billed automatically.")
         schedule = ClientInvoiceSchedule(tenant=tenant, client_company=client_company,
                                          contact=contact, created_by=actor,
-                                         day_of_month=0, next_on=today)
-        if lines is None or day_of_month is None:
+                                         day_of_month=0, next_on=today,
+                                         mode=mode or ClientInvoiceSchedule.Mode.SEND)
+        if schedule.mode == ClientInvoiceSchedule.Mode.AUTO:
+            if lines is None or days_of_month is None or first_billing_on in (None, ...):
+                raise BillingError("Automatic billing needs its lines, its days of the month "
+                                   "and its first billing date.")
+        elif lines is None or day_of_month is None:
             raise BillingError("A schedule needs its lines and a day of the month.")
         before = {}
     else:
@@ -882,6 +900,18 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
             _recipient(tenant, kind=K.RECURRING, company=schedule.client_company,
                        contact=contact)
             schedule.contact = contact
+        if mode is not None and mode != schedule.mode:
+            raise BillingError("Whether a recurring invoice is sent by you or billed "
+                               "automatically is chosen when it is made. Make a new one "
+                               "instead.")
+    if schedule.mode == ClientInvoiceSchedule.Mode.AUTO:
+        return _save_automatic(tenant, schedule, made=made, before=before, actor=actor,
+                               lines=lines, days_of_month=days_of_month,
+                               first_billing_on=first_billing_on, term_ends_on=term_ends_on,
+                               lead_days=lead_days, notes=notes, terms=terms,
+                               pay_instructions=pay_instructions, email_subject=email_subject,
+                               email_body=email_body, income_category=income_category,
+                               client_company=client_company)
     old_day = schedule.day_of_month
     if day_of_month is not None:
         if isinstance(day_of_month, bool) or not isinstance(day_of_month, int) \
@@ -937,14 +967,109 @@ def save_schedule(tenant, *, actor, schedule=None, client_company=None, contact=
     return schedule
 
 
+def _save_automatic(tenant, schedule, *, made, before, actor, lines, days_of_month,
+                    first_billing_on, term_ends_on, lead_days, notes, terms,
+                    pay_instructions, email_subject, email_body, income_category,
+                    client_company) -> ClientInvoiceSchedule:
+    """A recurring invoice that bills automatically (2026-11-17,
+    `apps/billing/recurring.py`), made or changed. While the client's
+    agreement is in force its days, first date and contract end are fixed,
+    and a change of lines or price waits for a billing date at least 7 days
+    out (the client is emailed)."""
+    from apps.billing import recurring, timing
+
+    agreement = None if made else recurring.in_force(schedule)
+    if agreement is not None:
+        if client_company is not None and client_company.pk != schedule.client_company_id:
+            raise BillingError("The client can't change while its agreement is in force.")
+        asked = {"days_of_month": days_of_month,
+                 "first_billing_on": None if first_billing_on is ... else first_billing_on,
+                 "term_ends_on": ... if term_ends_on is ... else term_ends_on}
+        if asked["days_of_month"] is not None and \
+                timing.clean_days(asked["days_of_month"]) != schedule.days_of_month:
+            raise _agreed(schedule)
+        if asked["first_billing_on"] is not None and \
+                _a_date(asked["first_billing_on"], "The first billing date") \
+                != schedule.first_billing_on:
+            raise _agreed(schedule)
+        if asked["term_ends_on"] is not ... and \
+                (_a_date(asked["term_ends_on"], "The contract end") if asked["term_ends_on"]
+                 else None) != schedule.term_ends_on:
+            raise _agreed(schedule)
+    else:
+        try:
+            if days_of_month is not None:
+                schedule.days_of_month = timing.clean_days(days_of_month)
+            if first_billing_on is not ...:
+                schedule.first_billing_on = (_a_date(first_billing_on, "The first billing date")
+                                             if first_billing_on else None)
+            if term_ends_on is not ...:
+                schedule.term_ends_on = (_a_date(term_ends_on, "The contract end")
+                                         if term_ends_on else None)
+            timing.check(schedule)
+        except timing.TimingError as exc:
+            raise BillingError(str(exc)) from None
+        if made and schedule.first_billing_on < timezone.localdate():
+            raise BillingError("The first billing date can't be in the past.")
+        schedule.day_of_month = schedule.days_of_month[0]
+        schedule.next_on = schedule.first_billing_on
+    if lead_days is not None:
+        if isinstance(lead_days, bool) or not isinstance(lead_days, int) \
+                or not 0 <= lead_days <= 14:
+            raise BillingError("The invoice is sent 0 to 14 days before each billing date.")
+        schedule.lead_days = lead_days
+    if lines is not None:
+        cleaned = _schedule_lines(tenant, lines)
+        if agreement is not None and cleaned != schedule.lines:
+            if made or schedule.pk is None:
+                schedule.lines = cleaned
+            else:
+                schedule.save()
+                recurring.change_lines(schedule, cleaned, actor=actor)
+        elif agreement is None:
+            schedule.lines = cleaned
+            schedule.pending_lines = schedule.pending_from = None
+    for field, value in (("notes", notes), ("terms", terms),
+                         ("pay_instructions", pay_instructions), ("email_body", email_body)):
+        if value is not None:
+            setattr(schedule, field, str(value).strip())
+    if email_subject is not None:
+        schedule.email_subject = " ".join(str(email_subject).split())[:200]
+    _check_merge(schedule.email_subject)
+    _check_merge(schedule.email_body)
+    if income_category is not ...:
+        schedule.income_category = _income_category(tenant, income_category)
+    schedule.terms_days = None
+    schedule.save()
+    after = _schedule_facts(schedule)
+    changed = {field: {"from": before.get(field), "to": value}
+               for field, value in after.items() if not made and before.get(field) != value}
+    if made or changed:
+        AuditEvent.all_objects.create(
+            tenant=tenant, actor=actor,
+            verb="billing.schedule_created" if made else "billing.schedule_changed",
+            target_type="client_invoice_schedule", target_id=schedule.pk,
+            payload={"company": str(schedule.client_company_id), "mode": schedule.mode,
+                     **({"amount": after["amount"]} if made else {"changed": changed})})
+    return schedule
+
+
+def _agreed(schedule) -> BillingError:
+    return BillingError(f"{schedule.client_company.name} agreed to these billing days, this "
+                        "first date and this contract end. They can't change while the "
+                        "agreement is in force; end it and ask for a new agreement instead.")
+
+
 def run_schedules(tenant, today=None) -> list[ClientInvoice]:
     """One draft for each schedule whose day has come. It numbers nothing and
     sends nothing. A day missed while the worker was down is made up once, not
-    once per missed day."""
+    once per missed day. Only "You send each invoice": one that bills
+    automatically is `recurring.make_due`'s (2026-11-17)."""
     today = today or timezone.localdate()
     made = []
     due = ClientInvoiceSchedule.all_objects.filter(tenant=tenant, is_active=True,
-                                                   next_on__lte=today)
+                                                   next_on__lte=today,
+                                                   mode=ClientInvoiceSchedule.Mode.SEND)
     for row in due:
         with transaction.atomic():
             schedule = ClientInvoiceSchedule.all_objects.select_for_update().get(pk=row.pk)

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Modal, PageHead } from "../components/shell";
 import { NmiCardForm } from "../components/NmiCardForm";
 import { ClientAutopay } from "./ClientAutopay";
+import { ClientBilling } from "./ClientBilling";
 import { Banner, Card, Empty, Pill } from "../components/ui";
 import { PAYMENTS_PAUSED, PayConfig, PayResult, PortalInvoice, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
@@ -86,6 +87,7 @@ export function ClientInvoices() {
       </Card>
       {paying && <PayPanel invoice={paying} onDone={finished}
         onCancel={() => setPaying(null)} />}
+      <ClientBilling />
       <ClientAutopay />
     </>
   );

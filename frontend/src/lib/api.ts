@@ -1941,6 +1941,53 @@ export interface InvoiceSchedule {
   is_active: boolean;
   /** As on an invoice: the practice owner's only. */
   income_category?: string;
+  /** 2026-11-17: "send" (you send each invoice) or "auto" (bill automatically). */
+  mode: "send" | "auto"; mode_label: string;
+  days_of_month: number[]; first_billing_on: string | null; term_ends_on: string | null;
+  lead_days: number;
+  /** Bill automatically only; null for "You send each invoice". */
+  automatic: AutomaticBilling | null;
+}
+
+export type AutomaticState = "waiting" | "active" | "ending" | "ended";
+
+/** 2026-11-17: what the practice owner sees of a recurring invoice billed
+ *  automatically. */
+export interface AutomaticBilling {
+  state: AutomaticState; state_label: string;
+  next_billing_on: string | null; last_billed_on: string | null; timing_words: string;
+  ends_on: string | null; ends_set_by: "" | "client" | "owner";
+  timeline: { what: string; on: string; by?: string; future?: boolean }[];
+  pending: { from: string; total_cents: number } | null;
+  invited_at: string | null;
+  /** Only while the card processor last said Test Mode. */
+  can_run_now: boolean;
+}
+
+/** 2026-11-17: one recurring invoice billed automatically, as its client
+ *  owner sees it in the portal. */
+export interface PortalBilling {
+  id: string; state: AutomaticState;
+  what: { description: string; amount_cents: number }[];
+  total_cents: number; timing_words: string;
+  /** The terms in plain words, with what the agreement is checked against. */
+  words: string; version: string; key: string;
+  next_billing_on: string | null; ends_on: string | null; last_charge_on: string | null;
+  can_withdraw: boolean; agreed_at: string | null; agreed_by?: string;
+  ended_on?: string | null;
+  pending: { from: string; total_cents: number } | null;
+}
+
+/** 2026-11-17: whether the worker, which charges by schedule, can reach the
+ *  card processor. `warning` is said in production only. */
+export interface WorkerState {
+  production: boolean; warning: string;
+  web?: ServiceRow | null; worker?: ServiceRow | null; web_live_calls?: boolean | null;
+  refused_today?: { job: string; label: string; practices: number; runs: number }[];
+}
+
+export interface ServiceRow {
+  live_calls: boolean; app_environment: string; reported_at: string; minutes_ago: number;
 }
 
 /** The finance settings (the practice owner's). */
@@ -2044,6 +2091,8 @@ export interface CardPaymentsSwitch {
   card_form: "component" | "collect";
   /** 2026-11-16: the platform account's Test Mode, and its test charges. */
   gateway_mode?: GatewayMode; test_payments?: TestPayments;
+  /** 2026-11-17: what web and the worker each report. */
+  worker?: WorkerState;
 }
 
 // ------------------------------------------------------------- the books (P5)

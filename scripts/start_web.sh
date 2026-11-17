@@ -11,6 +11,10 @@ echo "==> $(date -u +%FT%TZ) web starting (APP_ENVIRONMENT=${APP_ENVIRONMENT:-un
 # timeout on web (railway/web.json) must stay longer than this wait.
 python manage.py migrate_if_empty --wait 360 --every 10
 python manage.py check --fail-level ERROR
+# 2026-11-17: this service says whether it can reach the card processor
+# (apps/billing/worker_state.py).
+export APP_SERVICE=web
+python manage.py report_service || true
 # The access log masks signing tokens in paths and Referers (2026-10-29,
 # config/log_masking.py).
 exec gunicorn config.wsgi --bind 0.0.0.0:8080 --workers 3 --timeout 120 --access-logfile - \

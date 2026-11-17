@@ -19,7 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.ratelimit import RateLimit, client_ip, too_many
-from apps.billing import money, readback, services
+from apps.billing import money, readback, recurring, services
 from apps.billing.models import (
     ClientInvoice, ClientInvoiceLine, ClientInvoiceSchedule, ClientPayment, NmiEvent,
     PaymentAttempt,
@@ -594,6 +594,14 @@ class ScheduleViewSet(BillingViewSet):
             "pay_instructions": row.pay_instructions,
             "email_subject": row.email_subject, "email_body": row.email_body,
             **books_category(row, self._role()),
+            # 2026-11-17: "You send each invoice" or "Bill automatically".
+            "mode": row.mode, "mode_label": row.get_mode_display(),
+            "days_of_month": list(row.days_of_month or []),
+            "first_billing_on": row.first_billing_on.isoformat() if row.first_billing_on
+            else None,
+            "term_ends_on": row.term_ends_on.isoformat() if row.term_ends_on else None,
+            "lead_days": row.lead_days,
+            "automatic": recurring.represent(row, owner=self._role() == Role.FF) or None,
         }
 
     def list(self, request):
@@ -609,9 +617,18 @@ class ScheduleViewSet(BillingViewSet):
         data = request.data
         fields = {}
         for name in ("day_of_month", "starts_on", "lines", "notes", "terms", "is_active",
-                     "pay_instructions", "email_subject", "email_body"):
+                     "pay_instructions", "email_subject", "email_body", "mode",
+                     "days_of_month", "lead_days"):
             if name in data:
                 fields[name] = data[name]
+        for name in ("first_billing_on", "term_ends_on"):
+            if name in data:
+                fields[name] = data[name]
+        auto = (data.get("mode") if schedule is None else schedule.mode) == "auto"
+        if auto and self._role() != Role.FF:
+            # It charges a card: the practice owner's alone.
+            return Response({"detail": "Only the practice owner can set up or change automatic "
+                                       "billing."}, status=403)
         if "ends_on" in data:
             fields["ends_on"] = data["ends_on"]
         if "terms_days" in data:
@@ -647,6 +664,56 @@ class ScheduleViewSet(BillingViewSet):
         if schedule is None:
             raise Http404
         return self._save(request, schedule)
+
+    # --- 2026-11-17: automatic billing, the practice owner's alone.
+
+    def _automatic(self, pk, fn):
+        if (refused := self._owner()):
+            return refused
+        schedule = self.schedules().filter(pk=pk).first() if _uuid(pk) else None
+        if schedule is None:
+            raise Http404
+        try:
+            message = fn(schedule)
+        except recurring.BillingRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        except services.BillingError as exc:
+            return self._refusal(exc)
+        schedule.refresh_from_db()
+        return Response({**self._represent(schedule), "message": message or ""})
+
+    @action(detail=True, methods=["post"], url_path="send-link")
+    def send_link(self, request, pk=None):
+        """Email the client owner the link to agree."""
+        def run(schedule):
+            n = recurring.send_link(schedule, actor=request.user)
+            return f"The link was emailed to {n} client owner{'' if n == 1 else 's'}."
+        return self._automatic(pk, run)
+
+    @action(detail=True, methods=["post"], url_path="set-end")
+    def set_end(self, request, pk=None):
+        """{ends_on} brings the end earlier (never later); {now: true} stops at once."""
+        def run(schedule):
+            if request.data.get("now") is True:
+                recurring.set_end(schedule, actor=request.user, at_once=True)
+                return "Automatic billing is stopped. The client has been emailed."
+            raw = request.data.get("ends_on")
+            try:
+                day = services._a_date(raw, "The last day") if raw else None
+            except services.BillingError as exc:
+                raise recurring.BillingRefused(str(exc), 400) from None
+            agreement = recurring.set_end(schedule, actor=request.user, ends_on=day)
+            return (f"Billing now ends {recurring._date(agreement.ends_on)}. The client has "
+                    "been emailed.")
+        return self._automatic(pk, run)
+
+    @action(detail=True, methods=["post"], url_path="run-now")
+    def run_now(self, request, pk=None):
+        """Test Mode only: make, send and charge the next invoice at once."""
+        def run(schedule):
+            _invoice, message = recurring.run_next_now(schedule, actor=request.user)
+            return message
+        return self._automatic(pk, run)
 
 
 class NmiEventViewSet(BillingViewSet):
@@ -925,6 +992,64 @@ class PortalAutopayView(viewsets.ViewSet):
         return _form_failed(request, where="autopay", company=self.company())
 
 
+class PortalBillingView(viewsets.ViewSet):
+    """2026-11-17: automatic billing in the portal, under Invoices: each
+    recurring invoice the practice bills automatically, its terms, and the
+    client owner's agreement, notice and withdrawal. **A client owner's
+    only**, like the card on file (`PortalAutopayView`)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def company(self):
+        return PortalAutopayView.company(self)
+
+    def _schedule(self, pk):
+        company = self.company()
+        schedule = (ClientInvoiceSchedule.all_objects
+                    .filter(pk=pk, client_company=company, mode="auto", is_active=True)
+                    .select_related("tenant", "client_company").first()) if _uuid(pk) else None
+        if schedule is None:
+            raise Http404
+        return schedule
+
+    def _do(self, pk, fn):
+        schedule = self._schedule(pk)
+        try:
+            fn(schedule)
+        except recurring.BillingRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response(recurring.portal(schedule.client_company))
+
+    def list(self, request):
+        return Response(recurring.portal(self.company()))
+
+    @action(detail=True, methods=["post"])
+    def agree(self, request, pk=None):
+        if request.data.get("agree") is not True:
+            return Response({"detail": "Tick the box to agree first."}, status=400)
+        return self._do(pk, lambda schedule: recurring.agree(
+            schedule, user=request.user, version=request.data.get("version", ""),
+            key=request.data.get("key", ""), ip_address=client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT", "")))
+
+    @action(detail=True, methods=["get"], url_path="stop-preview")
+    def stop_preview(self, request, pk=None):
+        schedule = self._schedule(pk)
+        try:
+            return Response(recurring.stop_preview(schedule))
+        except recurring.BillingRefused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+
+    @action(detail=True, methods=["post"])
+    def stop(self, request, pk=None):
+        return self._do(pk, lambda schedule: recurring.give_notice(schedule, user=request.user))
+
+    @action(detail=True, methods=["post"])
+    def withdraw(self, request, pk=None):
+        return self._do(pk, lambda schedule: recurring.withdraw_notice(schedule,
+                                                                        user=request.user))
+
+
 class SubscriptionView(viewsets.ViewSet):
     """Settings → Billing, "Your subscription" (P4 part 5): the practice
     owner's only. The card goes into the **platform's** vault; the public key
@@ -993,7 +1118,7 @@ class CardPaymentsSwitchView(viewsets.ViewSet):
         from django.conf import settings
 
         from apps.billing import gateway as gw
-        from apps.billing import gateway_mode, testmode
+        from apps.billing import gateway_mode, testmode, worker_state
         from apps.billing.models import CardPaymentHold
 
         row = CardPaymentHold.objects.select_related("changed_by").first()
@@ -1011,6 +1136,9 @@ class CardPaymentsSwitchView(viewsets.ViewSet):
             # subscription charges and cards waiting to be cleared.
             "gateway_mode": gateway_mode.platform_state(),
             "test_payments": testmode.platform_summary(),
+            # 2026-11-17: what web and the worker each report about their
+            # own real calls, and the red warning when they differ.
+            "worker": worker_state.state(),
         }
 
     def list(self, request):

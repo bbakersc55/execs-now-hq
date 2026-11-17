@@ -28,6 +28,11 @@ if APP_ENVIRONMENT not in ("local", "demo", "production"):
                        f"{APP_ENVIRONMENT!r}.")
 if APP_ENVIRONMENT == "local" and not IS_LOCAL:
     raise RuntimeError("APP_ENVIRONMENT is local but PUBLIC_BASE_URL is not localhost.")
+# Which service this process is: "web" or "worker", set by its start script
+# (scripts/start_web.sh, scripts/start_qcluster.sh), never a Railway variable.
+# Empty in a shell, a test or on the laptop. Each service reports whether it
+# can reach the card processor (apps/billing/worker_state.py, 2026-11-17).
+APP_SERVICE = env("APP_SERVICE", default="")
 if APP_ENVIRONMENT == "production" and IS_LOCAL:
     raise RuntimeError("APP_ENVIRONMENT is production but PUBLIC_BASE_URL is localhost.")
 IS_DEMO = APP_ENVIRONMENT == "demo"

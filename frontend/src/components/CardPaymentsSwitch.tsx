@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { CardPaymentsSwitch as SwitchState, api } from "../lib/api";
+import { CardPaymentsSwitch as SwitchState, WorkerState, api } from "../lib/api";
 import { ClearTestPayments, GatewayModeBanner } from "./TestMode";
 import { Banner, Card, Pill } from "./ui";
 
@@ -38,6 +38,7 @@ export function CardPaymentsSwitchCard() {
   const s = state.data;
   return (
     <>
+    <WorkerWarning worker={s?.worker} />
     <GatewayModeBanner mode={s?.gateway_mode}
       again="Turned it off at the processor? Read it again under Card payments." />
     <ClearTestPayments summary={s?.test_payments} busy={clear.isPending}
@@ -84,5 +85,36 @@ export function CardPaymentsSwitchCard() {
       )}
     </Card>
     </>
+  );
+}
+
+/**
+ * 2026-11-17: in production, red when the worker (which runs every scheduled
+ * card job: auto-pay, automatic billing, subscriptions, lookups, the
+ * read-back) can't reach the card processor, when web and the worker
+ * disagree, or when the worker has stopped reporting; with what each said
+ * and today's refused jobs. Nothing here changes a setting.
+ */
+export function WorkerWarning({ worker }: { worker?: WorkerState }) {
+  if (!worker?.warning) return null;
+  const said = (row?: WorkerState["worker"]) => !row ? "has not reported"
+    : `real calls ${row.live_calls ? "on" : "OFF"}, ${row.minutes_ago} min ago`;
+  return (
+    <div role="alert">
+      <Banner kind="bad">
+        <strong>{worker.warning}</strong>
+        <div className="small">Web: {worker.web_live_calls ? "real calls on" : "real calls OFF"}
+          {" "}· Worker: {said(worker.worker)}</div>
+        {(worker.refused_today ?? []).length > 0 && (
+          <ul className="small" aria-label="Refused today">
+            {(worker.refused_today ?? []).map((row) => (
+              <li key={row.job}>Refused today: {row.label}, {row.runs} run
+                {row.runs === 1 ? "" : "s"} for {row.practices} practice
+                {row.practices === 1 ? "" : "s"}</li>
+            ))}
+          </ul>
+        )}
+      </Banner>
+    </div>
   );
 }

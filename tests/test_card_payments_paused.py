@@ -248,8 +248,11 @@ def test_paused_pay_link_shows_the_words_and_charges_nothing(settings, connected
 
 
 @pytest.mark.django_db
-def test_paused_auto_pay_charges_nothing_and_tells_no_one(settings, connected, fcc, ff, api,
-                                                          stub_gateway):  # noqa: F811
+def test_paused_auto_pay_charges_nothing_and_tells_only_the_owner(settings, connected, fcc,
+                                                                  ff, api,
+                                                                  stub_gateway):  # noqa: F811
+    """2026-11-17: never silent. Nothing charged, nothing to the client; the
+    reason on the invoice's history, and the practice owner told once."""
     from .test_autopay import contact as _  # noqa: F401
     from .factories import ContactEmailFactory, ContactFactory
 
@@ -265,8 +268,19 @@ def test_paused_auto_pay_charges_nothing_and_tells_no_one(settings, connected, f
     settings.APP_ENVIRONMENT = "production"
     with tenant_context(connected.pk):
         assert autopay.run(connected, today=today)["charged"] == 0
+        assert autopay.run(connected, today=today)["charged"] == 0
     assert not PaymentAttempt.all_objects.exists() and sales(stub_gateway) == []
-    assert OutboxMessage.all_objects.count() == before
+    told = OutboxMessage.all_objects.order_by("created_at")[before:]
+    assert [m.to_address for m in told] == [ff.user.email]
+    assert "NMI_LIVE_CALLS" in told[0].body_text and invoice.number in told[0].subject
+    from apps.notify.models import Notice
+    from apps.tenancy.models import AuditEvent
+
+    [notice] = Notice.all_objects.filter(source_type="autopay_passed_over")
+    assert notice.recipient_id == ff.user_id
+    [event] = AuditEvent.all_objects.filter(verb="billing.autopay_passed_over",
+                                            target_id=invoice.pk)
+    assert "real calls" in event.payload["reason"].lower()
     shown = api.as_(fcc).get("/api/portal-autopay/").json()
     assert shown["paused"] is True and shown["public_key"] == ""
     refused = save_client_card(api, fcc, "tok-new")

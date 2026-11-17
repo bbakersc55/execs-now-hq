@@ -5,6 +5,12 @@
 **2026-11-16:** void and refund from the app (§11) and knowing when the
 processor is in Test Mode (§12), released at Release 44.
 
+**2026-11-17:** recurring invoices that bill automatically (§14): the client
+owner agrees in the portal, each invoice is made and emailed by itself, and
+the saved card is charged on each billing date. Also auto-pay never passes over
+an invoice silently, and web and the worker each report whether they can reach
+the processor (§14.1).
+
 **2026-11-16, decided:** no card fee on invoices; an invoice stays one amount.
 The card-fee build is dropped. Bank (ACH) payments stay planned, on a separate
 ACH merchant ID, for the same total as a card (§13).
@@ -907,3 +913,203 @@ Pay error), and nothing reads a surcharge quote.
   - how the ACH merchant ID reaches the app: its own keys, or a second
     processor on the same gateway account;
   - how a return is reported (§1.5 B6–B8).
+
+---
+
+## 14. Automatic recurring billing (2026-11-17)
+
+Bryan's request, for real clients the next day: simple and correct first,
+month to month. Code: `apps/billing/recurring.py` (the flow),
+`apps/billing/timing.py` (the dates), `apps/billing/worker_state.py` (§14.1).
+Migrations `billing 0014_automatic_billing` and `notify 0006_payments_notices`
+(choices only), both additive.
+
+### 14.1 First: never passed over silently
+
+**What skipped INV-0004 (2026-11-16).** `NMI_LIVE_CALLS` was true on web and
+not on the worker (`qcluster`), so every scheduled job that calls the
+processor was refused in the worker, and auto-pay passed the invoice over
+without a word. **The fix is a Railway variable, which waits on the owner:**
+`NMI_LIVE_CALLS=true` on `qcluster`, as on web. Nothing here changes it. What
+the code now does:
+
+- **Every pass-over is recorded and told.** When auto-pay (or automatic
+  billing) does not charge an invoice that is due, for any reason but "nothing
+  owed" or the try rule's own (already tried today, one in flight, both tries
+  used, each already told), the reason goes on the invoice's history ("Not
+  charged", once a day for each reason) and its practice owner gets a Notice
+  and an email, once for the invoice. The client is not emailed. Reasons
+  named: no card on file; real calls off in the worker; payments paused by
+  the platform owner; the card account not ready; the card saved in the other
+  environment; a card saved in Test Mode once the processor is live; sent
+  before auto-pay was on; auto-pay turned off since (recorded once).
+- **A card saved in Test Mode is never charged once the processor is live**
+  (`card_payments.charge_on_file`, and the platform's subscription charge):
+  refused before anything is written or asked, with the plain reason, and no
+  decline email to the client. If the mode can't be read, the test card is
+  not charged either.
+- **Each service reports itself.** The start scripts set `APP_SERVICE` (web or
+  worker; not a Railway variable) and run `manage.py report_service`; the
+  worker's billing jobs report again on each run, so the ten-minute lookup
+  keeps it fresh. Rows: `service_report`.
+- **A red warning in production** on Practices (Card payments; with what each
+  service said and today's refused jobs) and on Settings → Billing (plainer
+  words for the practice owner) when the worker has real calls off, when web
+  and the worker disagree, or when the worker has not reported for 30
+  minutes.
+- **Refused jobs are recorded** (`refused_job`: job, practice, day, a count)
+  when a scheduled job that needs the processor runs where real calls are off,
+  for a practice that takes cards (auto-pay and automatic billing's charges,
+  lookups with something waiting, the read-back, subscription charges); the
+  platform owner gets a Notice and an email once a day.
+- **`manage.py nmi_check`** prints this process's real calls and both
+  services' last reports, and fails when the worker's are off or the two
+  disagree.
+
+### 14.2 Two kinds of recurring invoice
+
+**You send each invoice** is unchanged: a draft on its day, made ready and
+sent by a person. **Bill automatically** is new, the practice owner's alone
+to set up or change (it charges a card), chosen when the recurring invoice is
+made (its kind never changes after).
+
+**Timing.** Monthly on one or more days of the month, 1 to 28 (the 1st and the
+15th in one recurring invoice), from a **first billing date** on one of those
+days and not in the past; an optional **contract end date** (after it, month
+to month); and **how many days before each date** the invoice is emailed
+(default 3, 0 to 14). The model holds `cadence` (only `monthly`), `every`
+(only 1) and `days_of_month`; weekly, every two weeks, quarterly, yearly and
+every-N are meant to be added as cadences in `timing.py`, which is the only
+place billing dates are worked out. A day 29 to 31 can't be chosen, so no month
+is short of one.
+
+### 14.3 The client's agreement
+
+Nothing bills until the client owner agrees in the portal (Invoices,
+"Automatic billing"), with a card saved in the same flow (NMI's own fields,
+the practice's vault, as for auto-pay). The terms, in short plain words: what
+is billed and the total each time; the days; the start; "Term ends <date>,
+then month to month" or "Month to month"; how paying works (emailed N days
+before, charged on the date, one retry); how to stop; and when billing ends
+after stopping. Kept like the auto-pay consent (`billing_agreement`): who,
+when, the exact words, their version (`2026-11-17`), the address and the
+browser, and the card. The words agreed to are checked against what was shown
+(a short hash), so terms changed while the client read them are read again.
+Until then the practice owner sees **"Waiting for <client> to agree"** and
+**"Email <client> the link to agree"**, which emails each client owner with
+portal access. While an agreement is in force the card can be replaced, never
+removed (the only card).
+
+### 14.4 From invoice to charge
+
+- **Made and emailed by itself** at the 5:00 job (`run_invoice_schedules`),
+  `lead_days` before each billing date: written, numbered, its PDF stored and
+  its email sent with no approval step (the Outbox's own checks still apply).
+  The email says the amount and "will be charged to the card ending NNNN on
+  <date>". The invoice is due on its billing date. A missed day is made up.
+  One invoice per billing date (a database constraint).
+- **With no usable card** (none, the other environment, expiring before the
+  date, a test card once live) it still goes, with its pay link and no charge
+  line, and the practice owner is told.
+- **Charged on the billing date** at the 9:00 job (auto-pay's), and the
+  receipt sent; the owner gets the usual card payment notice. A decline
+  follows auto-pay's rule: one more try on a later day, never a third, the
+  client and the owner told each time. Anything else that stops a charge is
+  §14.1's pass-over.
+- If an invoice can't be made or emailed (say, no "how to pay" in the
+  practice's settings), nothing is charged and the owner is told; one that
+  was made but not emailed stays ready for the owner to send.
+
+### 14.5 Stopping
+
+In the portal the client owner presses **Stop automatic billing** and first
+reads: "Billing continues through <date>. Your last charge will be on <date>.
+For an exception, contact <practice owner's name and email>." **The rule:**
+billing ends on the last day of the calendar month after the month notice is
+given; every billing date up to and including that day is billed, none
+after (notice on November 16: the rest of November and all of December,
+nothing after December 31). A contract end date later than that wins; an
+earlier one does not shorten it. On confirming, the client is emailed the
+dates and the practice owner gets a Notice and an email. **The client can
+withdraw their own notice** before the end (the owner gets a Notice). **The
+practice owner** can bring the end earlier with a date (never later, never
+in the past) or **stop now**; invoices already made for dates after the new
+end are voided; the client is emailed the new date; and a client can't
+withdraw an end the owner set. Stopped now, nothing more is charged, even an
+invoice already made for today. **After the end it is Ended**; billing again
+needs a new agreement, offered in the portal once the owner emails the link
+again.
+
+### 14.6 Changes
+
+A change of lines or price while an agreement is in force applies from the
+first billing date **at least 7 days out that has no invoice yet**, and the
+client is emailed the new total and the date. The billing days, the first
+date and the contract end can't change while an agreement is in force (the
+client agreed to them); end it and ask for a new agreement instead.
+
+### 14.7 What the practice owner sees
+
+Invoices → Recurring invoices: each row's kind ("You send each" or "Bills
+automatically"), when, its state (**Waiting for <client> to agree**,
+**Active**, **Notice given, ending <date>**, **Ended**), the next billing
+date, the last one billed, and the amount. **Details** shows the timeline
+(agreed, first billing date, contract ends, month to month since, notice
+given, billing ends, last billing date, ended) and the actions: email the
+link; set an earlier end; stop now (asked twice); and, **only while the
+processor last said Test Mode, "Run the next billing now"**: it reads Test
+Mode again, then makes, sends and charges the next billing date's invoice at
+once, so the whole path can be proved without waiting for the clock.
+
+### 14.8 Choices made (the simplest reading)
+
+- Invoices made at 5:00 and charged at 9:00, by the existing jobs: no new
+  scheduled job, nothing to register on release.
+- The agreement covers one recurring invoice; a company can have several
+  (each agreed on its own) and they share the company's one card on file.
+- Charges are auto-pay attempts (`via` autopay), so the retry rule, the
+  receipt and the decline emails are auto-pay's own words.
+- The kind is fixed once made. Pause is not offered for automatic billing:
+  it is ended instead.
+- Billing dates before the day the client agreed are never billed.
+- Only the practice owner sets up or acts on automatic billing; an associate
+  keeps "You send each invoice" as before.
+- After Ended, a new agreement is offered only once the owner sends the link
+  again; a recurring invoice never agreed to can be agreed to at once.
+- Bank accounts later: the agreement's `card` is where a bank account would
+  go; cards only now.
+
+### 14.9 Proved
+
+- **Tests:** `tests/test_automatic_billing.py` (48: the date rules, notice in
+  November, December, January, February and a leap year, a contract end later
+  and earlier than the rule; set-up and its refusals; nothing before the
+  agreement; the agreement as kept, changed terms read again, roles and
+  companies; the card not removable; made lead days before and emailed with
+  no approval; charged on the date and never twice; lead days 0; no card;
+  a decline and its one retry; a price change from 7 days out; agreed days
+  fixed; notice, withdrawal; the owner moving the end earlier and refused
+  later or in the past; voiding a made invoice past the new end; stop now;
+  Ended and a new agreement; test cards once live, for automatic billing and
+  auto-pay; Run the next billing now only in Test Mode; "You send each
+  invoice" unchanged); `tests/test_worker_state.py` (9);
+  `tests/test_card_payments_paused.py` (paused auto-pay now tells the owner);
+  `frontend/src/screens/AutomaticBilling.test.tsx` (8).
+- **On NMI's sandbox, in headless Chrome** (`scripts/nmi_token_proof.py
+  --automatic`, read as live): set up on the 1st and 15th, the link emailed,
+  agreed in the portal with NMI's test card, the invoice made and emailed by
+  itself three days before, the card charged on the date (a real vault sale),
+  the price changed (from the next date), Stop automatic billing with the
+  dates read first, the last charge at the new price, nothing after the end,
+  Ended on both pages. `--run-now` presses Run the next billing now with the
+  sandbox's own Test Mode on.
+
+### 14.10 Not proved
+
+- **Production with the worker's `NMI_LIVE_CALLS` still off** charges
+  nothing by schedule, exactly as on 2026-11-16, until the owner sets it; the
+  red warning and the daily notice are what change.
+- A live card charged by the worker, a live decline and its retry, and the
+  invoice email through the practice's real mailbox: only the first real one.
+- The clock moved in the proof is the app's own (`timezone.now`); a real
+  month of 5:00 and 9:00 runs has not passed.

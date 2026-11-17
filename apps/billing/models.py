@@ -47,8 +47,50 @@ class InvoiceSettings(TenantScopedModel):
 
 
 class ClientInvoiceSchedule(TenantScopedModel):
-    """Writes a draft each month for one client company. It numbers nothing
-    and sends nothing: a person makes the draft ready."""
+    """A recurring invoice for one client company, of one of two kinds
+    (2026-11-17):
+
+    - **You send each invoice** (`mode` "send", as before): writes a draft
+      each month on `day_of_month`. It numbers nothing and sends nothing: a
+      person makes the draft ready.
+    - **Bill automatically** (`mode` "auto", `apps/billing/recurring.py`):
+      once the client owner agrees in the portal, the app makes, numbers and
+      emails each invoice `lead_days` before each billing date, and charges
+      the saved card on the date. Its timing is `cadence` (monthly only, so
+      far), `every` and `days_of_month`, from `first_billing_on`."""
+
+    class Mode(models.TextChoices):
+        SEND = "send", "You send each invoice"
+        AUTO = "auto", "Bill automatically"
+
+    class Cadence(models.TextChoices):
+        #: On one or more days of the month. Weekly, every two weeks,
+        #: quarterly and yearly are meant to come next (`timing.py`).
+        MONTHLY = "monthly", "Monthly"
+
+    mode = models.CharField(max_length=8, choices=Mode.choices, default=Mode.SEND,
+                            db_default=Mode.SEND)
+    cadence = models.CharField(max_length=12, choices=Cadence.choices, default=Cadence.MONTHLY,
+                               db_default=Cadence.MONTHLY)
+    #: Every this many of the cadence's units (1: every month).
+    every = models.PositiveSmallIntegerField(default=1, db_default=1)
+    #: "auto": the billing days of the month, 1 to 28, sorted ([1, 15]).
+    days_of_month = models.JSONField(default=list, blank=True)
+    #: "auto": the first billing date. Nothing before it is billed.
+    first_billing_on = models.DateField(null=True, blank=True)
+    #: "auto": the contract's end, if there is one. After it, month to month.
+    term_ends_on = models.DateField(null=True, blank=True)
+    #: "auto": how many days before each billing date the invoice is made and
+    #: emailed (0: on the day).
+    lead_days = models.PositiveSmallIntegerField(default=3, db_default=3)
+    #: "auto": changed lines, waiting for `pending_from` (the first billing
+    #: date at least 7 days after the change that had no invoice yet).
+    pending_lines = models.JSONField(null=True, blank=True)
+    pending_from = models.DateField(null=True, blank=True)
+    #: "auto": when the practice owner last emailed the client owner the link
+    #: to agree. After an agreement ends, a new one is offered only once the
+    #: link is sent again.
+    invited_at = models.DateTimeField(null=True, blank=True)
 
     client_company = models.ForeignKey("crm.Company", on_delete=models.PROTECT,
                                        related_name="invoice_schedules")
@@ -82,6 +124,12 @@ class ClientInvoiceSchedule(TenantScopedModel):
         constraints = [
             models.CheckConstraint(condition=Q(day_of_month__gte=1, day_of_month__lte=28),
                                    name="invoice_schedule_day_1_to_28"),
+            models.CheckConstraint(condition=Q(every__gte=1), name="invoice_schedule_every_1"),
+            models.CheckConstraint(condition=Q(lead_days__lte=14),
+                                   name="invoice_schedule_lead_days_14"),
+            models.CheckConstraint(
+                condition=Q(mode="send") | Q(first_billing_on__isnull=False),
+                name="invoice_schedule_auto_has_first_date"),
         ]
 
 
@@ -161,6 +209,12 @@ class ClientInvoice(TenantScopedModel):
     #: auto-pay job charges it then, while this consent stands.
     autopay_consent = models.ForeignKey("AutopayConsent", null=True, blank=True,
                                         on_delete=models.PROTECT, related_name="invoices")
+    #: Billed automatically (2026-11-17): the billing date it is for (its due
+    #: date, when the card is charged) and the client's agreement it is
+    #: charged under. One invoice per recurring invoice and billing date.
+    billing_date = models.DateField(null=True, blank=True)
+    billing_agreement = models.ForeignKey("BillingAgreement", null=True, blank=True,
+                                          on_delete=models.PROTECT, related_name="invoices")
     pdf = models.ForeignKey("tenancy.StoredFile", null=True, blank=True,
                             on_delete=models.PROTECT, related_name="+")
     outbox_message = models.ForeignKey("crm.OutboxMessage", null=True, blank=True,
@@ -198,6 +252,9 @@ class ClientInvoice(TenantScopedModel):
                 name="client_invoice_test_paid_within_paid"),
             models.UniqueConstraint(fields=["pay_token_hash"], condition=~Q(pay_token_hash=""),
                                     name="client_invoice_pay_token_once"),
+            models.UniqueConstraint(fields=["schedule", "billing_date"],
+                                    condition=Q(billing_date__isnull=False),
+                                    name="client_invoice_once_per_billing_date"),
         ]
         indexes = [
             models.Index(fields=["tenant", "status", "due_date"]),
@@ -483,6 +540,94 @@ class AutopayConsent(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["client_company"], condition=Q(revoked_at__isnull=True),
                                     name="autopay_consent_one_standing"),
+        ]
+
+
+class BillingAgreement(TenantScopedModel):
+    """A client owner's agreement to a recurring invoice that bills
+    automatically (2026-11-17, `apps/billing/recurring.py`). Kept as given,
+    like the auto-pay consent: who, when, the exact words they saw and their
+    version, their address and browser, and the card saved with it.
+
+    **Stopping.** The client gives notice in the portal (`notice_given_at`);
+    billing ends on `ends_on`, the last day of the month after the month of
+    notice, or the contract's end if that is later. The practice owner may
+    bring `ends_on` earlier, never later, or stop at once (`stopped_at`).
+    After `ends_on` it is ended (`ended_at`), and billing again needs a new
+    agreement. One in force per recurring invoice."""
+
+    class SetBy(models.TextChoices):
+        CLIENT = "client", "The client's notice"
+        OWNER = "owner", "The practice owner"
+
+    schedule = models.ForeignKey(ClientInvoiceSchedule, on_delete=models.PROTECT,
+                                 related_name="agreements")
+    client_company = models.ForeignKey("crm.Company", on_delete=models.PROTECT,
+                                       related_name="billing_agreements")
+    agreed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                  related_name="+")
+    agreed_at = models.DateTimeField()
+    wording = models.TextField()
+    wording_version = models.CharField(max_length=20)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True, default="", db_default="")
+    #: The card on file when they agreed. Replacing it later is allowed.
+    card = models.ForeignKey("ClientPaymentMethod", null=True, blank=True,
+                             on_delete=models.PROTECT, related_name="+")
+    notice_given_at = models.DateTimeField(null=True, blank=True)
+    notice_given_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="+")
+    #: The last day billed: every billing date up to and including it.
+    ends_on = models.DateField(null=True, blank=True)
+    ends_set_by = models.CharField(max_length=8, choices=SetBy.choices, blank=True,
+                                   default="", db_default="")
+    ends_set_at = models.DateTimeField(null=True, blank=True)
+    #: The practice owner's "Stop now": nothing more is charged.
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    stopped_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "billing_agreement"
+        constraints = [
+            models.UniqueConstraint(fields=["schedule"], condition=Q(ended_at__isnull=True),
+                                    name="billing_agreement_one_in_force"),
+        ]
+
+
+class ServiceReport(UUIDModel):
+    """What a running service says about itself (2026-11-17): web and the
+    worker each write their own row, so a difference between them (real
+    calls to the card processor on in one, off in the other) is seen on
+    Practices and Settings → Billing instead of found by accident."""
+
+    #: "web" or "worker", from APP_SERVICE, which each start script sets.
+    service = models.CharField(max_length=12, unique=True)
+    live_calls = models.BooleanField()
+    app_environment = models.CharField(max_length=20)
+    reported_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "service_report"
+
+
+class RefusedJob(UUIDModel):
+    """A scheduled job that needed the card processor and was refused
+    because real calls are off where it ran (2026-11-17). One row per job,
+    practice and day, counted; the platform owner is told once a day."""
+
+    job = models.CharField(max_length=60)
+    tenant = models.ForeignKey("tenancy.Tenant", on_delete=models.CASCADE, related_name="+")
+    day = models.DateField()
+    count = models.PositiveIntegerField(default=1, db_default=1)
+    first_at = models.DateTimeField()
+    last_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "refused_job"
+        constraints = [
+            models.UniqueConstraint(fields=["job", "tenant", "day"], name="refused_job_once_a_day"),
         ]
 
 

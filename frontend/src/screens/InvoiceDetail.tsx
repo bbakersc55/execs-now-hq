@@ -32,6 +32,10 @@ const WHAT: Record<string, string> = {
   // 2026-11-16: money given back, and test payments cleared.
   payment_refunded: "Refunded", payment_cancelled: "Payment cancelled before it settled",
   test_payments_cleared: "Test payments cleared",
+  // 2026-11-17: made and emailed by automatic billing; and a charge auto-pay
+  // or automatic billing passed over, with its reason (never silent).
+  billed_automatically: "Made and emailed by automatic billing",
+  autopay_passed_over: "Not charged",
 };
 const METHODS: [string, string][] = [
   ["ach", "Bank transfer"], ["check", "Check"], ["card", "Card"], ["wire", "Wire"],

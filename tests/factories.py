@@ -1275,6 +1275,24 @@ class ClientInvoiceScheduleFactory(TenantScopedFactory):
     next_on = factory.LazyFunction(lambda: __import__("datetime").date(2026, 11, 1))
 
 
+class BillingAgreementFactory(TenantScopedFactory):
+    """A client owner's agreement to automatic billing (2026-11-17)."""
+
+    class Meta:
+        model = "billing.BillingAgreement"
+
+    tenant = factory.SubFactory(TenantFactory)
+    schedule = factory.SubFactory(
+        ClientInvoiceScheduleFactory, tenant=factory.SelfAttribute("..tenant"), mode="auto",
+        days_of_month=[1, 15],
+        first_billing_on=factory.LazyFunction(lambda: __import__("datetime").date(2026, 12, 1)))
+    client_company = factory.SelfAttribute("schedule.client_company")
+    agreed_by = factory.SubFactory(UserFactory)
+    agreed_at = factory.LazyFunction(timezone.now)
+    wording = "I agree."
+    wording_version = "2026-11-17"
+
+
 class ClientPaymentFactory(TenantScopedFactory):
     class Meta:
         model = "billing.ClientPayment"

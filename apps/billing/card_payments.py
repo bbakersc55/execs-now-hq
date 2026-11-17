@@ -139,13 +139,33 @@ def pay(invoice, *, payer, payment_token: str,
     return _charge(attempt, payment_token=payment_token)
 
 
+def test_card_refusal(card, *, live: bool | None) -> str:
+    """Why a card saved in Test Mode is not charged (2026-11-17)."""
+    name = card.client_company.name if card.client_company_id else "The client"
+    if live is None:
+        return (f"The card ending {card.last4} was saved while the card processor was in Test "
+                "Mode, and whether it still is couldn't be read, so the card was not charged.")
+    return (f"The card ending {card.last4} was saved while the card processor was in Test "
+            f"Mode, so it is never charged now that the processor is live. {name} needs to "
+            "save a card again in the portal.")
+
+
 def charge_on_file(invoice, *, card) -> tuple[PaymentAttempt, str]:
-    """Auto-pay (P4 part 4): the company's card on file, for the balance,
-    on the practice's own account. The caller has checked the consent; this
-    checks the card belongs to the invoice's own company."""
+    """Auto-pay (P4 part 4) and automatic billing (2026-11-17): the company's
+    card on file, for the balance, on the practice's own account. The caller
+    has checked the consent or agreement; this checks the card belongs to the
+    invoice's own company, and that a card saved in Test Mode is charged only
+    while the processor still says Test Mode: once it is live, the card is
+    refused before anything is written or asked, with no decline email."""
     if card.removed_at is not None or card.client_company_id != invoice.client_company_id \
             or card.tenant_id != invoice.tenant_id:
         raise PaymentRefused("That card is not on file for this invoice's company.")
+    if gw.paused():
+        raise PaymentRefused(gw.PAUSED_MESSAGE, 503)
+    if card.is_test:
+        mode = gateway_mode.for_practice(invoice.tenant)
+        if mode is not True:
+            raise PaymentRefused(test_card_refusal(card, live=None if mode is None else True))
     attempt = start(invoice, payer=None, via=PaymentAttempt.Via.AUTOPAY)
     attempt.payment_method = card
     attempt.save(update_fields=["payment_method", "updated_at"])

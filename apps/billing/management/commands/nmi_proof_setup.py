@@ -59,6 +59,14 @@ class Command(BaseCommand):
         parser.add_argument("--refund-facts", action="store_true",
                             help="What the database holds: invoices, payments, refunds, "
                                  "entries in the books, the read-back's flags, cards, mail.")
+        # 2026-11-17: automatic billing (`nmi_token_proof.py --automatic`).
+        parser.add_argument("--billing-run", metavar="DAY",
+                            help="With the clock moved to DAY (YYYY-MM-DD): the 5:00 job "
+                                 "that makes and emails automatic invoices, then the 9:00 "
+                                 "job that charges them, as the worker runs them.")
+        parser.add_argument("--billing-facts", action="store_true",
+                            help="What the database holds of automatic billing: the "
+                                 "recurring invoice, its agreements, invoices, charges, mail.")
 
     def handle(self, *args, **options):
         database = connection.settings_dict["NAME"] or ""
@@ -76,6 +84,10 @@ class Command(BaseCommand):
             return self.portal_refund(*options["portal_refund"])
         if options["refund_facts"]:
             return self.refund_facts()
+        if options["billing_run"]:
+            return self.billing_run(options["billing_run"])
+        if options["billing_facts"]:
+            return self.billing_facts()
         if options["subscription"]:
             return self.subscription()
         if options["subscription_charge"]:
@@ -200,6 +212,74 @@ class Command(BaseCommand):
         session.create()
         self.stdout.write(json.dumps({"cookie": dj.SESSION_COOKIE_NAME,
                                       "session": session.session_key}))
+
+    def billing_run(self, raw):
+        """The two daily jobs on DAY, the clock moved as the demo moves it."""
+        from datetime import date
+
+        from apps.billing import recurring
+        from apps.tenancy.context import tenant_context
+        from apps.tenancy.demo.clock import at, moment
+        from apps.tenancy.models import Tenant
+
+        day = date.fromisoformat(raw)
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        with tenant_context(tenant.pk):
+            with at(moment(day, 5, 0)):
+                made = recurring.make_due(tenant, today=day)
+            with at(moment(day, 9, 0)):
+                charged = recurring.charge_due(tenant, today=day)
+        self.stdout.write(json.dumps({
+            "day": raw, "made": [(i.number, str(i.billing_date), i.total_cents, i.status)
+                                 for i in made], "charged": charged}))
+
+    def billing_facts(self):
+        from apps.billing import recurring
+        from apps.billing.models import BillingAgreement, ClientInvoiceSchedule, PaymentAttempt
+        from apps.crm.models import OutboxMessage
+        from apps.tenancy.models import AuditEvent, Tenant
+
+        tenant = Tenant.objects.get(legal_name="Proof Practice LLC")
+        schedule = ClientInvoiceSchedule.all_objects.get(tenant=tenant, mode="auto")
+        from apps.billing.models import ClientInvoice
+
+        invoices = []
+        for invoice in ClientInvoice.all_objects.filter(schedule=schedule).order_by(
+                "billing_date"):
+            mail = OutboxMessage.all_objects.filter(source_type="client_invoice",
+                                                    source_id=invoice.pk).first()
+            invoices.append({
+                "number": invoice.number, "billing_date": str(invoice.billing_date),
+                "issue_date": str(invoice.issue_date), "total_cents": invoice.total_cents,
+                "status": invoice.status, "paid_cents": invoice.paid_cents,
+                "email": mail and {"state": mail.state, "to": mail.to_address,
+                                   "says_charged": next((line for line in mail.body_text
+                                                         .splitlines() if "will be charged"
+                                                         in line), "")},
+                "attempts": [(a.status, a.via, a.nmi_transaction_id, a.amount_cents, a.is_test)
+                             for a in PaymentAttempt.all_objects.filter(invoice=invoice)],
+                "passed_over": [e.payload.get("reason") for e in AuditEvent.all_objects.filter(
+                    target_id=invoice.pk, verb="billing.autopay_passed_over")]})
+        agreements = [{
+            "agreed_by": a.agreed_by.email, "version": a.wording_version,
+            "address_kept": bool(a.ip_address), "browser_kept": "Chrome" in a.user_agent,
+            "card": a.card.last4 if a.card else "", "wording": a.wording.splitlines()[:4],
+            "notice_given": bool(a.notice_given_at), "ends_on": str(a.ends_on or ""),
+            "ends_set_by": a.ends_set_by, "ended": bool(a.ended_at)}
+            for a in BillingAgreement.all_objects.filter(schedule=schedule).order_by("agreed_at")]
+        mail = list(OutboxMessage.all_objects.filter(tenant=tenant).exclude(
+            source_type="client_invoice").order_by("created_at").values_list(
+                "subject", "to_address", "state"))
+        from apps.tenancy.context import tenant_context
+
+        with tenant_context(tenant.pk):
+            state = recurring.state_of(schedule)
+        self.stdout.write(json.dumps({
+            "state": state, "days": schedule.days_of_month,
+            "first_billing_on": str(schedule.first_billing_on),
+            "lines": schedule.lines, "pending": [schedule.pending_lines,
+                                                 str(schedule.pending_from or "")],
+            "agreements": agreements, "invoices": invoices, "mail": mail}))
 
     def subscription_charge(self):
         from apps.billing import subscriptions

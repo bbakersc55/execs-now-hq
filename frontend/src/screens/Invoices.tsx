@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { InvoiceLines, cleanLines } from "../components/InvoiceLines";
@@ -289,24 +289,30 @@ function NewInvoice({ clients, owner, preset, onClose }: {
   );
 }
 
-/** A recurring invoice as its form holds it. `terms` null is the practice's. */
+/** A recurring invoice as its form holds it. `terms` null is the practice's.
+ *  2026-11-17: `mode` "auto" bills automatically, on `days` from `first`. */
 type ScheduleDraft = {
   company: string; contact: string; day: string; lines: InvoiceLine[];
   terms: number | null; income: string; pay_instructions: string;
   email_subject: string; email_body: string;
+  mode: "send" | "auto"; days: string[]; first: string; term: string; lead: string;
 };
 
 const blankSchedule = (): ScheduleDraft => ({
   company: "", contact: "", day: "1",
   lines: [{ description: "", quantity: "1", unit_price_cents: 0 }],
-  terms: null, income: "", pay_instructions: "", email_subject: "", email_body: "" });
+  terms: null, income: "", pay_instructions: "", email_subject: "", email_body: "",
+  mode: "send", days: ["1"], first: "", term: "", lead: "3" });
 
 const scheduleDraft = (row: InvoiceSchedule): ScheduleDraft => ({
   company: row.client_company.id, contact: row.contact.id, day: String(row.day_of_month),
   lines: row.lines.length ? row.lines : blankSchedule().lines,
   terms: row.terms_days, income: row.income_category ?? "",
   pay_instructions: row.pay_instructions, email_subject: row.email_subject,
-  email_body: row.email_body });
+  email_body: row.email_body, mode: row.mode ?? "send",
+  days: (row.days_of_month ?? []).length ? row.days_of_month.map(String) : ["1"],
+  first: row.first_billing_on ?? "", term: row.term_ends_on ?? "",
+  lead: String(row.lead_days ?? 3) });
 
 /**
  * The one form a recurring invoice is made and changed in (owner, 2026-10-14:
@@ -327,11 +333,33 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
   const people = useRecipients(form.company);
   const what = editing ? `${editing.client_company.name}'s recurring invoice`
     : "the recurring invoice";
+  const auto = form.mode === "auto";
+  // While the client's agreement is in force, what they agreed to is fixed.
+  const agreed = !!editing?.automatic
+    && (editing.automatic.state === "active" || editing.automatic.state === "ending");
   const save = useMutation({
     mutationFn: () => {
-      const body = {
+      const body = auto ? {
+        mode: "auto", client_company: form.company, contact: form.contact,
+        days_of_month: form.days.filter((d) => d.trim()).map(Number),
+        first_billing_on: form.first, term_ends_on: form.term || null,
+        lead_days: Number(form.lead), lines: cleanLines(form.lines) } : {
         client_company: form.company, contact: form.contact, day_of_month: Number(form.day),
         lines: cleanLines(form.lines) };
+      if (auto) {
+        const extra = {
+          pay_instructions: form.pay_instructions, email_subject: form.email_subject,
+          email_body: form.email_body, ...(owner ? { income_category: form.income } : {}) };
+        return editing
+          ? api.patch<InvoiceSchedule>(`/api/invoice-schedules/${editing.id}/`,
+            { ...body, ...extra })
+          : api.post<InvoiceSchedule>("/api/invoice-schedules/", {
+            ...body,
+            ...(form.pay_instructions.trim() ? { pay_instructions: form.pay_instructions } : {}),
+            ...(form.email_subject.trim() ? { email_subject: form.email_subject } : {}),
+            ...(form.email_body.trim() ? { email_body: form.email_body } : {}),
+            ...(owner && form.income ? { income_category: form.income } : {}) });
+      }
       return editing
         // Everything the form holds, so what is saved is what is shown: an
         // emptied box goes back to the practice's own.
@@ -383,14 +411,45 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
             {offered.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </Field>
-        <Field label="Day of the month (1 to 28)">
-          <input type="number" min={1} max={28} aria-label="Day of the month" value={form.day}
-            style={{ width: "5rem" }} onChange={(e) => set({ day: e.target.value })} />
-        </Field>
-        <TermsPicker label="Payment terms for the recurring invoice" value={form.terms}
-          practice={practice?.terms_days} onChange={(terms) => set({ terms })} />
+        {!auto && (
+          <>
+            <Field label="Day of the month (1 to 28)">
+              <input type="number" min={1} max={28} aria-label="Day of the month"
+                value={form.day} style={{ width: "5rem" }}
+                onChange={(e) => set({ day: e.target.value })} />
+            </Field>
+            <TermsPicker label="Payment terms for the recurring invoice" value={form.terms}
+              practice={practice?.terms_days} onChange={(terms) => set({ terms })} />
+          </>
+        )}
       </div>
+      {!editing && owner && (
+        <fieldset className="row tight" aria-label="How it is billed">
+          <label className="check">
+            <input type="radio" name="schedule-mode" checked={!auto}
+              onChange={() => set({ mode: "send" })} /> You send each invoice
+          </label>
+          <label className="check">
+            <input type="radio" name="schedule-mode" checked={auto}
+              onChange={() => set({ mode: "auto" })} /> Bill automatically
+          </label>
+        </fieldset>
+      )}
+      {auto && (
+        <AutomaticTiming form={form} set={set} locked={agreed}
+          company={clients.find((c) => c.id === form.company)?.name ?? "the client"} />
+      )}
+      <p className="small muted" style={{ marginTop: 0 }}>
+        {auto ? "Once the client owner agrees in the portal, each invoice is made, numbered "
+          + "and emailed by itself before its billing date, and the saved card is charged on "
+          + "the date. Nothing is billed until they agree."
+          : "On its day each month it writes a draft for you to check, make ready and send."}
+      </p>
       <InvoiceLines lines={form.lines} onChange={(lines) => set({ lines })} />
+      {agreed && (
+        <p className="small muted">A change of lines or price applies from the first
+          billing date at least 7 days out, and the client is emailed.</p>
+      )}
       {owner && (
         <Field label="In your books, its payments go to">
           <IncomeCategoryPicker kind="recurring" value={form.income}
@@ -421,6 +480,7 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
       <div className="row tight" style={{ marginTop: "var(--s3)" }}>
         <button className="primary"
           disabled={!form.company || !form.contact || cleanLines(form.lines).length === 0
+            || (auto && (!form.first || !form.days.some((d) => d.trim())))
             || save.isPending}
           onClick={() => save.mutate()}>
           {editing ? "Save the changes" : "Save the recurring invoice"}</button>
@@ -430,7 +490,133 @@ function ScheduleForm({ editing, clients, owner, practice, onDone, onCancel }: {
   );
 }
 
-/** Recurring invoices: each writes a draft on its day and nothing else. */
+/** 2026-11-17: when a recurring invoice billed automatically bills. Monthly,
+ *  on one or more days (1 to 28), from a first billing date; an optional
+ *  contract end; how many days before each date the invoice is emailed. */
+function AutomaticTiming({ form, set, locked, company }: {
+  form: ScheduleDraft; set: (patch: Partial<ScheduleDraft>) => void; locked: boolean;
+  company: string;
+}) {
+  const setDay = (index: number, value: string) =>
+    set({ days: form.days.map((d, i) => (i === index ? value : d)) });
+  return (
+    <div className="card-inset" aria-label="When it bills">
+      {locked && (
+        <p className="small muted" style={{ marginTop: 0 }}>{company} agreed to these days,
+          this first date and this contract end, so they can't change while the agreement
+          is in force.</p>
+      )}
+      <Field label="Billing days of the month (1 to 28)">
+        <div className="row tight" style={{ flexWrap: "wrap" }}>
+          {form.days.map((day, index) => (
+            <span key={index} className="row tight">
+              <input type="number" min={1} max={28} value={day} disabled={locked}
+                aria-label={`Billing day ${index + 1}`} style={{ width: "4.5rem" }}
+                onChange={(e) => setDay(index, e.target.value)} />
+              {form.days.length > 1 && !locked && (
+                <button type="button" className="ghost small"
+                  aria-label={`Remove billing day ${index + 1}`}
+                  onClick={() => set({ days: form.days.filter((_, i) => i !== index) })}>
+                  ✕</button>
+              )}
+            </span>
+          ))}
+          {!locked && form.days.length < 28 && (
+            <button type="button" className="small"
+              onClick={() => set({ days: [...form.days, ""] })}>Add a day</button>
+          )}
+        </div>
+      </Field>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <Field label="First billing date">
+          <input type="date" aria-label="First billing date" value={form.first}
+            disabled={locked} onChange={(e) => set({ first: e.target.value })} />
+        </Field>
+        <Field label="Contract end date (optional; then month to month)">
+          <input type="date" aria-label="Contract end date" value={form.term}
+            disabled={locked} onChange={(e) => set({ term: e.target.value })} />
+        </Field>
+        <Field label="Email each invoice this many days before (0 to 14)">
+          <input type="number" min={0} max={14} aria-label="Days before each billing date"
+            value={form.lead} style={{ width: "5rem" }}
+            onChange={(e) => set({ lead: e.target.value })} />
+        </Field>
+      </div>
+      <p className="tiny muted" style={{ marginBottom: 0 }}>Monthly for now. The first billing
+        date is on one of the billing days.</p>
+    </div>
+  );
+}
+
+/** What a recurring invoice billed automatically shows under its row: its
+ *  timeline and the practice owner's actions. */
+function AutomaticDetails({ row, onChanged }: {
+  row: InvoiceSchedule; onChanged: (next: InvoiceSchedule & { message?: string }) => void;
+}) {
+  const a = row.automatic!;
+  const [endOn, setEndOn] = useState("");
+  const [sure, setSure] = useState(false);
+  const [said, setSaid] = useState("");
+  const act = useMutation({
+    mutationFn: ({ path, body }: { path: string; body?: unknown }) =>
+      api.post<InvoiceSchedule & { message?: string }>(
+        `/api/invoice-schedules/${row.id}/${path}`, body ?? {}),
+    onSuccess: (next) => { setSaid(next.message ?? ""); setSure(false); onChanged(next); },
+    onError: () => setSaid(""),
+  });
+  const name = row.client_company.name;
+  const live = a.state === "active" || a.state === "ending";
+  return (
+    <div aria-label={`Automatic billing for ${name}`} className="small">
+      {act.isError && <Banner kind="bad">{(act.error as Error).message}</Banner>}
+      {said && <div role="status"><Banner kind="ok">{said}</Banner></div>}
+      <p style={{ marginTop: 0 }}>{dollars(row.total_cents)} {a.timing_words}.
+        {a.pending && <> From {longDate(a.pending.from)}: {dollars(a.pending.total_cents)} each
+          time.</>}</p>
+      {a.timeline.length > 0 && (
+        <ol aria-label={`Timeline for ${name}`}>
+          {a.timeline.map((t, i) => (
+            <li key={i}>{t.what}: {longDate(t.on)}{t.by ? `, ${t.by}` : ""}
+              {t.future ? " (to come)" : ""}</li>
+          ))}
+        </ol>
+      )}
+      <div className="row tight" style={{ flexWrap: "wrap" }}>
+        {(a.state === "waiting" || a.state === "ended") && (
+          <button className="small" disabled={act.isPending}
+            onClick={() => act.mutate({ path: "send-link/" })}>
+            Email {name} the link to agree</button>
+        )}
+        {a.can_run_now && (
+          <button className="small" disabled={act.isPending}
+            onClick={() => act.mutate({ path: "run-now/" })}>
+            Run the next billing now</button>
+        )}
+      </div>
+      {live && (
+        <div className="row tight" style={{ flexWrap: "wrap", marginTop: "0.5rem" }}>
+          <Field label={a.ends_on ? "Move the end earlier" : "End billing on"}>
+            <input type="date" aria-label={`Last day to bill ${name}`} value={endOn}
+              max={a.ends_on ?? undefined} onChange={(e) => setEndOn(e.target.value)} />
+          </Field>
+          <button className="small" disabled={!endOn || act.isPending}
+            onClick={() => act.mutate({ path: "set-end/", body: { ends_on: endOn } })}>
+            Set the end</button>
+          {!sure ? (
+            <button className="small ghost" onClick={() => setSure(true)}>Stop now</button>
+          ) : (
+            <button className="small primary" disabled={act.isPending}
+              onClick={() => act.mutate({ path: "set-end/", body: { now: true } })}>
+              Yes, stop billing {name} now</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Recurring invoices: each writes a draft on its day and nothing else;
+ *  2026-11-17: or bills automatically, once the client agrees. */
 function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
   const qc = useQueryClient();
   const schedules = useQuery<InvoiceSchedule[]>({
@@ -452,33 +638,47 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
       api.patch<InvoiceSchedule>(`/api/invoice-schedules/${row.id}/`, { income_category: id }),
     onSuccess: done,
   });
+  const [shown, setShown] = useState("");
   const rows = schedules.data ?? [];
   const editing = rows.find((row) => row.id === open) ?? null;
+  const pill = (a: NonNullable<InvoiceSchedule["automatic"]>) => (
+    <Pill kind={a.state === "active" ? "ok" : a.state === "ended" ? "" : "warn"}>
+      {a.state_label}</Pill>);
   return (
     <Card title="Recurring invoices"
       actions={!open && <button className="small" onClick={() => setOpen("new")}>
         New recurring invoice</button>}>
       <p className="small muted" style={{ marginTop: 0 }}>
-        On its day each month a recurring invoice writes a draft. It does not number it and
-        does not send it: you check the draft and make it ready, as for any other.
+        "You send each invoice": on its day each month it writes a draft. It does not number
+        it and does not send it: you check the draft and make it ready, as for any other.
+        "Bill automatically": once the client owner agrees in the portal, each invoice is
+        made and emailed by itself, and the saved card charged on its billing date.
       </p>
       {rows.length === 0 && !open && <Empty>No recurring invoices.</Empty>}
       {rows.length > 0 && (
         <table className="cards-on-phone">
-          <thead><tr><th>Client</th><th>Addressed to</th><th>Day</th><th>Terms</th>
-            <th>Next draft</th>
-            <th className="money">Each month</th>
+          <thead><tr><th>Client</th><th>Addressed to</th><th>How</th><th>When</th>
+            <th>State</th><th>Next</th><th>Last billed</th>
+            <th className="money">Each time</th>
             {owner && <th>In your books</th>}<th /></tr></thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
+            {rows.map((row) => (<Fragment key={row.id}>
+              <tr>
                 <td className="card-title">{row.client_company.name}</td>
                 <td data-label="To">{row.contact.name}</td>
-                <td data-label="Day">{row.day_of_month}</td>
-                <td data-label="Terms">{row.terms_label}
-                  {row.terms_days === null && <span className="muted"> · the practice's</span>}</td>
-                <td data-label="Next draft">{row.is_active ? longDate(row.next_on) : <Pill>paused</Pill>}</td>
-                <td data-label="Each month" className="money">{dollars(row.total_cents)}</td>
+                <td data-label="How">{row.mode === "auto" ? "Bills automatically"
+                  : "You send each"}</td>
+                <td data-label="When">{row.automatic ? row.automatic.timing_words
+                  : <>Day {row.day_of_month} · {row.terms_label}
+                    {row.terms_days === null && <span className="muted"> · the practice's</span>}</>}</td>
+                <td data-label="State">{row.automatic ? pill(row.automatic)
+                  : row.is_active ? <Pill kind="ok">Active</Pill> : <Pill>paused</Pill>}</td>
+                <td data-label="Next">{row.automatic
+                  ? (row.automatic.next_billing_on ? longDate(row.automatic.next_billing_on) : "")
+                  : row.is_active ? longDate(row.next_on) : ""}</td>
+                <td data-label="Last billed">{row.automatic?.last_billed_on
+                  ? longDate(row.automatic.last_billed_on) : ""}</td>
+                <td data-label="Each time" className="money">{dollars(row.total_cents)}</td>
                 {owner && (
                   <td data-label="In your books">
                     <IncomeCategoryPicker kind="recurring" value={row.income_category ?? ""}
@@ -491,13 +691,25 @@ function Recurring({ clients, owner }: { clients: Company[]; owner: boolean }) {
                   <button className="ghost small" disabled={!!open}
                     aria-label={`Edit the recurring invoice for ${row.client_company.name}`}
                     onClick={() => setOpen(row.id)}>Edit</button>{" "}
-                  <button className="ghost small" disabled={toggle.isPending}
-                    aria-label={`${row.is_active ? "Pause" : "Resume"} the recurring invoice for ${row.client_company.name}`}
-                    onClick={() => toggle.mutate(row)}>
-                    {row.is_active ? "Pause" : "Resume"}</button>
+                  {row.automatic ? (
+                    <button className="ghost small" aria-expanded={shown === row.id}
+                      aria-label={`Details of automatic billing for ${row.client_company.name}`}
+                      onClick={() => setShown(shown === row.id ? "" : row.id)}>
+                      {shown === row.id ? "Hide" : "Details"}</button>
+                  ) : (
+                    <button className="ghost small" disabled={toggle.isPending}
+                      aria-label={`${row.is_active ? "Pause" : "Resume"} the recurring invoice for ${row.client_company.name}`}
+                      onClick={() => toggle.mutate(row)}>
+                      {row.is_active ? "Pause" : "Resume"}</button>
+                  )}
                 </td>
               </tr>
-            ))}
+              {row.automatic && shown === row.id && (
+                <tr><td colSpan={owner ? 10 : 9}>
+                  <AutomaticDetails row={row} onChanged={() => done()} />
+                </td></tr>
+              )}
+            </Fragment>))}
           </tbody>
         </table>
       )}

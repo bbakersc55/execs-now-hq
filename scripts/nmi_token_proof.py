@@ -12,6 +12,20 @@
     .venv/bin/python scripts/nmi_token_proof.py --bank-fees   # bank payments, card category, surcharge
     .venv/bin/python scripts/nmi_token_proof.py --refunds     # void and refund from the app
     .venv/bin/python scripts/nmi_token_proof.py --test-mode   # the processor's own Test Mode
+    .venv/bin/python scripts/nmi_token_proof.py --automatic   # recurring, billed automatically
+    .venv/bin/python scripts/nmi_token_proof.py --run-now     # "Run the next billing now"
+
+**--automatic** (2026-11-17) walks automatic billing through the real pages
+built from this tree, with the worker's two daily jobs run with the clock
+moved (`nmi_proof_setup --billing-run DAY`): the practice owner sets up a
+recurring invoice that bills automatically on the 1st and the 15th and emails
+the client owner the link; the client owner, signed in, saves NMI's test card
+in the portal and agrees; three days before the first date the invoice is made
+and emailed by itself, and on the date the card is charged (a real sandbox
+sale on the vault record); the owner changes the price; the client presses
+Stop automatic billing, reads the dates and confirms; every billing date
+through the end is billed (the last at the new price), nothing after, and the
+day after the end it is Ended. Like --refunds it reads the sandbox as live.
 
 **--refunds** (2026-11-16) is the pay link with money given back, through the
 real pages built from this tree: the payer pays; the practice owner, signed in,
@@ -684,6 +698,228 @@ def refunds_proof() -> dict:
         and second_invoice["refunds"][0]["source"] == "portal"
         and second_invoice["refunds"][0]["amount_cents"] == 100
         and second_invoice["refunds"][0]["books"])
+    return result
+
+
+def billing_run(env, day) -> dict:
+    return json.loads(manage("nmi_proof_setup", "--billing-run", day.isoformat(),
+                             env_extra=env).strip().splitlines()[-1])
+
+
+def _billing_days(start, through, days=(1, 15)):
+    from datetime import timedelta
+
+    day, found = start, []
+    while day <= through:
+        if day.day in days:
+            found.append(day)
+        day += timedelta(days=1)
+    return found
+
+
+def set_up_automatic(owner, first, price) -> str:
+    """The practice owner's clicks: a recurring invoice that bills
+    automatically on the 1st and the 15th, and the link emailed."""
+    owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+    owner.get_by_role("button", name="New recurring invoice").click(timeout=90000)
+    form = owner.get_by_role("dialog", name="The new recurring invoice")
+    form.get_by_label("Client company for the recurring invoice").select_option(
+        label="Proof Client Co")
+    form.get_by_label("Recurring invoice addressed to").select_option(
+        label="Casey Client", timeout=30000)
+    form.get_by_label("Bill automatically").check()
+    form.get_by_label("Billing day 1", exact=True).fill("1")
+    form.get_by_role("button", name="Add a day").click()
+    form.get_by_label("Billing day 2", exact=True).fill("15")
+    form.get_by_label("First billing date").fill(first.isoformat())
+    form.get_by_label("Description of line 1").fill("Operations support (proof)")
+    form.get_by_label("Price of line 1").fill(price)
+    form.get_by_role("button", name="Save the recurring invoice").click()
+    owner.get_by_text("Waiting for Proof Client Co to agree").wait_for(timeout=60000)
+    owner.get_by_role("button", name="Details of automatic billing for Proof "
+                                      "Client Co").click()
+    owner.get_by_role("button", name="Email Proof Client Co the link to agree").click()
+    return owner.get_by_role("status").filter(has_text="link was emailed").inner_text(
+        timeout=60000)
+
+
+def agree_in_portal(browser, setup):
+    """The client owner's clicks: sign in, save NMI's test card in the
+    automatic billing card, tick I agree, agree."""
+    client_context = browser.new_context()
+    client = client_context.new_page()
+    client.goto(BASE + setup["sign_in_path"], wait_until="domcontentloaded", timeout=90000)
+    client.get_by_role("button", name="Sign in").click()
+    client.get_by_text("First, save the card it is charged to.").wait_for(timeout=90000)
+    terms = client.get_by_label("The terms").inner_text()
+    fill_card(client, button=re.compile(r"^Save this card$"))
+    client.get_by_text(re.compile(r"Visa ending\s+1111")).first.wait_for(timeout=120000)
+    client.get_by_label("I agree to these terms").check()
+    client.get_by_role("button", name="Agree and start automatic billing").click()
+    client.get_by_role("button", name="Stop automatic billing").wait_for(timeout=60000)
+    return client_context, client, terms
+
+
+def run_now_proof() -> dict:
+    """2026-11-17: with the sandbox's own Test Mode on (it always says so),
+    the practice owner's "Run the next billing now" makes, sends and charges
+    the next invoice at once, twice; each is a test, out of the books."""
+    from datetime import datetime, timedelta, timezone
+
+    from playwright.sync_api import sync_playwright
+
+    build_frontend()
+    fresh_proof_db()
+    setup = json.loads(manage("nmi_proof_setup", env_extra=PROOF_ENV).strip().splitlines()[-1])
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=PROOF_ENV).strip().splitlines()[-1])
+    today = datetime.now(timezone.utc).date()
+    first = _billing_days(today + timedelta(days=1), today + timedelta(days=20))[0]
+    cents = 2000 + int(time.time() * 1000) % 2900
+    said = {}
+    server = start_server(PROOF_ENV)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            said["link"] = set_up_automatic(owner, first, f"{cents / 100:.2f}")
+            client_context, client, _terms = agree_in_portal(browser, setup)
+            owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            owner.get_by_role("button", name="Details of automatic billing for Proof "
+                                              "Client Co").click(timeout=90000)
+            # INV-0001 is the setup's own invoice: these are the next two. The
+            # second is the same card for the same amount seconds after the
+            # first: what NMI says to that is printed, not assumed. Each waits
+            # for its own invoice's answer, so the server is never stopped
+            # while a charge is still being asked.
+            for n, number in ((1, "INV-0002"), (2, "INV-0003")):
+                owner.get_by_role("button", name="Run the next billing now").click(
+                    timeout=60000)
+                said[f"run {n}"] = owner.get_by_role("status").filter(
+                    has_text=f"Invoice {number}").inner_text(timeout=120000)
+            client.close()
+            client_context.close()
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    result = {"said": said, "facts": json.loads(manage(
+        "nmi_proof_setup", "--billing-facts", env_extra=PROOF_ENV).strip().splitlines()[-1])}
+    invoices = result["facts"]["invoices"]
+    result["ok"] = bool(
+        len(invoices) >= 1 and invoices[0]["status"] == "paid"
+        and invoices[0]["attempts"][0][0] == "approved" and invoices[0]["attempts"][0][4]
+        and invoices[0]["billing_date"] == first.isoformat()
+        and "Thank you" in said["run 1"])
+    return result
+
+
+def automatic_proof() -> dict:
+    """2026-11-17: set up, agree in the portal, the invoice sent by itself,
+    the charge, a price change, stop, the last charge, Ended."""
+    import calendar
+    from datetime import date, datetime, timedelta, timezone
+
+    from playwright.sync_api import sync_playwright
+
+    env = {**PROOF_ENV, **IGNORE_TEST_MODE}
+    build_frontend()
+    fresh_proof_db()
+    setup = json.loads(manage("nmi_proof_setup", env_extra=env).strip().splitlines()[-1])
+    session = json.loads(manage("nmi_proof_setup", "--subscription",
+                                env_extra=env).strip().splitlines()[-1])
+    # The server's day (UTC, as the app counts it), and the dates that follow.
+    today = datetime.now(timezone.utc).date()
+    first = _billing_days(today + timedelta(days=1), today + timedelta(days=20))[0]
+    year, month = (today.year + (today.month == 12), today.month % 12 + 1)
+    ends = date(year, month, calendar.monthrange(year, month)[1])   # notice given today
+    billed = _billing_days(first, ends)
+    after = _billing_days(ends + timedelta(days=1), ends + timedelta(days=20))[0]
+    cents = 2000 + int(time.time() * 1000) % 2900
+    price, new_price = f"{cents / 100:.2f}", f"{(cents + 111) / 100:.2f}"
+    steps, said = [], {}
+    server = start_server(env)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel="chrome", headless=True)
+            context, owner = owner_page(browser, session)
+            said["link"] = set_up_automatic(owner, first, price)
+            steps.append(("set up, waiting", "Waiting for Proof Client Co to agree"))
+            client_context, client, said["terms"] = agree_in_portal(browser, setup)
+            steps.append(("agreed in the portal", True))
+            # Three days before the first date, then on it (the worker's jobs).
+            steps.append(("made and emailed by itself", billing_run(env, first - timedelta(
+                days=3))))
+            steps.append(("charged on the date", billing_run(env, first)))
+            # The owner changes the price: from a date at least 7 days out.
+            owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            owner.get_by_role("button", name="Edit the recurring invoice for Proof "
+                                              "Client Co").click(timeout=90000)
+            edit = owner.get_by_role("dialog", name=re.compile(r"^Editing"))
+            edit.get_by_label("Price of line 1").fill(new_price)
+            edit.get_by_role("button", name="Save the changes").click()
+            edit.wait_for(state="detached", timeout=60000)
+            steps.append(("price changed", new_price))
+            # The client stops it, reading the dates first.
+            client.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            client.get_by_role("button", name="Stop automatic billing").click(timeout=90000)
+            dialog = client.get_by_role("dialog", name="Stop automatic billing?")
+            said["stop"] = dialog.inner_text(timeout=60000)
+            dialog.get_by_role("button", name="Confirm: stop automatic billing").click()
+            client.get_by_role("button", name="Withdraw my notice").wait_for(timeout=60000)
+            said["ending"] = client.get_by_text(re.compile(r"^Billing continues through")) \
+                .first.inner_text()
+            steps.append(("notice given", True))
+            # Every billing date through the end; then the day after; then
+            # the next billing date, which is not billed.
+            for day in billed[1:]:
+                steps.append((f"made {day}", billing_run(env, day - timedelta(days=3))))
+                steps.append((f"charged {day}", billing_run(env, day)))
+            steps.append(("the day after the end", billing_run(env, ends + timedelta(days=1))))
+            steps.append(("the next date, after the end", billing_run(env, after)))
+            # Ended, on both sides.
+            owner.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            owner.get_by_text("Ended", exact=True).first.wait_for(timeout=60000)
+            client.goto(f"{BASE}/invoices", wait_until="domcontentloaded", timeout=90000)
+            said["ended"] = client.get_by_text(re.compile(r"^Automatic billing ended")) \
+                .first.inner_text(timeout=60000)
+            steps.append(("Ended on both pages", True))
+            client.close()
+            client_context.close()
+            context.close()
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    result = {"dates": {"today": today.isoformat(), "first": first.isoformat(),
+                        "billed": [d.isoformat() for d in billed], "ends": ends.isoformat(),
+                        "not_billed": after.isoformat()},
+              "steps": steps, "said": said,
+              "facts": json.loads(manage("nmi_proof_setup", "--billing-facts",
+                                         env_extra=env).strip().splitlines()[-1])}
+    facts_ = result["facts"]
+    invoices = facts_["invoices"]
+    [agreement] = facts_["agreements"]
+    result["ok"] = bool(
+        facts_["state"] == "ended"
+        and [i["billing_date"] for i in invoices] == [d.isoformat() for d in billed]
+        and all(i["status"] == "paid" and len(i["attempts"]) == 1
+                and i["attempts"][0][0] == "approved" and i["attempts"][0][1] == "autopay"
+                and i["attempts"][0][2] for i in invoices)
+        and invoices[0]["total_cents"] == cents and invoices[-1]["total_cents"] == cents + 111
+        and invoices[0]["issue_date"] == (first - timedelta(days=3)).isoformat()
+        and invoices[0]["email"]["state"] == "sent"
+        and "will be charged to the card ending 1111 on" in invoices[0]["email"]["says_charged"]
+        and agreement["browser_kept"] and agreement["address_kept"]
+        and agreement["card"] == "1111" and agreement["notice_given"]
+        and agreement["ends_on"] == ends.isoformat() and agreement["ends_set_by"] == "client"
+        and agreement["ended"]
+        and said["ended"].startswith("Automatic billing ended")
+        and said["stop"].startswith(f"Billing continues through ")
+        and "Your last charge will be on" in said["stop"]
+        and dict(steps)["the next date, after the end"]["made"] == []
+        and dict(steps)["the next date, after the end"]["charged"] == 0)
     return result
 
 
@@ -1619,6 +1855,10 @@ def run_mode():
         result = refunds_proof()
     elif "--test-mode" in sys.argv:
         result = test_mode_proof()
+    elif "--automatic" in sys.argv:
+        result = automatic_proof()
+    elif "--run-now" in sys.argv:
+        result = run_now_proof()
     elif "--link-collect" in sys.argv:
         host = sys.argv[sys.argv.index("--link-collect") + 1]
         if host not in ("secure.nmi.com", "secure.vaultixpay.com"):
