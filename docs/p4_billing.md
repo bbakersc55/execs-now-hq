@@ -5,7 +5,7 @@
 **2026-11-16:** void and refund from the app (§11) and knowing when the
 processor is in Test Mode (§12), released at Release 44.
 
-**2026-11-17:** recurring invoices that bill automatically (§14): the client
+**2026-11-17, released at Release 45:** recurring invoices that bill automatically (§14): the client
 owner agrees in the portal, each invoice is made and emailed by itself, and
 the saved card is charged on each billing date. Also auto-pay never passes over
 an invoice silently, and web and the worker each report whether they can reach

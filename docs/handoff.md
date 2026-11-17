@@ -1,9 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-17 UTC**, after automatic recurring billing was built on `dev`. **The
-next session starts at "2026-11-17: automatic recurring billing, on dev" just
-below**; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-17 UTC**, after Release 45. **The next session starts at
+"2026-11-17: Release 45, automatic recurring billing" just below**; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -34,12 +33,19 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-17: automatic recurring billing, on dev
+## 2026-11-17: Release 45, automatic recurring billing
 
-- **Built on `dev`, not released.** Spec as built: `docs/p4_billing.md` §14.
-  Migrations `billing 0014_automatic_billing` (additive) and `notify
-  0006_payments_notices` (choices only), applied on the laptop's
-  `execsnowhq_local` after a green gate.
+- **Release 45 is live:** `main` at `fb4b4d3`. Two migrations, applied by the
+  runbook sequence: backup `execsnowhq_prod_20261117_035420` (the owner's
+  run-now); pushed 03:55:30; applied 03:57:09–29, both `OK`; web serving about
+  2 min 16 s after the push. Worker and `mcp` up too. Recorded in the runbook
+  ("Observed at Release 45"). On start the worker printed "real calls to the
+  card processor OFF" and web "on": the INV-0004 cause, seen by the services
+  themselves.
+- Spec as built: `docs/p4_billing.md` §14. Migrations `billing
+  0014_automatic_billing` (additive) and `notify 0006_payments_notices`
+  (choices only), applied on the laptop's `execsnowhq_local` after a green
+  gate.
 - **What skipped INV-0004 on 2026-11-16:** `NMI_LIVE_CALLS` is true on web
   and not on the worker (`qcluster`) in production. **Waiting on the owner:**
   set `NMI_LIVE_CALLS=true` on `qcluster` in Railway (it redeploys the
@@ -65,9 +71,9 @@ they don't, and what changed since 9/30.
 - **Demo:** Acme Fasteners has one active recurring invoice billed
   automatically on the 1st and 15th, and one with notice given.
 - **On release:** no new scheduled job; the start scripts now set
-  `APP_SERVICE` (web, worker) and run `manage.py report_service`. Nothing to
-  set in Railway for the release itself; `NMI_LIVE_CALLS` on `qcluster` is
-  the owner's separate step above.
+  `APP_SERVICE` (web, worker) and run `manage.py report_service`. Nothing was
+  set in Railway; `NMI_LIVE_CALLS` on `qcluster` is the owner's separate step
+  above, still waiting.
 
 ## 2026-11-16, later: no card fee on invoices (a decision; no code)
 

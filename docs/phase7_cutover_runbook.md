@@ -932,6 +932,27 @@ and "Clear test payments". `enhq-site` SKIPPED. **Push to web serving: about
 production read waits on the owner's ask; the line is in `docs/p4_billing.md`
 §12).
 
+**Observed at Release 45 (2026-11-17 UTC, two migrations,
+`billing 0014_automatic_billing` (three new tables, new columns with database
+defaults, check and partial unique constraints, no write) and
+`notify 0006_payments_notices` (choices only, a no-op); `fb4b4d3`: recurring
+invoices that bill automatically, auto-pay never passing over an invoice
+silently, and each service reporting its own real calls):** R1: the owner ran
+the backup by hand: `execsnowhq_prod_20261117_035420.sql.gz`, 17.1 MB, landed
+03:54:24. R2: `main` fast-forwarded `b679800..fb4b4d3`, pushed 03:55:30. R3:
+worker `WAITING` 03:56:57, listing exactly `billing.0014` and `notify.0006`.
+R4: applied by me 03:57:09–29, both `OK`. R5: `migrations current` 03:57:34,
+then the new start line **"worker: real calls to the card processor OFF."**,
+running 03:57:42. R5b: no new scheduled job (automatic billing rides the 5:00
+and 9:00 jobs). R6a: `mcp` `336d06be` SUCCESS by itself, `/healthz` `ok`. R6:
+web `00523adb` SUCCESS by itself (its wait was at 20 s of 360 s), **"web: real
+calls to the card processor on."**, gunicorn listening 03:57:46; `/healthz`
+200, and the served bundle carries "Bill automatically", "Agree and start
+automatic billing", "Run the next billing now" and "Refused today".
+`enhq-site` SKIPPED. **Push to web serving: about 2 min 16 s.** The worker's
+`NMI_LIVE_CALLS` is still off (the owner's step, `docs/p4_billing.md` §14.1):
+nothing is charged by schedule until it is set, and Practices shows it in red.
+
 ---
 
 ## Part A — the owner's steps, in order
