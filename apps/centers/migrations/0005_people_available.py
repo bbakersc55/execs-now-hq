@@ -1,13 +1,14 @@
 """The People Command Center becomes available (2026-11-17): its security
-foundation is built (docs/p9_people_hris.md). One row of the platform's
+foundation and its employee records are built (docs/p9_people_hris.md). One row of the platform's
 catalog: its status and description. Reversed, it is "coming" again."""
 
 from django.db import migrations
 
 DESCRIPTION = (
-    "For a fractional CHRO: People pages per company, HR permissions by person, two-factor "
-    "sign-in for HR access, and an access log of every view, change and export. The "
-    "employee records come next.")
+    "For a fractional CHRO: employee records per company with an org chart, offer "
+    "letters by e-signature, onboarding and offboarding checklists that become tasks, "
+    "access lists and their revoke tasks, HR permissions by person, two-factor sign-in "
+    "for HR access, and an access log of every view, change and export.")
 
 
 def available(apps, schema_editor):

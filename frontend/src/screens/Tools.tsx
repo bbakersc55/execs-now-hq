@@ -186,7 +186,8 @@ const ZOOM = { min: 0.25, max: 2.5, step: 1.25 };
 
 /** The org chart as the server drew it (the PDF prints the same drawing):
  *  zoom in and out, Fit to the width, and drag or scroll to move around. */
-function OrgChart({ drawing }: { drawing?: ViewDrawing }) {
+export function OrgChart({ drawing, title = "The chart" }: { drawing?: ViewDrawing | null;
+  title?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const fitted = useRef(false);
@@ -204,9 +205,9 @@ function OrgChart({ drawing }: { drawing?: ViewDrawing }) {
     setZoom((z) => Math.min(ZOOM.max, Math.max(ZOOM.min, Math.round(z * factor * 100) / 100)));
   const stop = () => { drag.current = null; };
   return (
-    <section className="tl-org" aria-label="The chart">
+    <section className="tl-org" aria-label={title}>
       <div className="tl-org-head">
-        <h3>The chart</h3>
+        <h3>{title}</h3>
         {drawing?.svg && (
           <div className="tl-zoom" role="group" aria-label="Zoom the chart">
             <button type="button" className="small" aria-label="Zoom out" disabled={zoom <= ZOOM.min}

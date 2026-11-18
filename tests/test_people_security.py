@@ -337,10 +337,16 @@ def acme(seeded_tenant, ff):
                 "emergency_contact": "A sibling", "documents": ["Offer letter"]})))
         return row
 
+    from apps.people.models import PersonDocument
+
     marvin = person("Marvin", manager.user)
     daffy = person("Daffy", employee.user, boss=marvin)
     elmer = person("Elmer")
     globex = person("Hank", at=other, pay="$99.99 an hour")
+    for row in (marvin, daffy, elmer, globex):
+        # 2026-11-17, the records: documents are files of their own.
+        PersonDocument.all_objects.create(tenant=t, person=row, kind="offer_letter",
+                                          title="Offer letter")
     return SimpleNamespace(company=company, other=other, owner=owner, leader=leader,
                            manager=manager, employee=employee, nobody=nobody,
                            other_owner=other_owner, marvin=marvin, daffy=daffy, elmer=elmer,
@@ -396,7 +402,13 @@ def test_the_practice_owner_is_hr_director_and_every_unmasked_view_is_logged(api
     client, _ = ready(api, ff, clock)
     page = client.get(scope(acme.company), HTTP_USER_AGENT="Chrome test").json()
     assert page["level"] == "director" and page["guidance"] == "HR guidance, not legal advice"
-    daffy = next(r for r in page["records"] if r["first_name"] == "Daffy")
+    # 2026-11-17, the records: the directory carries no sensitive field; the
+    # person's page does, and opening it is logged.
+    assert "$31.00" not in json.dumps(page)
+    with tenant_context(acme.company.tenant_id):
+        assert not PeopleAccessLog.objects.exists()
+    daffy = client.get(f"{scope(acme.company)}records/{acme.daffy.pk}/",
+                       HTTP_USER_AGENT="Chrome test").json()
     assert daffy["sensitive"]["pay_rate"] == "$31.00 an hour" and daffy["masked"] is False
     assert daffy["manager"]["name"] == "Marvin Placeholder"
     with tenant_context(acme.company.tenant_id):
@@ -416,10 +428,11 @@ def test_a_generalist_sees_sensitive_fields_masked_and_changes_nothing(api, ff, 
     client, _ = ready(api, cf, clock)
     page = client.get(scope(acme.company)).json()
     assert page["level"] == "generalist"
-    marvin = next(r for r in page["records"] if r["first_name"] == "Marvin")
+    marvin = client.get(f"{scope(acme.company)}records/{acme.marvin.pk}/").json()
     assert marvin["masked"] is True and marvin["sensitive"]["pay_rate"] == A.MASK
-    assert marvin["sensitive"]["documents"] == "1 document"
-    assert "$31.00" not in json.dumps(page) and "Tucson" not in json.dumps(page)
+    assert marvin["documents"] == "1 document"
+    for shown in (page, marvin):
+        assert "$31.00" not in json.dumps(shown) and "Tucson" not in json.dumps(shown)
     with tenant_context(acme.company.tenant_id):
         assert not PeopleAccessLog.objects.exists()          # nothing sensitive was shown
     # Break attempts: change a person, add one, open a company not granted.
@@ -442,7 +455,7 @@ def test_a_director_grant_sees_all_and_a_change_and_an_export_are_logged(api, ff
                            content_type="application/json")
     assert changed.status_code == 200 and changed.json()["sensitive"]["pay_rate"] == \
         "$33.00 an hour"
-    exported = client.get(f"{scope(acme.company)}export/")
+    exported = client.get(f"{scope(acme.company)}export/?sensitive=1")
     assert exported.status_code == 200 and b"$33.00 an hour" in exported.content
     with tenant_context(acme.company.tenant_id):
         actions = sorted(PeopleAccessLog.objects.filter(person=acme.marvin)
@@ -497,8 +510,11 @@ def test_a_manager_sees_their_reports_directory_and_their_own_record(api, acme):
     assert page["level"] == "reports"
     rows = {r["first_name"]: r for r in page["records"]}
     assert set(rows) == {"Marvin", "Daffy"}
-    assert rows["Marvin"]["own"] and rows["Marvin"]["sensitive"]["pay_rate"] == "$31.00 an hour"
-    assert "sensitive" not in rows["Daffy"]
+    assert rows["Marvin"]["own"] and "status" in rows["Marvin"] and "status" not in rows["Daffy"]
+    own = client.get(f"{scope(acme.company)}records/{acme.marvin.pk}/").json()
+    assert own["sensitive"]["pay_rate"] == "$31.00 an hour"
+    report = client.get(f"{scope(acme.company)}records/{acme.daffy.pk}/").json()
+    assert "sensitive" not in report and "employment" not in report
     # Break attempt: someone who isn't their report, by id.
     assert client.get(f"{scope(acme.company)}records/{acme.elmer.pk}/").status_code == 404
 
@@ -537,8 +553,10 @@ def test_two_factor_pending_reaches_no_people_screen(api, ff, acme, clock):
 def test_the_access_log_is_read_by_the_owners_for_their_scope_and_edited_by_nobody(
         api, ff, acme, clock):
     owner, _ = ready(api, ff, clock)
-    owner.get(scope(acme.company))
-    owner.get(scope(acme.other))
+    for company, people in ((acme.company, (acme.marvin, acme.daffy, acme.elmer)),
+                            (acme.other, (acme.globex,))):
+        for person in people:
+            owner.get(f"{scope(company)}records/{person.pk}/")
     log = owner.get(f"{scope(acme.company)}access-log/").json()["entries"]
     assert {e["person"] for e in log} == {"Marvin Placeholder", "Daffy Placeholder",
                                           "Elmer Placeholder"}

@@ -133,6 +133,9 @@ HANDLED_RELATIONS = {
     # E-signature: who a document is to. What was printed and signed is the
     # document's own copy (`signer_name`, `signer_email`) and does not change.
     "document.signer",
+    # People (2026-11-17): the contact People made to send a person a
+    # document follows the person, as the documents do.
+    "person_record.made_contact",
 }
 
 
@@ -204,6 +207,9 @@ def _merge_later_tables(tenant, survivor, absorbed, *, actor=None) -> dict:
     from apps.esign.models import Document
 
     move_all(Document, "signer")
+    from apps.people.models import PersonRecord
+
+    move_all(PersonRecord, "made_contact")
     from apps.billing.models import ClientInvoice, ClientInvoiceSchedule
 
     move_all(ClientInvoice)

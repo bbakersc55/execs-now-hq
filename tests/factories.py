@@ -2403,6 +2403,70 @@ class HRGrantFactory(TenantScopedFactory):
     all_companies = True
 
 
+class PeopleCustomFieldFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.PeopleCustomField"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    target = "record"
+    label = "Shirt size"
+
+
+class TemplateItemFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.TemplateItem"
+
+    tenant = factory.SubFactory(TenantFactory)
+    client_company = factory.SubFactory(ClientCompanyFactory,
+                                        tenant=factory.SelfAttribute("..tenant"))
+    kind = "onboarding"
+    section = "it"
+    title = "Order the laptop"
+    owner_role = "it"
+
+
+class ChecklistFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.Checklist"
+
+    tenant = factory.SubFactory(TenantFactory)
+    person = factory.SubFactory(PersonRecordFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "onboarding"
+    anchor_date = datetime.date(2026, 12, 1)
+
+
+class ChecklistItemFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.ChecklistItem"
+
+    tenant = factory.SubFactory(TenantFactory)
+    checklist = factory.SubFactory(ChecklistFactory, tenant=factory.SelfAttribute("..tenant"))
+    section = "people"
+    title = "Send the welcome email"
+
+
+class AccessEntryFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.AccessEntry"
+
+    tenant = factory.SubFactory(TenantFactory)
+    person = factory.SubFactory(PersonRecordFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "system"
+    name = "Slack"
+
+
+class PersonDocumentFactory(TenantScopedFactory):
+    class Meta:
+        model = "people.PersonDocument"
+
+    tenant = factory.SubFactory(TenantFactory)
+    person = factory.SubFactory(PersonRecordFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "review"
+    title = "Annual review"
+
+
 class PeopleAccessLogFactory(TenantScopedFactory):
     class Meta:
         model = "people.PeopleAccessLog"

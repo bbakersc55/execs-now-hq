@@ -64,7 +64,9 @@ class Principal:
                 user=self.user, membership=self.membership, tenant=self.tenant,
                 real_user=self.user, real_membership=self.membership, acting_as=None,
                 area="practice", session=SimpleNamespace(session_key=None, get=lambda *a: None),
-                META={}, GET={}, data={}, query_params={}, method="GET")
+                META={}, GET={}, data={}, query_params={}, method="GET",
+                # 2026-11-17: what the shared scopers keep from every AI app.
+                ai_app=True)
         self._request.query_params = dict(query)
         self._request.GET = dict(query)
         return self._request

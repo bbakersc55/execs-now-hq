@@ -80,14 +80,14 @@ describe("People pages", () => {
   const page = (more: Partial<PeopleScopePage> = {}): PeopleScopePage => ({
     guidance: "HR guidance, not legal advice", key: ACME, name: "Acme Fasteners",
     level: "generalist", level_label: "HR Generalist", manages: false, may_add: false,
-    may_export: true, members: [],
+    may_export: true, may_export_sensitive: false, may_run: true, may_hire: false, members: [],
     records: [{ id: "p1", name: "Marvin Placeholder", first_name: "Marvin",
-                last_name: "Placeholder", title: "Plant manager", team: "Plant",
-                work_email: "marvin@acme.example", manager: null, own: false,
-                placeholder: true, masked: true,
-                sensitive: { pay_rate: "•••••", home_address: "•••••", date_of_birth: "•••••",
-                             personal_phone: "•••••", personal_email: "•••••",
-                             emergency_contact: "•••••", documents: "1 document" } }],
+                last_name: "Placeholder", title: "Plant manager", department: "Plant",
+                team: "Plant", work_email: "marvin@acme.example", work_phone: "",
+                manager: null, own: false, placeholder: true, status: "active",
+                status_label: "Active" }],
+    headcount: null, upcoming: null, chart: null, client_users: null, fields: [],
+    my_items: [], to_sign: [], held_in_payroll: "Held in payroll.",
     ...more });
 
   function show(routes: Record<string, unknown>) {
@@ -99,7 +99,8 @@ describe("People pages", () => {
 
   it("says HR guidance, not legal advice, and masks for a Generalist", async () => {
     show({ [`GET /api/people/${ACME}/`]: page() });
-    expect(await screen.findByText("Masked")).toBeInTheDocument();
+    expect(await screen.findByText("As HR Generalist, sensitive fields are masked."))
+      .toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("HR guidance, not legal advice.");
     expect(screen.getByText("Your access: HR Generalist")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Access log" })).toBeNull();
@@ -107,11 +108,12 @@ describe("People pages", () => {
 
   it("shows the directory only to senior leadership", async () => {
     const directory = page({ level: "directory", level_label: "Senior leadership (directory)",
-                             may_export: false });
-    directory.records = directory.records.map(({ sensitive: _s, masked: _m, ...r }) => r);
+                             may_export: false, may_run: false });
+    directory.records = directory.records.map(({ status: _s, status_label: _l, ...r }) => r);
     show({ [`GET /api/people/${ACME}/`]: directory });
-    expect(await screen.findByText("Directory only")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Export (CSV)" })).toBeNull();
+    expect(await screen.findByText("Marvin Placeholder")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Status" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Export spreadsheet" })).toBeNull();
   });
 
   it("sends an HR holder without two-factor to Profile first", async () => {

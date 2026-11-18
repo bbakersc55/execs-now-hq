@@ -235,6 +235,12 @@ def _build(*, ff_email, ff_name, oauth_client, mail_connection, ai_key, today, v
         from .plans import team_week
 
         team_week(world)
+        # 2026-11-17: People on, Acme's people as records: an offer out, an
+        # onboarding half done, an offboarding revoking its access list, and
+        # Ted Lasso as HR Generalist for Acme.
+        from .people import people as people_seed
+
+        people_seed(world)
         calendar.meetings(world)
         foundation.restore_mail_connection(world, mail_connection)
         # Last, so nothing the seed itself does can spend on it: the

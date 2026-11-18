@@ -49,6 +49,8 @@ class Seat:
     is_open: bool
     has_no: bool
     reports_to: str = ""
+    #: People's chart (2026-11-17): who reports to whom by id, not by title.
+    key: str = ""
     parent: int | None = None
     children: list = field(default_factory=list)
     title_lines: list = field(default_factory=list)
@@ -66,6 +68,8 @@ class Chart:
     box_h: float = 0
     width: float = 0
     height: float = 0
+    #: People's chart: a box a person, never "Open" or "A no".
+    people: bool = False
 
 
 def _text(value) -> str:
@@ -83,7 +87,8 @@ def seats_of(rows, view) -> list[Seat]:
     name_key, parent_key = view.get("name") or "seat", view.get("parent") or "reports_to"
     person_key = view.get("person") or "person"
     department_key = view.get("department") or "department"
-    checks = view.get("checks") or CHECKS
+    checks = view.get("checks") if view.get("checks") is not None else CHECKS
+    key_field, people = view.get("key"), bool(view.get("people"))
     seats = []
     for row in rows or []:
         row = row if isinstance(row, dict) else {}
@@ -93,11 +98,18 @@ def seats_of(rows, view) -> list[Seat]:
         person = _text(row.get(person_key))
         seats.append(Seat(
             index=len(seats), title=title,
-            person="" if person.lower() == "open" else person,
+            person=person if people else ("" if person.lower() == "open" else person),
             department=_text(row.get(department_key)),
-            is_open=person == "" or person.lower() == "open",
+            is_open=not people and (person == "" or person.lower() == "open"),
             has_no=any(_text(row.get(c)).lower() == "no" for c in checks),
-            reports_to=_text(row.get(parent_key))))
+            reports_to=_text(row.get(parent_key)),
+            key=_text(row.get(key_field)) if key_field else ""))
+    if key_field:
+        by_key = {seat.key: seat.index for seat in seats if seat.key}
+        for seat in seats:
+            boss = by_key.get(seat.reports_to) if seat.reports_to else None
+            seat.parent = boss if boss is not None and boss != seat.index else None
+        return seats
     first = {}
     for seat in seats:
         first.setdefault(seat.title.lower(), seat.index)
@@ -174,7 +186,7 @@ def _place(root, left, row_h):
 
 def layout(rows, view=None) -> Chart:
     seats = seats_of(rows, view)
-    chart = Chart(seats=seats, roots=[])
+    chart = Chart(seats=seats, roots=[], people=bool((view or {}).get("people")))
     _claim(seats, chart.roots)
     chart.roots.sort(key=lambda seat: seat.index)
     for seat in seats:
@@ -217,6 +229,11 @@ def tint(color, share=0.1) -> str:
 
 
 def summary(chart) -> str:
+    if chart.people:
+        n = len(chart.seats)
+        tops = len(chart.roots)
+        return (f"Org chart: {n} {'person' if n == 1 else 'people'}, drawn from their "
+                f"managers ({tops} at the top).")
     seats = len(chart.seats)
     opened = sum(s.is_open for s in chart.seats)
     nos = sum(s.has_no for s in chart.seats)
@@ -298,7 +315,8 @@ def drawing(rows, view, brand) -> dict:
     accent = getattr(brand, "accent_color", "") or "#F58220"
     return {"type": "org_chart", "svg": svg(rows, view, header=header, accent=accent) or None,
             "width": round(chart.width), "height": round(chart.height),
-            "label": summary(chart) if chart.seats else "No seats yet."}
+            "label": summary(chart) if chart.seats
+            else ("No one yet." if chart.people else "No seats yet.")}
 
 
 # ------------------------------------------------------------------ the PNG, for Word

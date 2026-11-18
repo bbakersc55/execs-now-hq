@@ -55,7 +55,10 @@ MAX_DRAWN_BYTES = 300 * 1024
 #: The fields a document template has beyond an email's general ones, and
 #: what the form asks for each.
 DOC_FIELDS = (("Scope", "Scope of work"), ("Fee", "Fee"), ("Term", "Term"),
-              ("StartDate", "Start date"))
+              ("StartDate", "Start date"),
+              # 2026-11-17: an offer letter's, from People (`apps/people/hiring.py`).
+              ("JobTitle", "Job title"), ("Pay", "Pay"), ("EmploymentType", "Employment type"),
+              ("WorkState", "Work state"), ("Manager", "Manager"))
 GENERAL = (("FirstName", "Signer's first name"), ("LastName", "Signer's last name"),
            ("Company", "Company"), ("FractionalName", "Your name"),
            ("PracticeName", "The practice's name"), ("Today", "Today's date"))
@@ -487,6 +490,11 @@ def _sign(document, *, method, typed="", drawn="", agreed=False, ip=None, user_a
     _tell(document, "countersign", "Countersign needed",
           f"{document.title} is signed by {document.signer_name} and needs your countersignature.")
     fire(document, "signed")
+    if is_peoples(document):
+        # A signed offer letter: its record to onboarding, onboarding started.
+        from apps.people import hiring
+
+        hiring.document_event(document, "signed")
     return document
 
 
@@ -663,6 +671,10 @@ def fire(document, trigger, *, actor=None) -> list:
     from apps.crm.models import StageAutomation
     from apps.crm.services import pipeline, stage_rules
 
+    if is_peoples(document):
+        # 2026-11-17: an offer letter or a handbook acknowledgment moves
+        # nobody on a pipeline (People's documents, `apps/people/hiring.py`).
+        return []
     contact = document.signer
     results = []
     for rule in (StageAutomation.all_objects.filter(tenant_id=document.tenant_id,
@@ -729,6 +741,13 @@ def welcome_values(contact) -> dict:
 
 
 # ------------------------------------------------------------- telling
+
+def is_peoples(document) -> bool:
+    """Sent from People (2026-11-17): on a person's record. Kept out of the
+    Documents list for anyone without HR Director, out of the portal for all
+    but the client owner and its signer, and out of AI apps."""
+    return document.people_files.exists()
+
 
 def _audit(document, actor, verb, payload):
     AuditEvent.all_objects.create(

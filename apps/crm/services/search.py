@@ -86,9 +86,11 @@ def search(tenant, term, *, limit=50):
     if not term or not term.strip():
         return {"contacts": [], "companies": []}
 
+    from apps.people.access import contacts_for
+
     query = SearchQuery(term, search_type="websearch")
     contacts = list(
-        Contact.objects.filter(deleted_at__isnull=True)
+        contacts_for(Contact.objects.filter(deleted_at__isnull=True))
         .filter(Q(search_vector=query) | Q(tags__contains=[term]) | as_typed(term)
                 | specialty_matches(term))
         # A row that matched on a typed prefix has no full-text rank at all

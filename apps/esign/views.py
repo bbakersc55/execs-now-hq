@@ -220,8 +220,13 @@ class DocumentViewSet(viewsets.ViewSet):
             self.request, Company.objects.filter(deleted_at__isnull=True))
 
     def _documents(self):
-        return Document.objects.filter(company__in=self._companies()).select_related(
+        from apps.people import access as people_access
+
+        rows = Document.objects.filter(company__in=self._companies()).select_related(
             "template", "request_message", "countersigned_by", "signer")
+        # 2026-11-17: People's documents (an offer carries pay) only where
+        # this person is HR Director, and never to an AI app.
+        return people_access.documents_for(self.request, rows)
 
     def _get(self, pk):
         document = self._documents().filter(pk=pk).first()
@@ -385,8 +390,13 @@ class PortalDocumentViewSet(viewsets.ViewSet):
         if membership is None or membership.role not in CLIENT_ROLES \
                 or membership.client_company_id is None:
             raise Http404
-        return Document.objects.filter(company_id=membership.client_company_id,
+        from apps.people import access as people_access
+
+        rows = Document.objects.filter(company_id=membership.client_company_id,
                                        state__in=self.SEEN)
+        # 2026-11-17: People's documents to the client owner (or an HR
+        # Director grant) and to their own signer only.
+        return people_access.documents_for(self.request, rows)
 
     def list(self, request):
         return Response([{

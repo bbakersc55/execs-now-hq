@@ -5,7 +5,7 @@ rest are coming."""
 
 from __future__ import annotations
 
-from apps.centers.content import operations
+from apps.centers.content import operations, people
 
 PRICE_CENTS = 5000
 #: All of a practice's Command Centers together, at most.
@@ -18,9 +18,10 @@ CENTERS = [
      "A session template in plain words, an operations KPI list, six playbooks, an SOP, a "
      "weekly note and a quarterly review, the recommended feeds and three AI actions."),
     ("people", "People Command Center", "People", "People", "available",
-     "For a fractional CHRO: People pages per company, HR permissions by person, two-factor "
-     "sign-in for HR access, and an access log of every view, change and export. The "
-     "employee records come next."),
+     "For a fractional CHRO: employee records per company with an org chart, offer "
+     "letters by e-signature, onboarding and offboarding checklists that become tasks, "
+     "access lists and their revoke tasks, HR permissions by person, two-factor sign-in "
+     "for HR access, and an access log of every view, change and export."),
     ("technology", "Technology Command Center", "Technology", "Technology", "coming",
      "For a fractional CTO or CIO. Next."),
     ("finance", "Finance Command Center", "Finance", "Finance", "coming",
@@ -40,7 +41,7 @@ NAMES = {c[0]: c[1] for c in CENTERS}
 SHORT = {c[0]: c[2] for c in CENTERS}
 
 #: What each available module ships (`apps/centers/content/<code>.py`).
-CONTENT = {"operations": operations}
+CONTENT = {"operations": operations, "people": people}
 
 
 def content(code):

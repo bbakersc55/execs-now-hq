@@ -14,7 +14,7 @@ import { SopScreen, SopsScreen } from "./screens/Sops";
 import { SopBrainstormScreen } from "./screens/SopBrainstorm";
 import { Landing } from "./components/Landing";
 import { SessionEndsBanner, TwoFactorPrompt } from "./components/TwoFactor";
-import { PeopleHome, PeopleScope } from "./screens/People";
+import { PeopleHome, PeopleScope, PersonScreen } from "./screens/People";
 
 import { ActingBanner } from "./components/ActAs";
 import { useNarrowWindow, useRemembered } from "./components/shell";
@@ -497,6 +497,7 @@ export function App() {
             <Route path="/outbox" element={<Outbox />} />
             <Route path="/people" element={<PeopleHome />} />
             <Route path="/people/:scope" element={<PeopleScope />} />
+            <Route path="/people/:scope/:person" element={<PersonScreen />} />
             <Route path="/import" element={<ImportDoor />} />
             <Route path="/import/contacts" element={<ImportWizard />} />
             {/* Everyone signed in, client users included (UI 3 spec §5). The

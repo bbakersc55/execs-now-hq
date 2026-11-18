@@ -187,7 +187,27 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         from apps.centers import services as centers
         from apps.scorecard.models import Kpi
 
-        assert centers.enabled(run.tenant_id) == ["operations"]
+        assert centers.enabled(run.tenant_id) == ["operations", "people"]
+        # 2026-11-17, People: Acme's people as records, an offer out for
+        # signature, an onboarding half done, an offboarding revoking its
+        # access list, and a Generalist on Summit's team.
+        from apps.people.models import AccessEntry, Checklist, HRGrant, PersonRecord
+
+        acme = run.goal.client_company
+        people = PersonRecord.objects.filter(client_company=acme)
+        assert people.count() == 15 and people.filter(manager__isnull=False).count() == 14
+        assert set(people.values_list("status", flat=True)) == {"active", "offer_out",
+                                                                "onboarding", "offboarding"}
+        assert people.filter(user__isnull=False).count() == 12
+        lola = people.get(first_name="Lola")
+        assert lola.files.get().esign_document.state == "sent"
+        onboarding = Checklist.objects.get(person__first_name="Bugs", kind="onboarding")
+        done = sum(1 for i in onboarding.items.select_related("task") if i.done_at)
+        assert 5 <= done <= 8 and onboarding.items.count() == 13
+        leaving = AccessEntry.objects.filter(person__first_name="Sylvester")
+        assert leaving.count() == 5 and leaving.filter(revoked_at__isnull=False).count() == 2
+        [grant] = HRGrant.objects.filter(client_company=acme)
+        assert grant.level == "generalist" and grant.user.full_name == "Ted Lasso"
         assert {"On-time completion rate", "Rework or callback rate",
                 "First-time fix rate"} <= set(Kpi.objects.filter(
                     scorecard__company=run.goal.client_company).values_list("name", flat=True))
@@ -248,7 +268,9 @@ def test_the_seed_makes_the_whole_practice_and_a_second_run_resets_it(
         from apps.esign.models import Document
 
         assert {(d.company.name, d.state) for d in Document.objects.all()} == {
-            ("Pied Piper Compression", "complete"), ("Sheinhardt Wig Company", "viewed")}
+            ("Pied Piper Compression", "complete"), ("Sheinhardt Wig Company", "viewed"),
+            # 2026-11-17: Lola Bunny's offer letter, out for her signature.
+            ("Acme Fasteners", "sent")}
         # Both on Summit's letterhead, and the signature page too (2026-10-31).
         import io
 

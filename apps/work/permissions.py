@@ -379,7 +379,13 @@ def task_queryset_for(request, queryset):
     """A task reaches a CF by four paths, not one: the company is assigned, the
     contact it hangs off is theirs (Phase 1 stage-rule tasks), they own it, or
     it is assigned to them. The last two hold regardless of company — matrix
-    7.1's `own-work`."""
+    7.1's `own-work`.
+
+    2026-11-17: a People checklist's tasks only as `people.access.tasks_for`
+    allows, and never to an AI app."""
+    from apps.people.access import tasks_for
+
+    queryset = tasks_for(request, queryset)
     role = crm_perms.role_of(request)
     membership = _membership(request)
     if role in (Role.FF, Role.VA):

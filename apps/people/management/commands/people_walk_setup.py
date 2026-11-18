@@ -109,9 +109,15 @@ class Command(BaseCommand):
             Membership.all_objects.filter(pk=m.pk).update(leads_all_teams=False)
             ClientTeamMember.all_objects.filter(membership=m).update(level=level)
         with tenant_context(tenant.pk):
-            centers.switch(tenant, "people", True, actor=owner.user)
+            if not centers.has(tenant.pk, "people"):
+                centers.switch(tenant, "people", True, actor=owner.user)
 
         def person(first, last, title, user=None, boss=None, pay="$28.00 an hour"):
+            # Since the demo seeds Acme's records (2026-11-17), theirs are used.
+            seeded = PersonRecord.all_objects.filter(tenant=tenant, client_company=acme,
+                                                     first_name=first, last_name=last).first()
+            if seeded is not None:
+                return seeded
             return PersonRecord.all_objects.create(
                 tenant=tenant, client_company=acme, first_name=first, last_name=last,
                 title=title, team="Plant", user=user, manager=boss,

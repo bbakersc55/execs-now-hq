@@ -95,7 +95,12 @@ def contact_queryset_for(request, queryset):
 
     FR-1.9d — a VA sees all contacts. The VA restriction is financials and
     settings, not the CRM.
+
+    2026-11-17: never a contact People made to send someone a document.
     """
+    from apps.people.access import contacts_for
+
+    queryset = contacts_for(queryset)
     role = role_of(request)
     if role in (Role.FF, Role.VA):
         return queryset
@@ -168,7 +173,12 @@ def threads_without_money(request, queryset):
 
 def outbox_queryset_for(request, queryset):
     """Matrix 5.1 — CF sees messages to contacts on assigned companies.
-    Matrix 13.4a — and nobody sees an invoice they may not (`without_money`)."""
+    Matrix 13.4a — and nobody sees an invoice they may not (`without_money`).
+    2026-11-17 — nor a People document's request without HR Director there,
+    and an AI app never (`people.access.messages_for`)."""
+    from apps.people.access import messages_for
+
+    queryset = messages_for(request, queryset)
     role = role_of(request)
     if role in (Role.FF, Role.VA):
         return without_money(request, queryset)

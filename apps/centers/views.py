@@ -79,7 +79,8 @@ def card(tenant, code: str) -> dict:
         return {**out, "shelves": None}
     out["shelves"] = {
         "session_templates": [{"start_from": f"{code}_command_center",
-                               "label": f"Start from the {row.name}"}],
+                               "label": f"Start from the {row.name}"}]
+        if getattr(content, "HAS_SESSION_TEMPLATE", True) else [],
         "kpis": [{"key": k["key"], "name": k["name"], "page": k["page"],
                   "guidance": k["guidance"]} for k in content.KPIS],
         "playbooks": [p for p in playbooks.offered(tenant) if p["center"] == code]

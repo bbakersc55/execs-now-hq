@@ -376,6 +376,18 @@ from apps.people.models import HRGrant, PeopleAccessLog, PersonRecord  # noqa: E
 register(PersonRecord, factories.PersonRecordFactory, api_exposed=False)
 register(HRGrant, factories.HRGrantFactory, api_exposed=False)
 register(PeopleAccessLog, factories.PeopleAccessLogFactory, api_exposed=False)
+# The employee records (2026-11-17), the same way, by scope and then by id
+# (tests/test_people_records.py, "another practice reaches nothing by id").
+from apps.people.models import (  # noqa: E402
+    AccessEntry, Checklist, ChecklistItem, PeopleCustomField, PersonDocument, TemplateItem,
+)
+
+register(PeopleCustomField, factories.PeopleCustomFieldFactory, api_exposed=False)
+register(TemplateItem, factories.TemplateItemFactory, api_exposed=False)
+register(Checklist, factories.ChecklistFactory, api_exposed=False)
+register(ChecklistItem, factories.ChecklistItemFactory, api_exposed=False)
+register(AccessEntry, factories.AccessEntryFactory, api_exposed=False)
+register(PersonDocument, factories.PersonDocumentFactory, api_exposed=False)
 
 # M5 part 4: a company's Track connection and a KPI's Track measure, served by
 # /api/scorecard/track/ through `access.company_for` (tests/test_scorecard_track.py).

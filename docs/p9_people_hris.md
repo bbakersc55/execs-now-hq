@@ -1,8 +1,10 @@
-# P9 — the People Command Center, with an HRIS (decided 2026-11-12, not built)
+# P9 — the People Command Center, with an HRIS (decided 2026-11-12)
 
-**Status: the security foundation is built on branch `people-hris`
-(2026-11-17), not merged; the employee records come next.** See "Built
-2026-11-17: the security foundation" at the end. Bryan decided the scope on
+**Status: the security foundation and the employee records are built on
+branch `people-hris` (2026-11-17), not merged.** See "Built 2026-11-17: the
+security foundation" and "Built 2026-11-17: the employee records" at the end.
+Still to build: the state rules library, the six rated areas and pulse
+surveys. Bryan decided the scope on
 2026-11-12. It comes third in the build order:
 
 1. the SkyRun bonus;
@@ -278,4 +280,172 @@ at sign-in, People never requires it and never re-checks. Profile says so.
 - An AI app (Claude) still answers through its connection after the release.
 - A pay link and a signing link still open with no sign-in.
 - Install the app on a phone: after 12 hours it asks to sign in again.
+
+## Built 2026-11-17: the employee records
+
+On branch `people-hris`, on the foundation above; not merged into `dev`.
+Migration `people 0002_employee_records` (additive: nine columns on
+`person_record` and six new tables; its only `ALTER COLUMN` drops the default
+Django adds to fill `custom_values` on existing rows). Code:
+`apps/people/services.py` (the record, its sections, the directory, exports),
+`checklists.py` (checklists, the access list), `hiring.py` (offer letters and
+documents to sign), `files.py` (documents), `apps/centers/content/people.py`
+(what People ships), `apps/tenancy/demo/people.py` (the demo).
+
+### The record
+
+- **Per client company, and for the practice's own team.** A record links to
+  the person's portal sign-in where they have one; people without one still
+  have a record.
+- **Directory fields** (anyone who reaches the person): name, title,
+  department, team, work email, work phone, manager.
+- **Employment fields** (HR permissions and the person themself, unmasked):
+  status (offer out, onboarding, active, on leave, offboarding, ended),
+  employment type (employee full-time or part-time, contractor), work state,
+  start date, the company's own fields, the access list, the checklists.
+- **Sensitive fields** (encrypted together; an HR Director and the person in
+  full, an HR Generalist masked, every view logged): pay rate with its unit
+  and effective date, home address, date of birth (optional), personal phone
+  and email, emergency contact, and documents (offer letter, handbook
+  acknowledgment, reviews, exit interview, other).
+- **Never stored, and no field for them**: Social Security numbers, bank
+  details, I-9 documents, medical and leave paperwork, background checks and
+  benefits. The record says these are held in payroll; the upload says not
+  to add them; a custom field whose label names one is refused.
+- **Custom fields per client**, on the record, on onboarding and on
+  offboarding; added, renamed, reordered and archived by an HR Director.
+- By hand, a status moves between active and on leave; offer out follows its
+  letter, and onboarding, offboarding and ended follow their checklists.
+- **Client users**: a company's portal sign-ins and its employee records,
+  each person once, ended records not counted, in blocks of 25 at $10. The
+  practice owner sees the count on People.
+
+### The People page
+
+- **The directory** with search and filters (status, department, type, work
+  state); nothing sensitive is in it, at any level.
+- **The org chart**, drawn from managers by the tools' own drawing
+  (`apps/tools/orgchart.py`, joined by id, not by title).
+- **Headcount by status**, for HR permissions.
+- **The next 30 days**: work anniversaries and birthdays, a birthday as its
+  day and month only, for HR permissions and senior leadership.
+- **A person's page** by section: directory, employment, pay, personal,
+  documents, access list, checklists, each following the HR permission rules,
+  with every unmasked view in the access log.
+
+### Hiring
+
+- A new record can start as **offer out**. **Send the offer letter** (an HR
+  Director's: it carries pay) merges People's offer template
+  (`people_offer_letter`) with the record's title, pay, start date, type,
+  work state and manager, and puts its request in the Outbox for approval, as
+  every signature request is. The pay going into the letter is logged as
+  exported.
+- **When the candidate signs, the record moves to onboarding and the
+  onboarding checklist starts**, as whoever sent the offer. Countersigning
+  works as it does today, from Documents.
+- The handbook acknowledgment goes the same way to an employee to sign.
+
+### Checklists and the access list
+
+- **Onboarding and offboarding**, each in three sections (People, IT,
+  Manager), start as a copy of People's standard items and are each
+  company's own to add to, edit, reorder and archive.
+- **Starting one makes each item a task in Work**, its owner and due date
+  set from the start date or the last day. Owners: People items go to
+  whoever starts it, IT items to the IT owner chosen then, Manager items to
+  the manager's sign-in, an item for the person to their own sign-in;
+  without one, to whoever starts it. **Done in Work is done here.**
+- **The access list**: every system, email account, phone number, piece of
+  equipment and key given, with when and by whom.
+- **Offboarding** takes a last day and a reason, builds a revoke task for
+  every entry still given (and for one added while it is open), and **closes
+  only when each item is done, or waived with a note**; then the person is
+  ended. **It never ends anyone in a payroll system**, and says so.
+
+### Who sees what People puts elsewhere
+
+- **Checklist tasks** are the practice's: not client-visible in Work; to the
+  practice owner, their owner or assignee, and HR permissions for that
+  company. A client user owning one finishes it on People.
+- **People's documents for signature** are in Documents only for an HR
+  Director of that company; in the portal only for the client owner and the
+  person they are for. Signing one moves nobody on a pipeline.
+- **The contact an offer is sent to**, when People made it, is never in
+  Contacts or search.
+- **Their requests in the Sending queue** only for an HR Director there.
+- **AI apps see none of it**: every AI app's request is marked (`ai_app`),
+  and the shared scopers (tasks, documents, contacts, the Outbox) leave
+  People's rows out; search leaves them out for everyone.
+
+### The portal
+
+- **An employee** sees their own record, their documents to sign and the
+  checklist items assigned to them, and marks those done.
+- **A manager** sees their direct reports' directory fields and checklist
+  progress, and their own items.
+- **The client owner** sees everything for their company.
+
+### Exports
+
+- **The directory as a spreadsheet** (CSV), for HR permissions; sensitive
+  fields only when an HR Director asks for them. **Every export is in the
+  access log**, person by person, with the fields it held.
+
+### The demo (seeded once this is merged)
+
+People on for Summit; Acme Fasteners' fifteen people as records with
+managers and departments (twelve linked to their portal sign-ins); Lola
+Bunny's offer out for signature; Bugs Bunny's onboarding about half done;
+Sylvester Pussycat's offboarding with his access list being revoked (two of
+five done); and Ted Lasso, an associate, HR Generalist for Acme.
+
+### Proved
+
+- **Tests**: `tests/test_people_records.py` (every permission level against
+  every sensitive field; the record's rules; custom fields; the directory;
+  hiring through a real signature and countersigning; the offer reaching only
+  HR Directors; onboarding tasks with owners and due dates; tasks in Work by
+  person; offboarding and revoke tasks; each company's items; exports and the
+  log; documents; the portal; AI apps still seeing nothing; isolation; the
+  foundation's gates on every new route), `tests/test_people_security.py`
+  (Part 1's, updated where the directory no longer carries sensitive
+  fields), `tests/test_demo_seed.py`, and the screens'
+  (`frontend/src/screens/PeopleRecords.test.tsx`).
+- **Headless Chrome on the real `seed_demo`**: `scripts/people_records_walk.py`
+  (with `manage.py people_records_walk_setup`), at 1366 and 390, a real
+  session for each level, two-factor set up with real codes, and Lola signing
+  her offer from the link signed out.
+
+### Choices made (the simplest reading)
+
+- Employment fields (status, type, work state, start date, custom fields,
+  access list, checklists) are not among the sensitive ones: HR permissions
+  see them unmasked, and so does the person; managers and senior leadership
+  do not.
+- Pay is three fields (rate, unit, effective date); the emergency contact and
+  the home address are one field each.
+- Offer letters go from a client company's People page only: e-signature
+  sends for a company, and the practice's own team has none.
+- The signer of an offer is a contact of the company, as every signer is;
+  one People makes is People's (above).
+- An HR Generalist runs checklists and the access list (no sensitive data in
+  them) but changes no record, sends no offer and adds no document.
+- Checklists close by a press, not by themselves.
+- Birthdays and anniversaries cover the next 30 days; a birthday's day and
+  month are not logged as a view of the date of birth.
+- The spreadsheet is CSV.
+- Client users are counted and shown; there is no client-user charge in the
+  billing code to add them to yet.
+
+### To check once it is merged
+
+- `people 0002` applied by the runbook's "Releasing a migration".
+- Turn People on for the owner's practice; add a person, start an
+  onboarding: its tasks are in Work, assigned and dated.
+- Send an offer to an address of yours, approve it in the Sending queue,
+  sign it: the record moves to onboarding; countersign it in Documents.
+- An assistant opens Work, Documents and the Sending queue: none of it
+  there. An AI app (Claude) asked about tasks and documents names none of it.
+- Reseed the demo: Acme's People page as in "The demo" above.
 

@@ -178,3 +178,115 @@ def visible(access: Access, records):
     if access.level in (DIRECTOR, GENERALIST, DIRECTORY):
         return records
     return records.filter(pk__in=access.reach)
+
+
+# ------------------------------------------------- People's rows in other tables
+# 2026-11-17, the records: what People puts in the app's shared tables (a
+# checklist's tasks in Work, an offer letter in e-signature, the contact an
+# offer is sent to) is People's. **Never to an AI app** (`request.ai_app`, set
+# by every AI app's request), never in search, and to people only as below.
+
+def _ai(request) -> bool:
+    return bool(getattr(request, "ai_app", False))
+
+
+def _hr_scopes(membership, levels=HR_LEVELS):
+    """(everything, company ids, the practice's own) where this member holds
+    one of `levels`: by being the practice owner or a client owner, or by a
+    grant. Only while People is on."""
+    from apps.people.models import HRGrant
+
+    if membership is None or not people_on(membership.tenant_id):
+        return False, set(), False
+    if membership.role == Role.FF:
+        return True, set(), True
+    if membership.role == Role.FCC:
+        return False, {membership.client_company_id}, False
+    grants = HRGrant.all_objects.filter(tenant_id=membership.tenant_id,
+                                        user_id=membership.user_id, revoked_at__isnull=True,
+                                        level__in=levels)
+    if membership.role in CLIENT_ROLES:
+        grants = grants.filter(client_company_id=membership.client_company_id)
+    everything = grants.filter(all_companies=True).exists()
+    ids = set(grants.filter(client_company__isnull=False).values_list("client_company_id",
+                                                                      flat=True))
+    practice = grants.filter(client_company__isnull=True, all_companies=False).exists()
+    return everything, ids, practice
+
+
+def tasks_for(request, queryset):
+    """A checklist's tasks in Work: to the practice owner, to whoever owns or
+    is assigned one, and to HR permissions for that company. Never to an AI
+    app."""
+    from django.db.models import Q
+
+    if _ai(request):
+        return queryset.filter(people_item__isnull=True)
+    membership = getattr(request, "membership", None)
+    if membership is None:
+        return queryset.filter(people_item__isnull=True)
+    everything, ids, practice = _hr_scopes(membership)
+    if everything:
+        return queryset
+    allowed = (Q(people_item__isnull=True) | Q(assignee_id=membership.user_id)
+               | Q(owner_id=membership.user_id) | Q(client_company_id__in=ids))
+    if practice:
+        allowed |= Q(client_company__isnull=True)
+    return queryset.filter(allowed)
+
+
+def documents_for(request, rows):
+    """People's documents for signature: to an HR Director of that company,
+    and in the portal to their own signer. Never to an AI app."""
+    from django.db.models import Exists, OuterRef, Q
+
+    from apps.people.models import PersonDocument
+
+    rows = rows.annotate(_peoples=Exists(PersonDocument.all_objects.filter(
+        esign_document=OuterRef("pk"))))
+    if _ai(request):
+        return rows.filter(_peoples=False)
+    membership = getattr(request, "membership", None)
+    if membership is None:
+        return rows.filter(_peoples=False)
+    everything, ids, _practice = _hr_scopes(membership, levels=(DIRECTOR,))
+    if everything:
+        return rows
+    allowed = Q(_peoples=False) | Q(company_id__in=ids)
+    if membership.role in CLIENT_ROLES:
+        # Their own: on their own record, or addressed to their own contact.
+        rows = rows.annotate(_theirs=Exists(PersonDocument.all_objects.filter(
+            esign_document=OuterRef("pk"), person__user_id=membership.user_id)))
+        allowed |= Q(_theirs=True)
+        if membership.contact_id:
+            allowed |= Q(signer_id=membership.contact_id)
+    return rows.filter(allowed)
+
+
+def contacts_for(queryset):
+    """A contact People made to send someone a document: never in Contacts,
+    search or an AI app. It is reached through their record."""
+    return queryset.exclude(people_made__isnull=False)
+
+
+def messages_for(request, queryset):
+    """The email that asks for a People document's signature, while it waits
+    in the Sending queue: to an HR Director of that company only (an offer
+    carries pay), and never to an AI app."""
+    from django.db.models import Exists, OuterRef, Q
+
+    from apps.people.models import PersonDocument
+
+    def peoples(**more):
+        return Exists(PersonDocument.all_objects.filter(esign_document_id=OuterRef("source_id"),
+                                                        **more))
+
+    membership = getattr(request, "membership", None)
+    if _ai(request) or membership is None:
+        return queryset.exclude(Q(source_type="document"), peoples())
+    everything, ids, _practice = _hr_scopes(membership, levels=(DIRECTOR,))
+    if everything:
+        return queryset
+    hidden = Exists(PersonDocument.all_objects.filter(
+        esign_document_id=OuterRef("source_id")).exclude(person__client_company_id__in=ids))
+    return queryset.exclude(Q(source_type="document"), hidden)

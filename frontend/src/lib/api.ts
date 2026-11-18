@@ -1,5 +1,7 @@
 // Session-cookie auth with CSRF (assumption G2). No tokens anywhere.
 
+import type { ViewDrawing } from "./tools";
+
 function csrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : "";
@@ -2984,6 +2986,12 @@ export const DOCUMENT_FIELDS: { field: string; label: string; long?: boolean; da
   { field: "Fee", label: "Fee" },
   { field: "Term", label: "Term" },
   { field: "StartDate", label: "Start date", date: true },
+  // 2026-11-17: an offer letter's (People).
+  { field: "JobTitle", label: "Job title" },
+  { field: "Pay", label: "Pay" },
+  { field: "EmploymentType", label: "Employment type" },
+  { field: "WorkState", label: "Work state" },
+  { field: "Manager", label: "Manager" },
 ];
 
 // ------------------------------------------------ bank feeds (docs/p6_bank_feeds.md)
@@ -3094,24 +3102,107 @@ export interface PeopleScopeRow {
 }
 
 export interface PersonSensitive {
-  pay_rate: string; home_address: string; date_of_birth: string; personal_phone: string;
-  personal_email: string; emergency_contact: string;
-  /** A list for an HR Director or the person; "2 documents" masked. */
-  documents: string[] | string;
+  pay_rate: string; pay_unit: string; pay_effective_on: string; home_address: string;
+  date_of_birth: string; personal_phone: string; personal_email: string;
+  emergency_contact: string;
 }
 
-export interface PersonRow {
+export type PersonStatus = "offer_out" | "onboarding" | "active" | "on_leave" | "offboarding"
+  | "ended";
+
+export interface PersonEmployment {
+  status: PersonStatus; status_label: string;
+  employment_type: "full_time" | "part_time" | "contractor"; employment_type_label: string;
+  work_state: string; start_date: string | null; ended_on: string | null; has_sign_in: boolean;
+}
+
+export interface PersonDocumentRow {
+  id: string; kind: string; kind_label: string; title: string; added_at: string;
+  signature: { state: string; state_label: string; document_id: string } | null;
+  has_file: boolean;
+}
+
+export interface ChecklistProgress {
+  id: string; kind: "onboarding" | "offboarding"; kind_label: string; done: number;
+  waived: number; total: number; closed: boolean; anchor_date: string;
+}
+
+export interface ChecklistItemRow {
+  id: string; section: "people" | "it" | "manager"; section_label: string; title: string;
+  owner: string; mine: boolean; due_date: string | null; done: boolean; waived: boolean;
+  waive_note: string; revokes: string | null; task: string | null;
+}
+
+export interface MyItemRow extends ChecklistItemRow {
+  person: string; person_id: string; kind: string; kind_label: string;
+}
+
+export interface CustomValue { id: string; label: string; value: string }
+
+export interface ChecklistFull extends ChecklistProgress {
+  reason: string; reason_label: string; note: string; started_at: string;
+  closed_at: string | null; owners: { hr: string; it: string; manager: string };
+  custom: CustomValue[]; items: ChecklistItemRow[]; can_close: boolean; no_payroll: string;
+}
+
+export interface AccessEntryRow {
+  id: string; kind: "system" | "email" | "phone" | "equipment" | "key"; kind_label: string;
+  name: string; detail: string; given_on: string | null; given_by: string;
+  revoked_at: string | null; revoked_by: string;
+}
+
+export interface ToSignRow {
+  id: string; title: string; kind_label: string; state_label: string; sent_at: string | null;
+}
+
+/** A row of the directory: directory fields, and employment ones where seen. */
+export interface PersonRow extends Partial<PersonEmployment> {
   id: string; name: string; first_name: string; last_name: string; title: string;
-  team: string; work_email: string; manager: { id: string; name: string } | null;
-  own: boolean; placeholder: boolean;
-  /** Absent for a directory view. */
-  sensitive?: PersonSensitive; masked?: boolean;
+  department: string; team: string; work_email: string; work_phone: string;
+  manager: { id: string; name: string } | null; own: boolean; placeholder: boolean;
+  /** A manager's view of a direct report. */
+  progress?: ChecklistProgress[];
+}
+
+/** A person's page, by section: what this level sees. */
+export interface PersonPage extends PersonRow {
+  employment?: PersonEmployment; custom?: CustomValue[]; held_in_payroll?: string;
+  sensitive?: Record<keyof PersonSensitive, string>; masked?: boolean;
+  documents?: PersonDocumentRow[] | string;
+  checklists?: ChecklistFull[]; access?: AccessEntryRow[]; to_sign?: ToSignRow[];
+  may?: { edit: boolean; run: boolean; offer: boolean; handbook: boolean; upload: boolean };
+  owners?: { id: string; name: string; side: "client" | "practice" }[];
+  checklist_fields?: { onboarding: { id: string; label: string }[];
+                       offboarding: { id: string; label: string }[] };
+  reasons?: { value: string; label: string }[];
 }
 
 export interface PeopleScopePage {
   guidance: string; key: string; name: string; level: PeopleLevel; level_label: string;
-  manages: boolean; may_add: boolean; may_export: boolean; records: PersonRow[];
+  manages: boolean; may_add: boolean; may_export: boolean; may_export_sensitive: boolean;
+  may_run: boolean; may_hire: boolean; records: PersonRow[];
+  headcount: { status: PersonStatus; label: string; count: number }[] | null;
+  upcoming: { anniversaries: { id: string; name: string; on: string; years: number }[];
+              birthdays: { id: string; name: string; day: string }[] } | null;
+  chart: ViewDrawing | null;
+  client_users: { sign_ins: number; records_without_sign_in: number; total: number;
+                  blocks: number; block_size: number; cents: number } | null;
   members: { id: string; name: string; email: string }[];
+  fields: { id: string; label: string }[];
+  my_items: MyItemRow[]; to_sign: ToSignRow[]; held_in_payroll: string;
+}
+
+export interface TemplateItemRow {
+  id: string; kind: "onboarding" | "offboarding"; section: "people" | "it" | "manager";
+  section_label: string; title: string; owner_role: "hr" | "it" | "manager" | "employee";
+  owner_role_label: string; due_days: number; standard: boolean;
+}
+
+export interface PeopleSetupPage {
+  items: { onboarding: TemplateItemRow[]; offboarding: TemplateItemRow[] };
+  fields: { record: { id: string; label: string }[]; onboarding: { id: string; label: string }[];
+            offboarding: { id: string; label: string }[] };
+  held_in_payroll: string;
 }
 
 export interface HRGrantRow {
