@@ -421,6 +421,16 @@ class KpiFeed(TenantScopedModel):
         HOURLY = "hourly", "Every hour"
         DAILY = "daily", "Once a day"
 
+    class DateIs(models.TextChoices):
+        """By column: what a row's date is (2026-11-17, "Set up KPIs from a
+        sheet"). Unset, the period the date falls in; the first or the last
+        day of its period, the period that holds most of the sheet's period,
+        so "Week ending" Sundays land in their Monday-start weeks."""
+
+        ANY = "", "A day in the period"
+        START = "start", "The first day of the period"
+        END = "end", "The last day of the period"
+
     kpi = models.OneToOneField(Kpi, on_delete=models.CASCADE, related_name="sheet_feed")
     #: The practice's Google connection it reads through. Checked against
     #: the feed's practice before every read (`feeds.client_for`).
@@ -435,6 +445,8 @@ class KpiFeed(TenantScopedModel):
                                db_default=Refresh.DAILY)
     date_column = models.CharField(max_length=3, blank=True, default="", db_default="")
     date_header = models.CharField(max_length=200, blank=True, default="", db_default="")
+    date_is = models.CharField(max_length=5, choices=DateIs.choices, blank=True, default="",
+                               db_default="")
     value_column = models.CharField(max_length=3, blank=True, default="", db_default="")
     value_header = models.CharField(max_length=200, blank=True, default="", db_default="")
     name_column = models.CharField(max_length=3, blank=True, default="", db_default="")
@@ -479,6 +491,7 @@ class KpiFeed(TenantScopedModel):
         return {"spreadsheet_id": self.spreadsheet_id, "tab": self.tab, "mode": self.mode,
                 "refresh": self.refresh, "spreadsheet_name": self.spreadsheet_name,
                 "date_column": self.date_column, "date_header": self.date_header,
+                "date_is": self.date_is,
                 "value_column": self.value_column, "value_header": self.value_header,
                 "name_column": self.name_column, "name_header": self.name_header,
                 "header_row": self.header_row, "cell": self.cell, "people": self.people or {},

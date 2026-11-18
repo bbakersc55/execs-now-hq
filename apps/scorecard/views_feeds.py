@@ -9,6 +9,8 @@ POST   /api/scorecard/feeds/preview/            {company, kpi, …mapping}: what
 PUT    /api/scorecard/feeds/                    {company, kpi, …mapping}: save, then read once
 DELETE /api/scorecard/feeds/?company=&kpi=      stop it; the readings stay
 POST   /api/scorecard/feeds/run/                {company, kpi}: read it now
+POST   /api/scorecard/sheet-setup/open/         {company, spreadsheet, …}: KPIs proposed
+POST   /api/scorecard/sheet-setup/              {company, …, columns, new_pages}: make them
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from rest_framework.response import Response
 
 from apps.tenancy.models import AuditEvent
 
-from . import feeds, sheets
+from . import feeds, setup, sheets
 from . import periods as P
 from .models import Kpi, KpiFeed
 from .views import Base, _reader, _refuse_setup, _today, _uuid_or_404
@@ -79,7 +81,8 @@ class FeedsView(Base):
             return refusal
         before = KpiFeed.all_objects.filter(kpi=kpi).first()
         try:
-            config = feeds.clean(kpi, request.data, before.read_open if before else None)
+            config = feeds.clean(kpi, request.data, before.read_open if before else None,
+                                 before.date_is if before else None)
             client, connection = feeds.client_for(request.tenant.pk, request.user)
         except sheets.FeedRefused as exc:
             return _refused(exc)
@@ -181,7 +184,8 @@ class FeedPreviewView(Base):
         config = None
         before = KpiFeed.all_objects.filter(kpi=kpi).first()
         try:
-            config = feeds.clean(kpi, request.data, before.read_open if before else None)
+            config = feeds.clean(kpi, request.data, before.read_open if before else None,
+                                 before.date_is if before else None)
             client, _ = feeds.client_for(request.tenant.pk, request.user)
             rows = client.rows(config["spreadsheet_id"], config["tab"])
             shown = feeds.preview(kpi, config, rows, _today(request))
@@ -207,3 +211,85 @@ class FeedRunView(Base):
             return Response({"detail": f"{kpi.name} has no feed."}, status=400)
         return Response({"run": feeds.run(feed, _today(request)),
                          "feed": _feed_payload(feed)})
+
+
+# ------------------------------------------------------------ set up KPIs from a sheet
+
+class SheetSetupOpenView(Base):
+    """POST /api/scorecard/sheet-setup/open/ {company, spreadsheet, tab?,
+    header_row?, date_column?, date_is?}: the sheet's tabs, and a KPI
+    proposed for every column of the tab not yet set up (2026-11-17)."""
+
+    def post(self, request):
+        from . import sheet_setup
+
+        reader = _reader(request, request.data.get("company"))
+        if (refusal := _refuse_setup(reader)):
+            return refusal
+        spreadsheet_id = sheets.spreadsheet_id_from(str(request.data.get("spreadsheet") or ""))
+        if not spreadsheet_id:
+            return Response({"detail": "That doesn't look like a Google Sheet. Open the sheet "
+                                       "and paste the address from the browser's address bar."},
+                            status=400)
+        data = request.data
+        try:
+            client, connection = feeds.client_for(request.tenant.pk, request.user)
+            meta = client.spreadsheet(spreadsheet_id)
+            names = [t["title"] for t in meta["tabs"]]
+            if not names:
+                return Response({"detail": "That spreadsheet has no tabs."}, status=400)
+            tab = str(data.get("tab") or "")
+            tab = tab if tab in names else names[0]
+            rows = client.rows(spreadsheet_id, tab)
+            header_row = data.get("header_row")
+            problem = ""
+            try:
+                proposal = sheet_setup.propose(
+                    setup.ensure(reader.company, request.user), rows=rows,
+                    header_row=int(header_row) if header_row not in (None, "") else None,
+                    date_column=str(data.get("date_column") or ""),
+                    date_is=data.get("date_is") if "date_is" in data else None,
+                    spreadsheet_id=spreadsheet_id, tab=tab)
+            except sheet_setup.SheetSetupRefused as exc:
+                # The tabs still come back, so another tab can be chosen.
+                proposal, problem = None, str(exc)
+        except feeds.NoSheetsAccess as exc:
+            return Response({"detail": str(exc), "reconnect": exc.reconnect}, status=409)
+        except (sheets.SheetUnavailable, sheets.FeedRefused,
+                sheet_setup.SheetSetupRefused) as exc:
+            return _refused(exc)
+        except (TypeError, ValueError):
+            return Response({"detail": "The header row is a number."}, status=400)
+        return Response({"spreadsheet_id": spreadsheet_id, "title": meta["title"],
+                         "tabs": meta["tabs"], "tab": tab, "account": connection.email_address,
+                         "rows": [r[:sheets.GRID_COLUMNS] for r in rows[:8]],
+                         "proposal": proposal, "problem": problem})
+
+
+class SheetSetupCreateView(Base):
+    """POST /api/scorecard/sheet-setup/ {company, spreadsheet,
+    spreadsheet_name, tab, header_row, date_column, date_is, columns: [{column,
+    header, name, kind, cadence, direction, rollup, page | new_page, skip}],
+    new_pages: [{key, name, audience, team?}]}: make them all, each with its
+    feed, read once; the summary."""
+
+    def post(self, request):
+        from . import sheet_setup
+
+        reader = _reader(request, request.data.get("company"))
+        if (refusal := _refuse_setup(reader)):
+            return refusal
+        data = request.data
+        spreadsheet_id = sheets.spreadsheet_id_from(str(data.get("spreadsheet") or ""))
+        try:
+            client, connection = feeds.client_for(request.tenant.pk, request.user)
+            rows = client.rows(spreadsheet_id, str(data.get("tab") or ""))
+            summary = sheet_setup.create(setup.ensure(reader.company, request.user), request.user,
+                                         data, client=client, connection=connection,
+                                         rows=rows, today=_today(request))
+        except feeds.NoSheetsAccess as exc:
+            return Response({"detail": str(exc), "reconnect": exc.reconnect}, status=409)
+        except (sheets.SheetUnavailable, sheets.FeedRefused,
+                sheet_setup.SheetSetupRefused) as exc:
+            return _refused(exc)
+        return Response(summary, status=201)

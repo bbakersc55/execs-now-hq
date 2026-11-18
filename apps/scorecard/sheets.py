@@ -360,12 +360,31 @@ def plan_columns(kpi, week_start, rows, config) -> Plan:
             if member is None:
                 plan.unmatched[name] = plan.unmatched.get(name, 0) + 1
                 continue
-        start = P.start_of(day, kpi.cadence, week_start)
+        start = P.start_of(period_day(day, kpi.cadence, config.get("date_is")),
+                           kpi.cadence, week_start)
         gathered[(start, member)].append(value)
         plan.rows_of[(start, member)].append(i + 1)
     for key, values in gathered.items():
         plan.values[key] = combine(kpi, values)
     return plan
+
+
+#: Half a period, in days: a date that is a period's first or last day is
+#: moved this far in, to the middle of the sheet's period.
+HALF = {P.DAILY: 0, P.WEEKLY: 3, P.MONTHLY: 14, P.QUARTERLY: 45}
+
+
+def period_day(day: date, cadence: str, date_is: str = "") -> date:
+    """The day that places a row in its period. A date that is the last day
+    of its period (a "Week ending" Sunday) or the first is placed by the
+    middle of the period it ends or begins, so it lands in the company's
+    period that holds most of it: the week ending Sunday October 4, 2026 is
+    the Monday-start week of September 28. Unset, the date itself."""
+    if date_is == "end":
+        return day - timedelta(days=HALF.get(cadence, 0))
+    if date_is == "start":
+        return day + timedelta(days=HALF.get(cadence, 0))
+    return day
 
 
 def _label_of(row) -> str:
@@ -627,3 +646,40 @@ class SheetsClient:
         except Exception as exc:                          # pragma: no cover - network
             raise self._refusal(exc) from exc
         return [[text_of(c) for c in row] for row in got.get("values", [])]
+
+
+class RecordedSheets:
+    """A recorded sheet, for a browser walk on a laptop with no Google
+    connection: `SCORECARD_RECORDED_SHEETS` names a JSON file of
+    {spreadsheet id: {"title": ..., "tabs": {tab: [[cell, ...], ...]}}}.
+    Refused outside a local build (`config/settings.py`)."""
+
+    def __init__(self, connection, path):
+        import json
+
+        self.connection = connection
+        with open(path, encoding="utf-8") as recorded:
+            self.books = json.load(recorded)
+
+    def spreadsheet(self, spreadsheet_id) -> dict:
+        book = self.books.get(spreadsheet_id)
+        if book is None:
+            raise SheetUnavailable("That spreadsheet doesn't exist any more, or the address is "
+                                   "wrong.")
+        return {"title": book.get("title", ""),
+                "tabs": [{"title": t, "id": i} for i, t in enumerate(book.get("tabs", {}))]}
+
+    def rows(self, spreadsheet_id, tab, *, last_row=MOST_ROWS) -> list[list[str]]:
+        book = self.books.get(spreadsheet_id) or {}
+        return [list(map(str, r)) for r in (book.get("tabs", {}).get(tab) or [])[:last_row]]
+
+
+def client_factory():
+    """Google's client; on the laptop, a recorded sheet when one is set."""
+    from django.conf import settings
+
+    path = getattr(settings, "SCORECARD_RECORDED_SHEETS", "")
+    if path and settings.IS_LOCAL:
+        return lambda connection: RecordedSheets(connection, path)
+    return SheetsClient
+

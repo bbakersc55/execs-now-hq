@@ -383,6 +383,12 @@ if NMI_SANDBOX_CARD_FORM_HOST and not IS_LOCAL:
 NMI_SANDBOX_IGNORE_TEST_MODE = env.bool("NMI_SANDBOX_IGNORE_TEST_MODE", default=False)
 if NMI_SANDBOX_IGNORE_TEST_MODE and not IS_LOCAL:
     raise RuntimeError("NMI_SANDBOX_IGNORE_TEST_MODE is for proofs on the laptop only.")
+# 2026-11-17, "Set up KPIs from a sheet": a JSON file of recorded sheets the
+# scorecard reads instead of Google, for a browser walk on a laptop with no
+# Google connection (`apps/scorecard/sheets.py`, `RecordedSheets`).
+SCORECARD_RECORDED_SHEETS = env("SCORECARD_RECORDED_SHEETS", default="")
+if SCORECARD_RECORDED_SHEETS and not IS_LOCAL:
+    raise RuntimeError("SCORECARD_RECORDED_SHEETS is for proofs on the laptop only.")
 # Nothing reaches NMI unless this is true. Off, every charge, refund and
 # connection test goes to the stub gateway. The test suite never turns it on.
 NMI_LIVE_CALLS = env.bool("NMI_LIVE_CALLS", default=False)

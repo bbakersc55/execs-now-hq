@@ -146,7 +146,7 @@ def sheets_connection(tenant_id, user=None):
 def client_for(feed_or_tenant, user=None, *, factory=None):
     """The Sheets client for a feed (its own stored connection) or for the
     practice asking. Never another practice's connection."""
-    factory = factory or sheets.SheetsClient
+    factory = factory or sheets.client_factory()
     if isinstance(feed_or_tenant, KpiFeed):
         feed = feed_or_tenant
         connection = feed.connection
@@ -165,9 +165,10 @@ def client_for(feed_or_tenant, user=None, *, factory=None):
 MODES = (KpiFeed.Mode.COLUMN, KpiFeed.Mode.CELL, KpiFeed.Mode.ROW)
 
 
-def clean(kpi, data, read_open=None) -> dict:
+def clean(kpi, data, read_open=None, date_is=None) -> dict:
     """The mapping as saved, checked. Raises `sheets.FeedRefused`.
-    `read_open` is the feed's choice now, kept when the data says none."""
+    `read_open` and `date_is` are the feed's now, kept when the data says
+    none (the one-KPI editor never sends `date_is`)."""
     if kpi.is_computed:
         raise sheets.FeedRefused(f"{kpi.name} is worked out from two other KPIs, so it "
                                  "has no feed of its own.")
@@ -188,7 +189,8 @@ def clean(kpi, data, read_open=None) -> dict:
     out = {"spreadsheet_id": spreadsheet_id, "tab": tab[:200], "mode": mode,
            "refresh": refresh,
            "spreadsheet_name": str(data.get("spreadsheet_name") or "")[:200],
-           "date_column": "", "date_header": "", "value_column": "", "value_header": "",
+           "date_column": "", "date_header": "", "date_is": "",
+           "value_column": "", "value_header": "",
            "name_column": "", "name_header": "", "header_row": None, "cell": "",
            "people": {}, "read_open": read_open_choice(data, read_open),
            "date_row": None, "value_row": None, "value_label": ""}
@@ -223,6 +225,10 @@ def clean(kpi, data, read_open=None) -> dict:
             sheets.column_index(letter)
         out[f"{role}_column"] = letter[:3]
         out[f"{role}_header"] = str(data.get(f"{role}_header") or "").strip()[:200]
+    date_is = str(data["date_is"] or "") if "date_is" in data else (date_is or "")
+    if date_is not in KpiFeed.DateIs.values:
+        raise sheets.FeedRefused("A date is the first or the last day of its period.")
+    out["date_is"] = date_is
     header = data.get("header_row")
     out["header_row"] = int(header) if header not in (None, "") else None
     if out["header_row"] is not None and not 0 <= out["header_row"] < sheets.HEADER_SEARCH:

@@ -375,3 +375,87 @@ table and Payroll list, the editor's request).
 **The demo:** Stark Tool & Die's "Five-star review bonus" ($5 each, the
 Customer service team plus Happy Hogan by name; three months closed, this one
 open) on a new "Five-star Google reviews" KPI.
+
+## Set up KPIs from a sheet (built 2026-11-17, on `dev`)
+
+On the company page's scorecard card, beside **Add a KPI** and **From the
+library**, the practice owner or an associate presses **Set up KPIs from a
+sheet**. Assistants and client users can't (403); another practice reaches
+nothing (404).
+
+1. **The sheet**: its address pasted, opened through the practice's Google
+   connection (read-only Sheets, as every sheet feed reads). Then its
+   **tab**, its **date column** (proposed: the column most often holding
+   dates), and **what its dates are**: the last day of each period, the
+   first, or a day in it (proposed from the header, "Week ending" is the
+   last day, "Week of" the first, else from the dates themselves: Sundays
+   for a Monday-start week are each week's last day).
+2. **The proposal**: every other column with a header, each with
+   - its **name** from the header, the unit marks taken off ("Revenue ($)"
+     is Revenue);
+   - its **unit** from the header: $ is money, % is percent, otherwise a
+     number;
+   - its **cadence** from the spacing of the dates;
+   - a **direction**: lower is better for costs, spend, churn, refunds,
+     turnover and the like; higher otherwise;
+   - its **roll-up** for longer views: average for rates, percents and
+     cost-per figures; last for balances (open pipeline, cash, inventory,
+     "latest month"); sum for the rest.
+   A column with no header is skipped and said so. A column whose name is a
+   KPI on the scorecard already starts skipped, and one with no numbers.
+3. **Changes**: rename, skip, or change any of those; put each on an
+   existing page or a new one (its name and audience), or all on one.
+4. **Make them**: all at once, each **with a Sheets feed on its own column**
+   (by column, the date column shared, `date_is` set), read straight away so
+   the history loads, and again by the nightly read. **A blank cell is no
+   reading, never zero.**
+5. **The summary**: KPIs made, readings loaded, blank cells, cells skipped
+   and why ("n/a" isn't a number), columns skipped and why, and columns set
+   up already.
+
+**Run again on the same sheet**, only the columns not yet set up are offered
+(a column is set up when a live KPI of this scorecard has a feed on the same
+spreadsheet, tab and header or letter), and a KPI is never made twice: a
+column sent again is listed as set up already, and a name used twice is
+refused.
+
+**The feed, extended rather than a second kind**: today's Sheets feed already
+reads "one date column, one value column", so each KPI's feed is an ordinary
+column feed. It gains `date_is` (`KpiFeed.DateIs`, migration
+`scorecard 0018_kpifeed_date_is`, one additive column): a date that is the
+last or the first day of its period is placed by the middle of the period it
+ends or begins, so it lands in the company's period that holds most of it.
+**The week ending Sunday October 4, 2026 is the Monday-start week of
+September 28**; for a Sunday-start company it is the week of September 27.
+The one-KPI feed editor keeps a feed's `date_is` when it saves.
+
+**Choices made (the simplest reading):**
+
+- "Picks a Google Sheet" is pasting its address, as the sheet feed does: the
+  connection reads Sheets but has no Drive access to list files.
+- The cadence is the sheet's (one date column, one spacing); each KPI's can
+  be changed.
+- A column with no numbers under it is proposed but starts skipped.
+- The tab is read once for all the KPIs made (39 reads of one tab would be
+  39 calls to Google).
+- New pages take Everyone, Senior leadership and up, or Each person sees
+  their own; one team is chosen on the page afterwards.
+
+**Code:** `apps/scorecard/sheet_setup.py`; `sheets.period_day`;
+`views_feeds.SheetSetupOpenView` and `SheetSetupCreateView`
+(`/api/scorecard/sheet-setup/open/`, `/api/scorecard/sheet-setup/`);
+`frontend/src/components/ScorecardSheetSetup.tsx`.
+
+**Tests:** `tests/test_scorecard_sheet_setup.py` (week-ending and month-end
+dates in the right period, the cadence and what the dates are, money and
+percent parsing, blanks, the header's name, unit, direction and roll-up, the
+39-column sheet proposed, all made with their history and blanks as no
+reading, a new row with the nightly read, a re-run without duplicates, one
+name twice refused, who uses it, another practice); the Sheets feed's own
+(`tests/test_scorecard_feeds.py`); the window's
+(`frontend/src/components/ScorecardSheetSetup.test.tsx`).
+
+**Walked** in headless Chrome on the real `seed_demo` (`scripts/scorecard_sheet_walk.py`,
+with `manage.py scorecard_sheet_walk_setup`) against **a recorded sheet**:
+the laptop has no Google connection, so the server reads one shaped like
+the first real sheet (`SCORECARD_RECORDED_SHEETS`, refused off a laptop).
