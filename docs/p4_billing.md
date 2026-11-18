@@ -16,7 +16,7 @@ invoices", offered only when asked; Remove the card held through the end
 date; the schedule and the stop rule said in the box and the terms; and the
 daily jobs keep practice time through daylight-saving changes (§14.11).
 
-**2026-11-17, evening (on `dev`):** "Clear test payments" asks reopen or void
+**2026-11-17, evening, released at Release 47:** "Clear test payments" asks reopen or void
 with no default, and an invoice dated after its automatic billing ended is
 voided whichever is chosen (§12, "Back in live mode"; INV-0005).
 

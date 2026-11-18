@@ -969,6 +969,28 @@ itself 20:03:06, `/healthz` 200, the served bundle carries "Auto-pay for other
 invoices" and "Last charge". `enhq-site` SKIPPED. **Push to serving: about
 1 min 22 s.**
 
+**Observed at Release 47 (2026-11-18 UTC, one migration,
+`scorecard 0018_kpifeed_date_is` (one column with a database default, no
+write); `c9c71f8`: "Set up KPIs from a sheet", and "Clear test payments"
+asking reopen or void with no default):** R1: the owner ran the backup by
+hand: `execsnowhq_prod_20261118_015917.sql.gz`, 18.2 MB, landed 01:59:22. R2:
+`main` fast-forwarded `5db7eff..c9c71f8`, pushed 02:07:49. R3: the worker
+`WAITING` for exactly `scorecard.0018`, **seen late**: my watcher read
+`railway logs <deployment id>` without `--service`, which answers "No service
+linked" and printed nothing through its filter, so `WAITING` sat about 14
+minutes unseen. R4: applied by me 02:23:47–51, `OK`. R5: `migrations
+current` 02:24:08, "worker: real calls to the card processor on.", running
+02:24:15. R5b: no new scheduled job. **R6, by hand**: web and `mcp` had given
+up waiting (both FAILED, the old web serving throughout); deployed `c9c71f8`
+to web (`c832e0bf-8cef-4d1d-911a-10588e0f279f`) and `mcp`
+(`632a48cd-7ce2-46b2-90bd-2705edbfab60`) with `serviceInstanceDeployV2` at
+02:24:16; both SUCCESS by 02:24:59, `/healthz` 200 and `ok`; the served
+bundle carries "Set up KPIs from a sheet" and "Reopen their invoices, or void
+them?", and `/api/scorecard/sheet-setup/open/` answers 403 signed out.
+**Push to serving: about 17 min 10 s**, all of it the missed `WAITING`. A log
+watcher names its service (`--service qcluster` with `-p`/`-e`) and shows its
+first read before it is trusted.
+
 ---
 
 ## Part A — the owner's steps, in order

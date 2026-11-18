@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-17 UTC**, after Release 46. **The next session starts at
-"2026-11-17, evening: Release 46, and INV-0005" just below**; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-18 UTC**, after Release 47. **The next session starts at
+"2026-11-18: Release 47, KPIs from a sheet" just below**; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +32,24 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-18: Release 47, KPIs from a sheet
+
+- **Release 47 is live:** `main` at `c9c71f8`. One migration, `scorecard
+  0018_kpifeed_date_is` (additive), applied 02:23:47–51 by the runbook
+  sequence; web and `mcp` deployed by hand (they had given up waiting while
+  `WAITING` went unseen); serving 02:24:59. Recorded in the runbook
+  ("Observed at Release 47").
+- **Set up KPIs from a sheet** (`docs/p6_m5_kpi_scorecard.md`): on a
+  company's scorecard card; a sheet's columns become KPIs at once, each with
+  a Sheets feed on its own column, history loaded. The Sheets feed now knows
+  a date is a period's first or last day (`KpiFeed.date_is`). Walked on a
+  recorded sheet (the laptop has no Google connection): its **first real
+  sheet is still to be done on production** ("Week ending" in A, 39 columns).
+- **"Clear test payments"** asks reopen or void with no default; an invoice
+  dated after its agreement's end is voided either way (INV-0005).
+- **People (HRIS) part 2** is on branch `people-hris` (`932aa22`), not merged:
+  `docs/p9_people_hris.md`, "Built 2026-11-17: the employee records".
 
 ## 2026-11-17, evening: Release 46, and INV-0005
 

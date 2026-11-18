@@ -376,7 +376,7 @@ table and Payroll list, the editor's request).
 Customer service team plus Happy Hogan by name; three months closed, this one
 open) on a new "Five-star Google reviews" KPI.
 
-## Set up KPIs from a sheet (built 2026-11-17, on `dev`)
+## Set up KPIs from a sheet (built 2026-11-17, released at Release 47)
 
 On the company page's scorecard card, beside **Add a KPI** and **From the
 library**, the practice owner or an associate presses **Set up KPIs from a
