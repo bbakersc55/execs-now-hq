@@ -23,6 +23,7 @@ import {
   TrainingAsset, TrainingKind,
 } from "../lib/sops";
 import { ProposalCard } from "./SopBrainstorm";
+import { CompanyOptions, practiceThenClients } from "../lib/companies";
 
 const STAFF = ["FF", "CF", "VA"];
 
@@ -55,8 +56,10 @@ export function SopListView({ compact = false }: { compact?: boolean }) {
   if (q.isError) return <Banner kind="bad">{(q.error as Error).message}</Banner>;
   if (!q.data) return <p className="small muted">Loading…</p>;
   const all = q.data.sops;
-  const companies = Array.from(new Map(all.map((s) => [s.company.id, s.company])).values())
-    .sort((a, b) => companyName(a).localeCompare(companyName(b)));
+  // The practice's own first, then clients and any other company, each
+  // alphabetical (2026-11-18).
+  const companies = Array.from(new Map(all.map((s) => [s.company.id, s.company])).values());
+  const ours = companies.filter((c) => c.is_practice);
   const categories = Array.from(new Set(all.map((s) => s.category).filter(Boolean))).sort();
   const words = search.trim().toLowerCase();
   const shown = all.filter((s) => (status === "all" ? true : status ? s.status === status
@@ -74,7 +77,9 @@ export function SopListView({ compact = false }: { compact?: boolean }) {
           onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Client" value={company} onChange={(e) => setCompany(e.target.value)}>
           <option value="">Every client</option>
-          {companies.map((c) => <option key={c.id} value={c.id}>{companyName(c)}</option>)}
+          {ours.map((c) => <option key={c.id} value={c.id}>{companyName(c)}</option>)}
+          <CompanyOptions items={companies.filter((c) => !c.is_practice)} id={(c) => c.id}
+            name={(c) => c.name} isClient={(c) => c.is_client_company !== false} />
         </select>
         <select aria-label="Status" value={status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}>
@@ -132,7 +137,7 @@ function NewSopModal({ companyId, onClose }: { companyId?: string; onClose: () =
       {!companyId && (
         <label>For<select value={company} onChange={(e) => setCompany(e.target.value)}>
           <option value="">Choose a company</option>
-          {(plans.data?.plans ?? []).map((p) => (
+          {practiceThenClients(plans.data?.plans ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.is_practice ? "Our practice" : p.name}</option>))}
         </select></label>)}
       <p className="small muted">It starts as a draft from the SOP template. Nobody is asked to

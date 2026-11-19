@@ -5,10 +5,15 @@ import { Link, useLocation } from "react-router-dom";
 import { KpiLibraryPicker } from "./KpiLibrary";
 import { RefPicker } from "./ScorecardRefs";
 import { SheetSetup } from "./ScorecardSheetSetup";
+import {
+  SOURCE_LABEL, SourceKind, SourcePanel, SourceSelect, sourcesFor, sourceWords,
+} from "./ScorecardSource";
 import { Modal } from "./shell";
 import { Banner, Card } from "./ui";
 import { Company, Me, api } from "../lib/api";
-import { COMPONENTS, Ref, SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt } from "../lib/scorecard";
+import {
+  COMPONENTS, PRIORITIES, Ref, SetupKpi, SetupPage, SetupState, Starter, StarterKpi, fmt,
+} from "../lib/scorecard";
 import { useWords } from "../lib/words";
 import { StartCard } from "../screens/Scorecard";
 
@@ -35,6 +40,7 @@ const TILES = { number_trend: "Number with trend", gauge: "Gauge", progress: "Pr
   my_row: "My row" };
 const FORMULAS = { sum: "first + second", difference: "first − second",
   ratio: "first ÷ second", average: "average of the two" };
+const PRIORITY_CHOICES = Object.fromEntries(PRIORITIES.map((p) => [p.key, p.label]));
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type Draft = Record<string, unknown> & { month_targets?: Record<string, string | number> };
@@ -164,8 +170,11 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
                         <span className="small muted"> · {KINDS[k.kind]}, {CADENCES[k.cadence]}, {TILES[k.tile]}
                           {k.per_person ? `, per person (${k.people.length})` : ""}
                           {k.helper ? ", helper (no tile)" : ""}
+                          {k.priority && k.priority !== "medium"
+                            ? ` · ${k.priority === "top" ? "Top" : "Low"} priority` : ""}
                           {k.computed ? ` · computed: ${k.computed}`
-                            : k.owner ? ` · entered by ${k.owner}` : " · no reading owner"}
+                            : ` · ${sourceWords(k.feed?.kind)}${k.owner ? `, owner ${k.owner}`
+                              : k.feed ? "" : ", no reading owner"}`}
                           {k.target_value !== null ? ` · target ${fmt(k, k.target_value)}` : ""}
                           {Object.keys(k.month_targets).length ? " · seasonal" : ""}</span></span>
                       <span className="sc-setup-tools">
@@ -180,7 +189,7 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
                             done: `${k.name} is archived; its readings are kept.` })}>Archive</button>
                       </span>
                       {editing === k.id && (
-                        <KpiForm state={s} kpi={k} onDone={(text) => { setEditing(null); refresh(); setNote({ kind: "ok", text }); }} />
+                        <KpiForm me={me} state={s} kpi={k} onDone={(text) => { setEditing(null); refresh(); setNote({ kind: "ok", text }); }} />
                       )}
                     </li>
                   ))}
@@ -212,7 +221,7 @@ export function ScorecardSetup({ me, company }: { me: Me; company: Company }) {
             body: { company: company.id } })}>Or start with an empty {w.scorecard}</button>
         )}
         {editing === "new" && (
-          <KpiForm key={starter?.key ?? "blank"} state={s} kpi={null} initial={starter}
+          <KpiForm key={starter?.key ?? "blank"} me={me} state={s} kpi={null} initial={starter}
             onCancel={() => { setEditing(null); setStarter(null); }}
             onDone={(text) => { setEditing(null); setStarter(null); refresh(); setNote({ kind: "ok", text }); }} />
         )}
@@ -272,8 +281,8 @@ function PageLine({ page, teams, practice = false, first, last, empty, onSave, o
 
 /** A KPI's edit form in a pop-up, for the scorecard view's tile (Details →
  *  Edit), so the practice need not go back to the company page. */
-export function KpiEditModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function KpiEditModal({ me, companyId, kpiId, onClose, onSaved }: {
+  me?: Me; companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const state = useQuery<SetupState>({
     queryKey: ["scorecard-setup", companyId],
@@ -285,14 +294,14 @@ export function KpiEditModal({ companyId, kpiId, onClose, onSaved }: {
       title={kpi ? `Edit ${kpi.name}` : "Edit"}>
       {state.isError && <Banner kind="bad">{(state.error as Error).message}</Banner>}
       {!state.data ? <p>Loading…</p> : kpi
-        ? <KpiForm state={state.data} kpi={kpi} onDone={onSaved} onCancel={onClose} />
+        ? <KpiForm me={me} state={state.data} kpi={kpi} onDone={onSaved} onCancel={onClose} />
         : <p>That KPI is no longer here.</p>}
     </Modal>
   );
 }
 
-function KpiForm({ state, kpi, onDone, onCancel, initial }: {
-  state: SetupState; kpi: SetupKpi | null; onDone: (text: string) => void;
+function KpiForm({ me, state, kpi, onDone, onCancel, initial }: {
+  me?: Me; state: SetupState; kpi: SetupKpi | null; onDone: (text: string) => void;
   onCancel?: () => void; initial?: StarterKpi | null;
 }) {
   const w = useWords();
@@ -308,6 +317,7 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
     formula: kpi.formula, source_a: kpi.source_a ?? "", source_b: kpi.source_b ?? "",
     operand_a: kpi.operand_a ?? null, operand_b: kpi.operand_b ?? null,
     target_live: kpi.target_live_ref ?? null, helper: !!kpi.helper,
+    priority: kpi.priority ?? "medium",
   } : {
     name: "", page: livePages[0]?.id ?? "", kind: "number", direction: "higher", cadence: "weekly",
     rollup: "sum", target_value: "", range_low: "", range_high: "", behind_band_pct: 10,
@@ -315,10 +325,20 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
     leaderboard: false, tile: "number_trend", audience: "page", audience_team: "", note: "",
     strategy_component: "", people: [], month_targets: {},
     formula: "", source_a: "", source_b: "", operand_a: null, operand_b: null,
-    target_live: null, helper: false,
+    target_live: null, helper: false, priority: "medium",
     ...(initial ? Object.fromEntries(Object.entries(initial).filter(([k]) => k !== "key")) : {}),
   });
   const [seasonal, setSeasonal] = useState(Object.keys(d.month_targets ?? {}).length > 0);
+  // 2026-11-18: where the number comes from, chosen here as well as on the
+  // tile. A new KPI is made first, then its connector's settings open here.
+  const current = (kpi?.feed?.kind as SourceKind | undefined) ?? null;
+  const [source, setSource] = useState<SourceKind>(current ?? "hand");
+  const [made, setMade] = useState<{ id: string; name: string } | null>(null);
+  const practice = !!state.practice;
+  const offered = sourcesFor({ practice, computed: !!d.formula, perPerson: !!d.per_person,
+    recommended: me?.recommended_feeds });
+  const sourceNow: SourceKind = d.formula ? "hand"
+    : source === "hand" || [...offered.connectors, ...offered.rails].includes(source) ? source : "hand";
   const [error, setError] = useState<{ text: string; field?: string } | null>(null);
   const set = (k: string, v: unknown) => setD({ ...d, [k]: v });
   // A new cadence leaves no source on the old one chosen: the picker lists
@@ -340,9 +360,13 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
         operand_b: d.formula ? d.operand_b ?? null : null,
         target_live: d.direction === "range" ? null : d.target_live ?? null,
         month_targets: seasonal && !d.target_live ? d.month_targets : {} };
-      return kpi ? api.patch(`/api/scorecard/kpis/${kpi.id}/`, body) : api.post("/api/scorecard/kpis/", body);
+      return kpi ? api.patch<SetupKpi>(`/api/scorecard/kpis/${kpi.id}/`, body)
+        : api.post<SetupKpi>("/api/scorecard/kpis/", body);
     },
-    onSuccess: () => onDone(kpi ? `${d.name} is saved.` : `${d.name} is added.`),
+    onSuccess: (r) => {
+      if (!kpi && sourceNow !== "hand" && r?.id) { setMade({ id: r.id, name: r.name }); return; }
+      onDone(kpi ? `${d.name} is saved.` : `${d.name} is added.`);
+    },
     onError: (e: Error) => setError({ text: e.message, field: (e as { data?: { field?: string } }).data?.field }),
   });
   const choice = (k: string, label: string, options: Record<string, string>) => (
@@ -367,7 +391,26 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
     .filter((k) => !k.archived && !k.formula && !k.per_person && k.cadence === d.cadence
       && k.id !== kpi?.id)
     .map((k) => [k.id, k.name])]);
+  const owner = me?.role === "FF";
+  const clientName = practice ? "" : state.company.name;
+  if (made) {
+    // Made: now its connector, in the same place, in the same pass.
+    return (
+      <div className="sc-kpi-form" aria-label={`Connect ${made.name}`}>
+        <Banner kind="ok">{made.name} is added. Now its {SOURCE_WORD(sourceNow)} settings:</Banner>
+        <SourcePanel companyId={state.company.id} kpiId={made.id} kpiName={made.name}
+          chosen={sourceNow} current={null} owner={owner} practiceName={clientName}
+          onSaved={(text) => onDone(`${made.name} is added. ${text}`)}
+          onCancel={() => onDone(`${made.name} is added. It is entered by hand until it is connected.`)} />
+        <div className="row tight">
+          <button type="button" className="small" onClick={() => onDone(
+            `${made.name} is added. It is entered by hand until it is connected.`)}>Done</button>
+        </div>
+      </div>
+    );
+  }
   return (
+    <>
     <form className="sc-kpi-form" aria-label={kpi ? `Edit ${kpi.name}` : `New ${w.kpi}`}
       onSubmit={(e) => { e.preventDefault(); save.mutate(false); }}
       // Only the button saves: Enter in a field doesn't make the KPI.
@@ -399,12 +442,17 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
         </>}
         {text("behind_band_pct", "Behind within (%)", { inputMode: "decimal" })}
         {choice("tile", "Tile", TILES)}
+        {choice("priority", "Priority", PRIORITY_CHOICES)}
         {!d.formula && choice("reading_owner", "Reading owner", Object.fromEntries([["", "Nobody yet"],
           ...state.owners.map((o) => [o.id, `${o.name}${o.side === "practice" ? " (practice)" : ""}`])]))}
         {choice("audience", "Who sees it", state.practice ? PRACTICE_KPI_AUDIENCE : KPI_AUDIENCE)}
         {d.audience === "team" && choice("audience_team", "Team",
           Object.fromEntries(state.teams.map((t) => [t.id, t.name])))}
         {choice("strategy_component", "Strategy component", COMPONENTS)}
+        {!d.formula && (
+          <SourceSelect id={`sc-source-${kpi?.id ?? "new"}`} value={sourceNow} onChange={setSource}
+            practice={practice} computed={!!d.formula} perPerson={!!d.per_person}
+            recommended={me?.recommended_feeds} />)}
       </div>
       {d.direction !== "range" && !live && (
         <label className="sc-check"><input type="checkbox" checked={seasonal}
@@ -463,9 +511,21 @@ function KpiForm({ state, kpi, onDone, onCancel, initial }: {
       {text("note", "How it's measured (shown on the back of the tile)", { maxLength: 200 })}
       <div className="row tight">
         <button type="submit" className="primary small" disabled={save.isPending}>
-          {kpi ? "Save" : `Add the ${w.kpi}`}</button>
+          {kpi ? "Save" : sourceNow !== "hand" ? `Add the ${w.kpi}, then connect it` : `Add the ${w.kpi}`}</button>
         {onCancel && <button type="button" className="small" onClick={onCancel}>Cancel</button>}
+        {!kpi && sourceNow !== "hand" && (
+          <span className="small muted">Its {SOURCE_WORD(sourceNow)} settings open here once it is added.</span>)}
       </div>
     </form>
+    {kpi && !d.formula && (
+      <SourcePanel companyId={state.company.id} kpiId={kpi.id} kpiName={kpi.name}
+        chosen={sourceNow} current={current} owner={owner} practiceName={clientName}
+        onSaved={onDone} onCancel={() => setSource(current ?? "hand")} />)}
+    </>
   );
+}
+
+/** "Google Sheet", "Track PMS", … for the sentences above. */
+function SOURCE_WORD(kind: SourceKind) {
+  return SOURCE_LABEL[kind];
 }

@@ -256,6 +256,7 @@ def definition(kpi, *, reader=None) -> dict:
         "rating_scale": kpi.rating_scale, "note": kpi.note,
         "component": kpi.strategy_component, "per_person": kpi.per_person,
         "leaderboard": kpi.leaderboard, "page": str(kpi.page_id), "helper": kpi.helper,
+        "priority": kpi.priority,
         "range_low": num(kpi.range_low), "range_high": num(kpi.range_high),
         "fixed_target": num(kpi.target_value), "band": num(kpi.behind_band_pct),
         "owner": "" if kpi.is_computed else name_of(kpi.reading_owner),
@@ -578,8 +579,10 @@ def visible_pages(reader, scorecard):
     return shown
 
 
-def build(reader, scorecard, page_id, win, today) -> dict:
-    """The page a reader asked for, or their first."""
+def build(reader, scorecard, page_id, win, today, *, every=False) -> dict:
+    """The page a reader asked for, or their first. `every` (the AI apps'
+    scorecard_readings, 2026-11-18): every page they can see, in page order,
+    each tile saying its page."""
     week_start = scorecard.week_start
     shown = visible_pages(reader, scorecard)
     chosen = next(((p, ks) for p, ks in shown if str(p.pk) == str(page_id)), None) \
@@ -602,7 +605,15 @@ def build(reader, scorecard, page_id, win, today) -> dict:
     out["may_enter"] = any(reader.may_enter(k) for k in every_kpi)
     if not chosen:
         return out
-    kpis, tiles = tiles_of(reader, chosen[1], win, today, week_start)
+    if every:
+        out["page"] = None
+        names = {str(p.pk): p.name for p, _ in shown}
+        kpis, tiles = tiles_of(reader, [k for _, ks in shown for k in by_priority(ks)],
+                               win, today, week_start)
+        for t in tiles:
+            t["page_name"] = names.get(t["page"], "")
+    else:
+        kpis, tiles = tiles_of(reader, by_priority(chosen[1]), win, today, week_start)
     for t, k in zip(tiles, kpis):
         # The grid draws this window's own periods, and its roll-up beside
         # them (the tile's value), when the window holds more than one.
@@ -619,6 +630,13 @@ def build(reader, scorecard, page_id, win, today) -> dict:
         out["window"]["text"] = f"{label[0].upper()}{label[1:]} · this week's readings " \
                                 "aren't in yet"
     return out
+
+
+def by_priority(kpis) -> list:
+    """A page's KPIs, Top first, then Medium, then Low (2026-11-18); each
+    group keeps the KPIs' own order. The sort is stable, so it only moves
+    whole groups."""
+    return sorted(kpis, key=lambda k: k.priority_rank)
 
 
 def _task_ties(reader, kpis, tiles, today):

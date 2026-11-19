@@ -201,7 +201,7 @@ audio (owner decision, Phase 2); the prefix is therefore the whole rule.
 | `industry` | text? | |
 | `address` | jsonb? | |
 | `is_client_company` | bool | derived by FR-1.6a.1, cleared only by hand |
-| `seat_count` | int? | Practice owner-set; null until it is a client company (FR-3.33f). Null is **no seats allocated**, not unlimited: a grant is refused saying so |
+| `seat_count` | int? | Practice owner-set; null until it is a client company (FR-3.33f). Null is **no seats allocated**, not unlimited: a grant is refused saying so. Since 2026-11-18 a company becoming a client with no seat count gets **25**, the seats included (p4_billing.md §9); companies that were clients before keep theirs |
 | `digest_ai_prose` | bool | **FR-3.24 — AI prose on/off for this client's digests**, seeded from `tenant.digest_ai_prose_default` |
 | `primary_contact_id` | FK→`contact`? | FR-1.3a — designated recipient, client owner default |
 | `deleted_at` | timestamptz? | |

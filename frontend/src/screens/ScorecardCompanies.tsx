@@ -6,6 +6,7 @@ import { Banner, Card, Empty } from "../components/ui";
 import { Me, api } from "../lib/api";
 import { useWords } from "../lib/words";
 import { usePracticeScorecard } from "./PracticeScorecard";
+import { companyName, sortCompanies } from "../lib/companies";
 
 export interface ScorecardCompany {
   id: string; name: string; kpis: number; has_scorecard: boolean;
@@ -27,7 +28,8 @@ export function ScorecardCompanies({ me }: { me?: Me }) {
     queryFn: () => api.get<ScorecardCompany[]>("/api/scorecard/companies/"),
     enabled: clients,
   });
-  const rows = list.data ?? [];
+  // Clients only, so simply alphabetical, upper and lower case alike (2026-11-18).
+  const rows = sortCompanies(list.data ?? [], companyName);
   const mine = usePracticeScorecard();
   return (
     <>

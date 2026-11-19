@@ -192,11 +192,14 @@ def build() -> MCPServer:
 
     @server.tool(annotations=READ)
     async def scorecard_readings(company_id: str, window: str = "this_week",
-                                 from_date: str = "", to_date: str = "") -> dict:
+                                 from_date: str = "", to_date: str = "",
+                                 page: str = "") -> dict:
         """A company's scorecard KPIs and readings for a window (this_week, last_week,
-        this_month, last_month, last_13_weeks, or custom with from_date and to_date)."""
+        this_month, last_month, last_13_weeks, or custom with from_date and to_date).
+        Every page you can see, each KPI naming its page; or one page by its id or
+        name."""
         return await run("scorecard_readings", T.scorecard_readings, company_id=company_id,
-                         window=window, from_date=from_date, to_date=to_date)
+                         window=window, from_date=from_date, to_date=to_date, page=page)
 
     @server.tool(annotations=READ)
     async def pending_meeting_proposals() -> dict:

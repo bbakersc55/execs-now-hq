@@ -655,16 +655,27 @@ a month by default" is the only figure here that is already a decision.
 | During beta | **$20 a month** (as D9). |
 | Beta practices after release, base | **$50 a month for life.** |
 | Modules | **$25 or $50 a month each.** Which module is which is not said. |
-| Portal seats | **25 included, then $10 a month for each further 25.** |
+| Portal seats | **25 included, then $10 a month for each further 25.** *Decided; see below.* |
 
 **Hard cost.** The platform's cost for a practice is a **share of hosting**.
 AI and email are on the practice's own accounts (its Anthropic key, its own
 mailbox), so they are not a platform cost and are not in the price.
 
 Open, for when this is decided: whether "for life" covers modules or only the
-base; what a released, non-beta practice pays as its base; and whether portal
-seats are counted per practice or per client company (CLAUDE.md models a seat
-count per client company).
+base; and what a released, non-beta practice pays as its base.
+
+**Portal seats, decided (Bryan, 2026-11-09 and 2026-11-12; recorded
+2026-11-18).** Counted **per client company**: each client company includes
+**25 client users**, and each further block of 25 is **$10 a month**.
+
+- **Built (2026-11-18):** a company that becomes a client (Closed Won, or
+  marked by hand) starts with a Client seat count of 25 when it has none.
+  Companies that were clients before keep the count they had, blank
+  included. The count is still the practice owner's to raise or lower on the
+  company (Edit company → Client seat count), and grants stop at it.
+- **Not built:** charging for the extra blocks. Raising a seat count above 25
+  adds nothing to the practice's monthly charge yet; the subscription is still
+  its base plus add-ons (`apps/billing/subscriptions.py`, `lines_for`).
 
 ---
 

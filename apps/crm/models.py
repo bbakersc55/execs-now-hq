@@ -54,7 +54,9 @@ class Company(TenantScopedModel):
     is_client_company = models.BooleanField(default=False)
 
     # FR-3.33f — the limit. Usage is counted from live memberships, never
-    # stored, so it cannot drift (§12.3).
+    # stored, so it cannot drift (§12.3). A company that becomes a client
+    # starts with the 25 included (decided 2026-11-09/12, built 2026-11-18,
+    # `flag_as_client`); one that was a client before then keeps its own.
     seat_count = models.PositiveIntegerField(null=True, blank=True)
     digest_ai_prose = models.BooleanField(default=True)  # FR-3.24
     deleted_at = models.DateTimeField(null=True, blank=True)  # D2
@@ -80,6 +82,20 @@ class Company(TenantScopedModel):
 
     def __str__(self):
         return self.name
+
+    #: Client users included per client company (docs/p4_billing.md §9).
+    CLIENT_SEATS_INCLUDED = 25
+
+    def flag_as_client(self) -> list[str]:
+        """Make it a client company, with the seats included when it has no
+        seat count yet. Saves, and returns the fields it set."""
+        self.is_client_company = True
+        fields = ["is_client_company"]
+        if self.seat_count is None:
+            self.seat_count = self.CLIENT_SEATS_INCLUDED
+            fields.append("seat_count")
+        self.save(update_fields=fields + ["updated_at"])
+        return fields
 
     @property
     def seats_in_use(self):

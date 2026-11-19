@@ -210,7 +210,8 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
             "range_high", "behind_band_pct", "duration_unit", "rating_scale",
             "reading_owner", "per_person", "person_total", "leaderboard", "tile",
             "audience", "audience_team", "note", "strategy_component", "page", "formula",
-            "source_a", "source_b", "operand_a", "operand_b", "target_live", "helper")
+            "source_a", "source_b", "operand_a", "operand_b", "target_live", "helper",
+            "priority")
     for key in keys:
         if key in data:
             merged[key] = data[key]
@@ -229,6 +230,9 @@ def clean_kpi(scorecard, data, kpi=None) -> dict:
                             "how readings combine")
     out["tile"] = _choice(merged, "tile", Kpi.Tile.values, current("tile", "number_trend"),
                           "a tile")
+    out["priority"] = _choice(merged, "priority", Kpi.Priority.values,
+                              current("priority", Kpi.Priority.MEDIUM),
+                              "Top, Medium or Low priority")
     for key in ("target_value", "range_low", "range_high", "behind_band_pct"):
         out[key] = _decimal(merged, key) if key in merged else current(key)
     if out["behind_band_pct"] is None:

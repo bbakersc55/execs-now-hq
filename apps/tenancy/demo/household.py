@@ -492,6 +492,25 @@ def finish(world, books) -> None:
     _budget(world)
 
 
+def cover_others(ledger) -> dict:
+    """Only Groceries and Dining are over. A month whose random lines already
+    run another envelope over (two dear fuel fills by the 22nd, as in October
+    2026) has that envelope raised to cover it, as John would. Run again once
+    the bank feed's lines have landed (`bankfeed.personal`): one of them can
+    tip Everything else over (2026-11-19). Returns the month's view."""
+    from apps.personal import budget
+    from apps.personal.models import PersonalEnvelope
+
+    view = {row["name"]: row for row in budget.month_view(ledger)["envelopes"]}
+    for name, row in view.items():
+        if row["over"] and name not in ("Groceries", "Dining") and row["source"] \
+                not in (PersonalEnvelope.Source.TAX, PersonalEnvelope.Source.GOAL):
+            PersonalEnvelope.objects.filter(pk=row["id"]).update(
+                planned_cents=row["planned_cents"] + budget.round_up_ten(-row["left_cents"]),
+                source=PersonalEnvelope.Source.TYPED)
+    return view
+
+
 def _budget(world) -> None:
     """Stop 2: John's budget, proposed from the six months and used; the
     home policy spread as a yearly bill (its question answered), the other
@@ -508,18 +527,7 @@ def _budget(world) -> None:
                                                  category__name="Home insurance").first()
         if policy is not None:
             questions.answer(policy, {"spread": True})
-        view = {row["name"]: row for row in budget.month_view(ledger)["envelopes"]}
-        # Only the two below are over. A month whose random lines already
-        # run another envelope over (two dear fuel fills by the 22nd, as in
-        # October 2026) has that envelope raised to cover it, as John would.
-        from apps.personal.models import PersonalEnvelope
-
-        for name, row in view.items():
-            if row["over"] and name not in ("Groceries", "Dining") and row["source"] \
-                    not in (PersonalEnvelope.Source.TAX, PersonalEnvelope.Source.GOAL):
-                PersonalEnvelope.objects.filter(pk=row["id"]).update(
-                    planned_cents=row["planned_cents"] + budget.round_up_ten(-row["left_cents"]),
-                    source=PersonalEnvelope.Source.TYPED)
+        view = cover_others(ledger)
         # A big shop and a family dinner this month: over, by a little.
         for name, text, over in (("Groceries", "COSTCO WHSE #0661", 6_400),
                                  ("Dining", "TRAILHEAD GRILL", 3_150)):

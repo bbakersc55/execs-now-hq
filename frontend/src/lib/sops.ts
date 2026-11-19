@@ -10,7 +10,7 @@ export const STATUS_PILL: Record<SopStatus, string> = {
   draft: "warn", published: "ok", archived: "",
 };
 
-export interface SopCompany { id: string; name: string; is_practice: boolean }
+export interface SopCompany { id: string; name: string; is_practice: boolean; is_client_company?: boolean }
 export interface Role { name: string; does: string }
 export interface Step { text: string; role: string; when?: string; warning: string; images: string[] }
 /** One of an SOP's sections, in the practice's order (2026-11-14). */

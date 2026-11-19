@@ -244,6 +244,7 @@ class NoteViewSet(viewsets.GenericViewSet):
         # filtered: the dropdowns do not shrink as you narrow.
         linked = self.get_queryset()
         companies = {}
+        clients = set()
         contacts = {}
         linked = linked.filter(Q(company__isnull=False) | Q(contact__isnull=False))
         seen = set(seen_contacts.filter(
@@ -253,6 +254,8 @@ class NoteViewSet(viewsets.GenericViewSet):
                 note.contact.company if note.contact_id in seen else None)
             if company is not None:
                 companies[str(company.pk)] = company.name
+                if company.is_client_company:
+                    clients.add(str(company.pk))
             if note.contact_id:
                 contacts[str(note.contact_id)] = (
                     f"{note.contact.first_name} {note.contact.last_name}".strip())
@@ -268,7 +271,10 @@ class NoteViewSet(viewsets.GenericViewSet):
                  "is_locked": note.is_locked, "created_at": note.created_at.isoformat()}
                 for note in qs[:limit]
             ],
-            "companies": options(companies),
+            # Each says whether it is a client: the filter lists clients first
+            # (2026-11-18).
+            "companies": [{**o, "is_client_company": o["id"] in clients}
+                          for o in options(companies)],
             "contacts": options(contacts),
             "folders": _folders(in_any_folder),
         })

@@ -1680,6 +1680,8 @@ export interface ProposalItem {
   owner_seat?: PortalSeat | null;
   /** The client a promise in this meeting is made to, for a pending line. */
   promised_to?: { id: string; name: string } | null;
+  /** Which company candidates are clients now: they are listed first. */
+  client_company_ids?: string[];
 }
 
 /** A client user's portal sign-in: who, and for which client company. */

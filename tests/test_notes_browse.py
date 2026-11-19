@@ -104,7 +104,8 @@ def test_filters_by_company_contact_name_and_date(seeded_tenant, ff, api):
     assert titles(client, before=week_ago) == ["Old and loose"]
 
     body = client.get(URL).json()
-    assert body["companies"] == [{"id": str(acme.pk), "name": "Acme Freight"}]
+    assert body["companies"] == [{"id": str(acme.pk), "name": "Acme Freight",
+                                  "is_client_company": False}]
     assert {"id": str(dana.pk), "name": "Dana Reyes"} in body["contacts"]
 
 
@@ -130,7 +131,8 @@ def test_a_locked_note_is_found_by_every_filter_as_a_card(seeded_tenant, ff, va,
 
     body = viewer.get(URL).json()
     # A company or contact with only a locked note is still an option.
-    assert body["companies"] == [{"id": str(acme.pk), "name": "Acme Freight"}]
+    assert body["companies"] == [{"id": str(acme.pk), "name": "Acme Freight",
+                                  "is_client_company": False}]
     assert body["contacts"] == [{"id": str(dana.pk), "name": "Dana Reyes"}]
 
     today = (timezone.now() - timezone.timedelta(hours=1)).isoformat()

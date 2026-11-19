@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
-import { Modal } from "./shell";
+import { ModalOrInline } from "./shell";
 import { Banner } from "./ui";
 import { api } from "../lib/api";
 import { FeedPreview, FeedState, SheetGrid, columnLetter, fmt } from "../lib/scorecard";
@@ -19,8 +19,10 @@ type Pick = "date" | "value" | "name";
  * cell that holds the number. Nothing is saved until the preview has shown
  * which readings would be made for which periods.
  */
-export function SheetFeedModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function SheetFeedModal({ companyId, kpiId, onClose, onSaved, inline = false }: {
+  companyId: string; kpiId: string; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean; onSaved: (text: string) => void;
 }) {
   const qc = useQueryClient();
   const state = useQuery<FeedState>({
@@ -30,7 +32,7 @@ export function SheetFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const s = state.data;
   const title = s ? `Feed ${s.kpi.name} from a Google Sheet` : "Google Sheet feed";
   return (
-    <Modal label={title} title={title} wide onClose={onClose}>
+    <ModalOrInline inline={inline} label={title} title={title} wide onClose={onClose}>
       {state.isError && <Banner kind="bad">{(state.error as Error).message}</Banner>}
       {!s ? <p>Loading…</p> : !s.google.ready ? <Reconnect s={s} companyId={companyId} /> : (
         <FeedForm s={s} companyId={companyId} onClose={onClose} onSaved={(text) => {
@@ -39,7 +41,7 @@ export function SheetFeedModal({ companyId, kpiId, onClose, onSaved }: {
           onSaved(text);
         }} />
       )}
-    </Modal>
+    </ModalOrInline>
   );
 }
 

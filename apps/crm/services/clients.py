@@ -90,12 +90,12 @@ def mark(company, *, actor):
     """Flag the company. Nothing else: see the module docstring."""
     if company.is_client_company:
         return company
-    company.is_client_company = True
-    company.save(update_fields=["is_client_company", "updated_at"])
+    fields = company.flag_as_client()
     AuditEvent.all_objects.create(
         tenant_id=company.tenant_id, actor=actor, verb="company.flagged",
         target_type="company", target_id=company.pk,
-        payload={"is_client_company": True, "because": BY_HAND},
+        payload={"is_client_company": True, "because": BY_HAND,
+                 **({"seat_count": company.seat_count} if "seat_count" in fields else {})},
     )
     return company
 

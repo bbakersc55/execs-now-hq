@@ -16,6 +16,7 @@ import { usePracticeName } from "../lib/branding";
 import { figure, unitAfter } from "../lib/figures";
 import { useWords } from "../lib/words";
 import { AiGate } from "../components/DemoVisitor";
+import { companyName, sortCompanies } from "../lib/companies";
 
 const TENANT = ["FF", "CF", "VA"];
 
@@ -74,7 +75,9 @@ export function Report({ me }: { me: Me }) {
     queryFn: () => api.get("/api/companies/"),
     enabled: staff,
   });
-  const clients = (companies.data ?? []).filter((c) => c.is_client_company);
+  // Clients only, so simply alphabetical (2026-11-18).
+  const clients = sortCompanies((companies.data ?? []).filter((c) => c.is_client_company),
+    companyName);
   // A link to one goal names no company, and the practice has several: the
   // goal says whose report to open. A client has one report and needs no answer.
   const linked = useQuery<GoalBlock>({

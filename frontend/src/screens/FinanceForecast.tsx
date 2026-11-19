@@ -11,6 +11,7 @@ import { dollars, longDate } from "../lib/money";
 import {
   Adjusted, AskClaude, HowGood, LikelyAnnual, LineActions, NotCounted, Planned,
 } from "./FinanceForecastTools";
+import { CompanyOptions, companyName } from "../lib/companies";
 
 /**
  * Finance → Forecast (P6 M2; matrix 13.18 to 13.20): the practice owner's,
@@ -250,8 +251,8 @@ function WhatIf({ data, attempt, whatIf, view, busy, onTry }: {
         <select aria-label="A client to try the forecast without" value={client}
           style={{ width: "auto" }} onChange={(e) => setClient(e.target.value)}>
           <option value="">Without a client…</option>
-          {data.clients.filter((c) => !attempt.off.includes(`client:${c.id}`))
-            .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <CompanyOptions items={data.clients.filter((c) => !attempt.off.includes(`client:${c.id}`))}
+            id={(c) => c.id} name={companyName} />
         </select>
         <button className="small" disabled={!client || busy}
           onClick={() => { onTry({ ...attempt, off: [...attempt.off, `client:${client}`] });

@@ -11,6 +11,7 @@ import {
   INPUT_TYPES, RowValues, RunFull, RunSummary, RunValues, Shelf, svgSource, TeamChoice,
   ToolDefinition, ToolField, ToolFull, ViewDrawing,
 } from "../lib/tools";
+import { practiceThenClients } from "../lib/companies";
 
 const STAFF = ["FF", "CF", "VA"];
 const NONE: string[] = [];
@@ -590,7 +591,7 @@ function StartRun({ tool, onClose }: { tool: { ref: string; name: string }; onCl
     mutationFn: () => api.post<RunFull>("/api/tool-runs/", { company, tool: tool.ref }),
     onSuccess: (r) => navigate(`/tool-runs/${r.id}`),
   });
-  const list = plans.data?.plans ?? [];
+  const list = practiceThenClients(plans.data?.plans ?? []);
   return (
     <Modal label={`Run ${tool.name}`} title={`Run ${tool.name}`} onClose={onClose}>
       {go.isError && <Banner kind="bad">{(go.error as Error).message}</Banner>}

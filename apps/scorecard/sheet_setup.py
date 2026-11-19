@@ -10,10 +10,12 @@ header is proposed as a KPI:
   Revenue);
 - **the unit** from the header: $ is money, % is percent, otherwise a number;
 - **the cadence** from the spacing of the dates;
-- **a direction**: lower is better for costs, spend, churn and the like;
-  higher otherwise;
+- **a direction**: lower is better for costs, spend, cost-per figures (CPC),
+  losses ("closed lost"), churn and the like; higher otherwise;
 - **the roll-up** for longer views: average for rates and cost-per figures,
-  last for balances (open pipeline, cash, "latest month"), sum for the rest.
+  last for balances (open pipeline, cash, "latest month"), sum for counts
+  ("conversions") and the rest;
+- **a priority**, Medium until changed (2026-11-18).
 
 Each can be renamed, skipped or changed, and put on an existing page or a new
 one with its audience; then they are made at once, **each KPI with a Sheets
@@ -44,11 +46,19 @@ LOOK = sheets.MOST_ROWS
 LOWER = re.compile(r"\b(cost|costs|spend|spent|expense|expenses|churn|cancel\w*|refund\w*|"
                    r"return\w*|complaint\w*|defect\w*|error\w*|late|overdue|turnover|"
                    r"attrition|downtime|scrap|rework|waste|days to|time to|dso|cpl|cpa|cac|"
+                   r"cpc|cpm|cpv|cost per|lost|"
                    r"discount\w*|write.?off\w*|bad debt|no.?show\w*|vacan\w*)\b", re.I)
 #: Rates and cost-per figures average over a longer view.
 AVERAGE = re.compile(r"(\bper\b|/|\bavg\b|average|\brate\b|ratio|\bcpl\b|\bcpa\b|\bcac\b|"
-                     r"\baov\b|margin|score|\bnps\b|occupancy|utili[sz]ation|conversion|"
+                     r"\bcpc\b|\bcpm\b|\bcpv\b|"
+                     r"\baov\b|margin|score|\bnps\b|occupancy|utili[sz]ation|conversion rate|"
                      r"\bmean\b)", re.I)
+#: Counts add up over a longer view, whatever else the header says
+#: ("Google Ads conversions"), unless it is a rate of them ("Calls per day").
+COUNTS = re.compile(r"\b(conversions|clicks|impressions|leads|calls|sessions|visits|visitors|"
+                    r"views|sign.?ups|bookings|orders|deals|sales|reviews|sends|opens|"
+                    r"downloads|installs|transactions|units|tickets|jobs|appointments)\b", re.I)
+RATE = re.compile(r"(\bper\b|/|\bavg\b|average|\brate\b|ratio|\bmean\b)", re.I)
 #: Balances: the last reading of a longer view stands.
 LAST = re.compile(r"(\bopen\b|pipeline|balance|backlog|outstanding|on hand|\bcash\b|"
                   r"headcount|inventory|latest|to date|\bytd\b|\bmtd\b|\bqtd\b|ending|"
@@ -89,7 +99,11 @@ def direction_of(name: str) -> str:
 def rollup_of(name: str, kind: str) -> str:
     if LAST.search(name or ""):
         return Kpi.Rollup.LAST
-    if kind == Kpi.Kind.PERCENT or AVERAGE.search(name or ""):
+    if kind == Kpi.Kind.PERCENT:
+        return Kpi.Rollup.AVERAGE
+    if COUNTS.search(name or "") and not RATE.search(name or ""):
+        return Kpi.Rollup.SUM
+    if AVERAGE.search(name or ""):
         return Kpi.Rollup.AVERAGE
     return Kpi.Rollup.SUM
 
@@ -229,7 +243,8 @@ def propose(scorecard, *, rows, header_row=None, date_column="", date_is=None,
         columns.append({
             "column": letter, "header": header, "name": name, "kind": kind,
             "cadence": cadence, "direction": direction_of(name),
-            "rollup": rollup_of(name, kind), "numbers": len(numbers), "blanks": blanks,
+            "rollup": rollup_of(name, kind), "priority": Kpi.Priority.MEDIUM,
+            "numbers": len(numbers), "blanks": blanks,
             "not_numbers": words,
             "sample": [format(v.normalize(), "f") for v in numbers[-3:]],
             "skip": clash or not numbers,
@@ -330,7 +345,8 @@ def create(scorecard, actor, data, *, client, connection, rows, today) -> dict:
                     "name": name, "kind": column.get("kind") or found["kind"],
                     "cadence": column.get("cadence") or found["cadence"],
                     "direction": column.get("direction") or found["direction"],
-                    "rollup": column.get("rollup") or found["rollup"], "page": page_id,
+                    "rollup": column.get("rollup") or found["rollup"],
+                    "priority": column.get("priority") or found["priority"], "page": page_id,
                     "note": f"From {data.get('spreadsheet_name') or 'the sheet'}, "
                             f"{tab}, column {letter}."[:200]}, actor)
             except setup.SetupError as exc:

@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
-import { Modal } from "./shell";
+import { ModalOrInline } from "./shell";
 import { Banner, Card } from "./ui";
 import { Me, api } from "../lib/api";
 
@@ -112,8 +112,10 @@ export function HubSpotConnectionCard({ me, companyId }: { me: Me; companyId: st
 
 /** M5 part 5: a KPI's HubSpot measure, from a fixed menu, for the total or
  *  one owner; pipeline value for every open stage or one. */
-export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved, inline = false }: {
+  companyId: string; kpiId: string; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean; onSaved: (text: string) => void;
 }) {
   const qc = useQueryClient();
   const state = useQuery<HubSpotFeedState>({
@@ -162,7 +164,7 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const groups = GROUPS.map(([label, objects]) =>
     [label, measures.filter((m) => objects.includes(m.object))] as const);
   return (
-    <Modal label={title} title={title} onClose={onClose}>
+    <ModalOrInline inline={inline} label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : !s.connected ? (
         <p>This company has no HubSpot connection yet. The practice owner adds it on the company page, under HubSpot.</p>
       ) : (
@@ -216,6 +218,6 @@ export function HubSpotFeedModal({ companyId, kpiId, onClose, onSaved }: {
           </div>
         </div>
       )}
-    </Modal>
+    </ModalOrInline>
   );
 }

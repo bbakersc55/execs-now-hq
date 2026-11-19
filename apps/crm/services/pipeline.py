@@ -242,12 +242,12 @@ def apply_client_invariant(contact, to_stage, *, actor=None):
 
     company = contact.company  # rule 4
     if company is not None and not company.is_client_company:
-        company.is_client_company = True
-        company.save(update_fields=["is_client_company", "updated_at"])
+        fields = company.flag_as_client()
         AuditEvent.all_objects.create(
             tenant=contact.tenant, actor=actor, verb="company.flagged",
             target_type="company", target_id=company.pk,
-            payload={"is_client_company": True, "because": f"stage={to_stage.code} (won)"},
+            payload={"is_client_company": True, "because": f"stage={to_stage.code} (won)",
+                     **({"seat_count": company.seat_count} if "seat_count" in fields else {})},
         )
 
 

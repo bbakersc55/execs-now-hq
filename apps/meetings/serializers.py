@@ -36,7 +36,21 @@ def represent_item(item, request=None) -> dict:
         "promised_to": _promised_to(item),
         # A proposed reading, as the scorecard holds it now (2026-10-27).
         "reading": _reading(item, request),
+        # Which of the company candidates are clients, as they are now: the
+        # picker lists clients first (2026-11-18).
+        "client_company_ids": _client_candidates(item),
     }
+
+
+def _client_candidates(item) -> list[str]:
+    from apps.crm.models import Company
+
+    ids = [row.get("company_id") for row in (item.payload or {}).get("company_candidates") or []
+           if row.get("company_id")]
+    if not ids:
+        return []
+    return [str(pk) for pk in Company.all_objects.filter(
+        tenant_id=item.tenant_id, pk__in=ids, is_client_company=True).values_list("pk", flat=True)]
 
 
 def _reading(item, request):

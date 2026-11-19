@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { Company, Me, api } from "../lib/api";
+import { CompanyOptions, companyName, sortCompanies } from "../lib/companies";
 import { useRemembered } from "../lib/remembered";
 import { Field } from "./ui";
 
@@ -33,7 +34,9 @@ export function useCompanyFilter(me: Me, key: string) {
     queryKey: ["companies"], enabled: isTenant,
     queryFn: () => api.get<Company[]>("/api/companies/"),
   });
-  const clients = (companies.data ?? []).filter((c) => c.is_client_company);
+  // Clients only, so simply alphabetical (2026-11-18).
+  const clients = sortCompanies((companies.data ?? []).filter((c) => c.is_client_company),
+    companyName);
   const [chosen, choose] = useRemembered(`${key}:${me.email || "anon"}`, "");
 
   // A remembered company that is no longer offered — deleted, no longer a
@@ -62,7 +65,7 @@ export function CompanyFilter({ value, onChange, companies, asChip }: {
       style={asChip ? { width: "auto", minWidth: 170 } : undefined}
       onChange={(e) => onChange(e.target.value)}>
       <option value="">All clients</option>
-      {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      <CompanyOptions items={companies} id={(c) => c.id} name={companyName} />
       <option value={INTERNAL}>Internal — the practice's own</option>
     </select>
   );

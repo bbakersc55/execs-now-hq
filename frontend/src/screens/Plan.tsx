@@ -11,6 +11,7 @@ import {
   WeekPayload,
 } from "../lib/plans";
 import { useWords } from "../lib/words";
+import { practiceThenClients } from "../lib/companies";
 
 const STAFF = ["FF", "CF", "VA"];
 
@@ -604,7 +605,7 @@ export function PlansScreen() {
     <div>
       <PageHead title="Plans" sub="One plan per client, and one for the practice: from the three-year picture to this week's sprint." />
       <div className="clients">
-        {q.data.plans.map((p) => (
+        {practiceThenClients(q.data.plans).map((p) => (
           <Link key={p.id} className="client-card"
             to={p.is_practice ? "/plans/practice" : `/companies/${p.id}/plan`}>
             <strong>{p.is_practice ? "Our practice" : p.name}</strong>

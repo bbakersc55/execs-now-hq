@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { Banner, Card, Empty, Field, Pill, when } from "./ui";
 import { Company, MailItem, MailPage, Mailbox, Mailboxes, Me, api } from "../lib/api";
+import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
 
 /**
  * The practice's mailboxes (2026-10-28): someone's own (their connection
@@ -176,7 +177,7 @@ function ConnectMailbox({ onCancel, onProblem }: {
           <Field label="Client">
             <select aria-label="Client" value={company} onChange={(e) => setCompany(e.target.value)}>
               <option value="">Choose…</option>
-              {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <CompanyOptions items={companies.data ?? []} id={(c) => c.id} name={companyName} isClient={isClientCompany} />
             </select>
           </Field>
         )}

@@ -13,6 +13,7 @@ import {
   InvoiceSettingsData, Me, NmiEvent, api,
 } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
+import { companyName, sortCompanies } from "../lib/companies";
 
 /**
  * Invoices (P4A; matrix 13.4a–13.4f). The practice owner sees every invoice;
@@ -78,7 +79,10 @@ export function Invoices({ me }: { me: Me }) {
   });
   const companies = useQuery<Company[]>({
     queryKey: ["companies"], queryFn: () => api.get<Company[]>("/api/companies/") });
-  const clients = (companies.data ?? []).filter((c) => c.is_client_company);
+  // Clients only, so simply alphabetical (2026-11-18): the filter, a new
+  // invoice and a recurring one all take this list.
+  const clients = sortCompanies((companies.data ?? []).filter((c) => c.is_client_company),
+    companyName);
   const rowLink = useRowLink();
   const [writing, setWriting] = useState(false);
   const owner = me.role === "FF";

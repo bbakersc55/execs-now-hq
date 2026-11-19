@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
-import { Modal } from "./shell";
+import { ModalOrInline } from "./shell";
 import { Banner } from "./ui";
 import { api } from "../lib/api";
 
@@ -18,8 +18,10 @@ interface AppFeedState {
 /** "My practice": a KPI read "From this app", one measure of the practice's
  *  own data, per closed period, once a day. The money measures are listed
  *  for the practice owner only. */
-export function AppFeedModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function AppFeedModal({ companyId, kpiId, onClose, onSaved, inline = false }: {
+  companyId: string; kpiId: string; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean; onSaved: (text: string) => void;
 }) {
   const qc = useQueryClient();
   const state = useQuery<AppFeedState>({
@@ -54,7 +56,7 @@ export function AppFeedModal({ companyId, kpiId, onClose, onSaved }: {
   });
   const title = s ? `${s.kpi.name} from this app` : "From this app";
   return (
-    <Modal label={title} title={title} onClose={onClose}>
+    <ModalOrInline inline={inline} label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : (
         <div className="track-feed">
           {s.feed && <p className="small muted" style={{ marginTop: 0 }}>{s.feed.text}.
@@ -96,6 +98,6 @@ export function AppFeedModal({ companyId, kpiId, onClose, onSaved }: {
           </div>
         </div>
       )}
-    </Modal>
+    </ModalOrInline>
   );
 }

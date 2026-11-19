@@ -7,6 +7,7 @@ import { Chip, FilterBar, PageHead, SearchField } from "../components/shell";
 import { Banner, Empty, when } from "../components/ui";
 import { Me, Note, NoteFolder, api } from "../lib/api";
 import { LinkChips, NoteDetail } from "./NoteDetail";
+import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
 
 export function NoteRow({ note }: { note: Note }) {
   return (
@@ -20,7 +21,7 @@ export function NoteRow({ note }: { note: Note }) {
 }
 
 interface NoteCard { id: string; title: string; is_locked: boolean; created_at: string }
-interface Option { id: string; name: string }
+interface Option { id: string; name: string; is_client_company?: boolean }
 interface Grid { total: number; results: NoteCard[]; companies: Option[]; contacts: Option[];
                  folders?: NoteFolder[] }
 
@@ -240,7 +241,8 @@ function NotesGrid({ me }: { me: Me }) {
           <select aria-label="Filter by company" value={company}
             onChange={(e) => set({ company: e.target.value })}>
             <option value="">Any company</option>
-            {companies.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            <CompanyOptions items={companies} id={(o) => o.id} name={companyName}
+              isClient={isClientCompany} />
           </select>
           <select aria-label="Filter by contact" value={contact}
             onChange={(e) => set({ contact: e.target.value })}>

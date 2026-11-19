@@ -16,6 +16,7 @@ import {
 import { usePracticeName } from "../lib/branding";
 import { useWords } from "../lib/words";
 import { AiGate } from "../components/DemoVisitor";
+import { CompanyOptions } from "../lib/companies";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -1605,13 +1606,14 @@ function ItemRow({ item, onChanged, setNote }: {
             <Field label="Which company">
               <select aria-label={`Company for ${payload.parsed_name}`} value={company}
                 onChange={(e) => setCompany(e.target.value)}>
-                {candidates.map((row) => (
-                  <option key={row.company_id} value={row.company_id}>
-                    {row.name} — {row.match_reason === "created_in_this_review"
-                      ? "created a moment ago in this review"
-                      : `matched on ${row.match_reason.replace(/_/g, " ")}`}
-                  </option>
-                ))}
+                {/* Clients first, then other companies, each alphabetical
+                    (2026-11-18); the best match is still the one chosen. */}
+                <CompanyOptions items={candidates} id={(row) => row.company_id}
+                  name={(row) => row.name}
+                  isClient={(row) => (item.client_company_ids ?? []).includes(row.company_id)}
+                  label={(row) => `${row.name} — ${row.match_reason === "created_in_this_review"
+                    ? "created a moment ago in this review"
+                    : `matched on ${row.match_reason.replace(/_/g, " ")}`}`} />
                 {payload.parsed_company && (
                   <option value="new">Create “{payload.parsed_company}”</option>
                 )}

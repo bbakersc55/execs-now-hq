@@ -8,6 +8,7 @@ import {
   ACTIVITY_CATEGORIES, ActivityEntry, Company, Contact, Me, PortalPerson, api,
 } from "../lib/api";
 import { useWords } from "../lib/words";
+import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
 
 const LINK: Record<string, string> = {
   task: "/tasks", project: "/work/projects", goal: "/work/goals",
@@ -95,9 +96,7 @@ export function Activity({ me }: { me: Me }) {
             <select aria-label="Filter by company" value={company}
               onChange={(e) => setCompany(e.target.value)}>
               <option value="">Any company</option>
-              {(companies.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              <CompanyOptions items={companies.data ?? []} id={(c) => c.id} name={companyName} isClient={isClientCompany} />
             </select>
           </Field>
           <Field label="Contact">

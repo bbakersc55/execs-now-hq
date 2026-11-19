@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { api } from "../lib/api";
 import { about } from "../lib/plans";
-import { Modal } from "./shell";
+import { Modal, ModalOrInline } from "./shell";
 import { Banner } from "./ui";
 
 /**
@@ -418,14 +418,16 @@ function ApiPanel({ companyId, kpiId, owner }: { companyId: string; kpiId: strin
   );
 }
 
-export function RailFeedModal({ companyId, kpiId, kpiName, kind, owner, onClose }: {
+export function RailFeedModal({ companyId, kpiId, kpiName, kind, owner, onClose, inline = false }: {
   companyId: string; kpiId: string; kpiName: string; kind: RailKind;
   /** The practice owner makes and removes connections (as with Besty). */
   owner: boolean; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean;
 }) {
   const [tab, setTab] = useState<RailKind>(kind);
   return (
-    <Modal label={`Connect anything to ${kpiName}`} title={`${kpiName}: connect anything`} wide onClose={onClose}>
+    <ModalOrInline inline={inline} label={`Connect anything to ${kpiName}`} title={`${kpiName}: connect anything`} wide onClose={onClose}>
       <div className="pl-tabs" role="tablist" aria-label="Rails">
         {(["webhook", "mcp", "api"] as RailKind[]).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`pl-tab${tab === k ? " on" : ""}`}
@@ -434,7 +436,7 @@ export function RailFeedModal({ companyId, kpiId, kpiName, kind, owner, onClose 
       {tab === "webhook" && <WebhookPanel companyId={companyId} kpiId={kpiId} />}
       {tab === "mcp" && <McpPanel companyId={companyId} kpiId={kpiId} owner={owner} />}
       {tab === "api" && <ApiPanel companyId={companyId} kpiId={kpiId} owner={owner} />}
-    </Modal>
+    </ModalOrInline>
   );
 }
 

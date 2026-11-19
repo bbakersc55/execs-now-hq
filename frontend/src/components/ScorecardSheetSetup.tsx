@@ -17,7 +17,7 @@ import { api } from "../lib/api";
 
 export interface SheetColumn {
   column: string; header: string; name: string; kind: "number" | "percent" | "money";
-  cadence: string; direction: string; rollup: string; numbers: number; blanks: number;
+  cadence: string; direction: string; rollup: string; priority?: string; numbers: number; blanks: number;
   not_numbers: number; sample: string[]; skip: boolean; why_skip: string;
 }
 
@@ -50,6 +50,7 @@ const KINDS = { number: "Number", percent: "Percent", money: "Money" };
 const CADENCES = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly" };
 const DIRECTIONS = { higher: "Higher is better", lower: "Lower is better" };
 const ROLLUPS = { sum: "Sum", average: "Average", last: "Last" };
+const PRIORITIES = { top: "Top", medium: "Medium", low: "Low" };
 const AUDIENCES = { everyone: "Everyone at the company", leadership: "Senior leadership and up",
   each_person: "Each person sees their own" };
 const DATE_IS = { end: "The last day of each period", start: "The first day of each period",
@@ -81,7 +82,8 @@ export function SheetSetup({ companyId, onClose, onMade }: {
     onSuccess: (data) => {
       setOpened(data);
       const first = data.proposal?.pages[0]?.id ?? "";
-      setChoices((data.proposal?.columns ?? []).map((c) => ({ ...c, page: first })));
+      setChoices((data.proposal?.columns ?? []).map((c) => ({
+        ...c, priority: c.priority ?? "medium", page: first })));
     },
   });
   const make = useMutation({
@@ -93,7 +95,7 @@ export function SheetSetup({ companyId, onClose, onMade }: {
         date_is: p.date_is, new_pages: pages,
         columns: choices.map((c) => ({
           column: c.column, header: c.header, name: c.name, kind: c.kind, cadence: c.cadence,
-          direction: c.direction, rollup: c.rollup, skip: c.skip,
+          direction: c.direction, rollup: c.rollup, priority: c.priority ?? "medium", skip: c.skip,
           ...(c.page.startsWith("new:") ? { new_page: c.page.slice(4) } : { page: c.page }),
         })),
       });
@@ -190,7 +192,7 @@ export function SheetSetup({ companyId, onClose, onMade }: {
                 <div className="table-fit">
                   <table aria-label="Columns proposed as KPIs" className="small">
                     <thead><tr><th>Make it</th><th>Column</th><th>Name</th><th>Unit</th>
-                      <th>Cadence</th><th>Direction</th><th>Roll-up</th><th>Page</th>
+                      <th>Cadence</th><th>Direction</th><th>Roll-up</th><th>Priority</th><th>Page</th>
                       <th>In the sheet</th></tr></thead>
                     <tbody>
                       {choices.map((c, i) => (
@@ -210,6 +212,8 @@ export function SheetSetup({ companyId, onClose, onMade }: {
                                       (v) => change(i, { direction: v }))}</td>
                           <td>{select(`Roll-up for ${c.header}`, c.rollup, ROLLUPS,
                                       (v) => change(i, { rollup: v }))}</td>
+                          <td>{select(`Priority for ${c.header}`, c.priority ?? "medium", PRIORITIES,
+                                      (v) => change(i, { priority: v }))}</td>
                           <td>{select(`Page for ${c.header}`, c.page, pageOptions,
                                       (v) => change(i, { page: v }))}</td>
                           <td className="muted">{c.numbers} numbers{c.blanks ? `, ${c.blanks} blank`

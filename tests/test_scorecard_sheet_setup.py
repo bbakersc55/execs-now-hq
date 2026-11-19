@@ -179,6 +179,16 @@ def test_a_blank_cell_is_no_reading_never_zero():
     ("Ad spend ($)", "Ad spend", "money", "lower", "sum"),
     ("Leads", "Leads", "number", "higher", "sum"),
     ("Latest month AR ($)", "Latest month AR", "money", "higher", "last"),
+    # 2026-11-18: counts add up, and cost-per figures and losses are lower-is-better.
+    ("Google Ads conversions", "Google Ads conversions", "number", "higher", "sum"),
+    ("Conversion rate %", "Conversion rate", "percent", "higher", "average"),
+    ("Calls per day", "Calls per day", "number", "higher", "average"),
+    ("Google Ads avg CPC $", "Google Ads avg CPC", "money", "lower", "average"),
+    ("Meta cost per landing page view $", "Meta cost per landing page view", "money",
+     "lower", "average"),
+    ("Deals closed lost", "Deals closed lost", "number", "lower", "sum"),
+    ("Deals closed won", "Deals closed won", "number", "higher", "sum"),
+    ("Open pipeline deals", "Open pipeline deals", "number", "higher", "last"),
 ])
 def test_a_header_gives_name_unit_direction_and_rollup(header, name, kind, direction, rollup):
     got = sheet_setup.name_of(header)
@@ -194,6 +204,7 @@ def test_the_sheet_is_proposed_column_by_column(shop):
     page = opened(shop)
     assert [t["title"] for t in page["tabs"]] == ["Notes", "Weekly"]
     p = page["proposal"]
+    assert {c["priority"] for c in p["columns"]} == {"medium"}
     assert (p["date_column"], p["date_header"], p["date_is"], p["cadence"]) == (
         "A", "Week ending", "end", "weekly")
     assert p["dates"]["count"] == WEEKS
@@ -214,7 +225,7 @@ def test_the_sheet_is_proposed_column_by_column(shop):
 def test_making_them_all_loads_the_history_with_blanks_as_no_reading(shop):
     p = opened(shop)["proposal"]
     made = make_all(shop, p, page=first_page(shop),
-                    changes={"C": {"name": "Net revenue"},
+                    changes={"C": {"name": "Net revenue", "priority": "top"},
                              "D": {"new_page": "money", "rollup": "last"},
                              "E": {"skip": True}},
                     new_pages=[{"key": "money", "name": "Money", "audience": "leadership"}])
@@ -231,6 +242,8 @@ def test_making_them_all_loads_the_history_with_blanks_as_no_reading(shop):
         assert (feed.value_column, feed.value_header, feed.date_column, feed.date_is,
                 feed.mode) == ("C", "Revenue ($)", "A", "end", "column")
         assert revenue.feed == "sheet" and revenue.kind == "money"
+        # 2026-11-18: the table's Priority column; a column not changed is Medium.
+        assert revenue.priority == "top" and kpis["Gross margin"].priority == "medium"
         margin = kpis["Gross margin"]
         assert margin.page.name == "Money" and margin.page.audience == "leadership"
         assert margin.rollup == "last"

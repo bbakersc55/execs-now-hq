@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ReferrerPicker } from "../components/Referrals";
 import { Banner, Card, Field } from "../components/ui";
 import { Company, Contact, ContactType, Me, Pipeline, api } from "../lib/api";
+import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
 
 interface Row { value: string; is_primary: boolean }
 
@@ -209,9 +210,7 @@ export function AddContact({ me, onDone, existing }: {
             <select value={form.company} aria-label="Company"
               onChange={(e) => setForm({ ...form, company: e.target.value })}>
               <option value="">— none, or type a new one below —</option>
-              {(companies.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              <CompanyOptions items={companies.data ?? []} id={(c) => c.id} name={companyName} isClient={isClientCompany} />
             </select>
           </Field>
           <Field label="…or a new company">

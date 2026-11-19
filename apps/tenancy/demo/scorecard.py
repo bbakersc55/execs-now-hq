@@ -131,6 +131,8 @@ def scorecard(world) -> dict:
             "delivery": setup.create_kpi(card, {
                 "name": "On-time delivery", "kind": "percent", "cadence": "weekly",
                 "rollup": "average", "target_value": 95, "tile": "gauge",
+                # 2026-11-18: the page opens on its Top KPIs, then Medium, then Low.
+                "priority": "top",
                 "reading_owner": str(dwight.pk), "page": str(weekly.pk),
                 "strategy_component": "process",
                 "note": "Orders delivered by the promised date ÷ orders delivered, "
@@ -144,7 +146,7 @@ def scorecard(world) -> dict:
                 world.owner),
             "revenue": setup.create_kpi(card, {
                 "name": "Revenue", "kind": "money", "cadence": "weekly", "rollup": "sum",
-                "target_value": 50000, "tile": "progress",
+                "target_value": 50000, "tile": "progress", "priority": "top",
                 "month_targets": REVENUE_BY_MONTH,
                 "reading_owner": str(michael.pk), "page": str(weekly.pk),
                 "strategy_component": "traction",
@@ -154,6 +156,7 @@ def scorecard(world) -> dict:
                 "name": "Overtime hours", "kind": "duration", "duration_unit": "hours",
                 "direction": "lower", "cadence": "weekly", "rollup": "sum",
                 "target_value": 40, "tile": "status", "audience": "leadership",
+                "priority": "low",
                 "reading_owner": str(world.owner.pk), "page": str(weekly.pk),
                 "strategy_component": "people",
                 "note": "Warehouse and driver overtime, from payroll"}, world.owner),
@@ -186,7 +189,7 @@ def scorecard(world) -> dict:
         kpis["per_order"] = setup.create_kpi(card, {
             "name": "Revenue per order", "kind": "money", "cadence": "weekly",
             "rollup": "average", "target_value": 125, "tile": "number_trend",
-            "formula": "ratio", "source_a": str(kpis["revenue"].pk),
+            "priority": "low", "formula": "ratio", "source_a": str(kpis["revenue"].pk),
             "source_b": str(kpis["orders"].pk), "page": str(weekly.pk),
             "strategy_component": "traction",
             "note": "Revenue ÷ orders shipped, worked out each week"}, world.owner)

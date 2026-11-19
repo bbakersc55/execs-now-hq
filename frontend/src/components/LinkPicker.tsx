@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Company, Contact, Task, api } from "../lib/api";
 import { useWords } from "../lib/words";
+import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
 
 export interface Links {
   contact: string | null; contactName?: string;
@@ -85,7 +86,7 @@ export function LinkPicker({ value, onChange }: { value: Links; onChange: (v: Li
           <select id="link-company" value={value.company ?? ""}
             onChange={(e) => onChange({ ...value, company: e.target.value || null, contact: null })}>
             <option value="">Choose a company…</option>
-            {(companies.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <CompanyOptions items={companies.data ?? []} id={(c) => c.id} name={companyName} isClient={isClientCompany} />
           </select>
         </>
       )}

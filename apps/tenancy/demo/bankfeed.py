@@ -143,4 +143,12 @@ def personal(world) -> None:
             sync.run(connection, actor=world.owner)
         BankConnection.objects.filter(pk=connection.pk).update(
             last_checked_at=when - timedelta(hours=2))
+    # Its lines can run an envelope over that the budget's stop had covered.
+    from apps.personal import budget
+
+    from .household import cover_others
+
+    if budget.has_budget(house["ledger"]):
+        with at(moment(today, 7, 46)):
+            cover_others(house["ledger"])
     world.extra["personal_bank_connection"] = connection

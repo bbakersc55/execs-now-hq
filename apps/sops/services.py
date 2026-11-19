@@ -995,7 +995,8 @@ def summary(sop, access=None) -> dict:
     return {"id": str(sop.pk), "title": sop.title, "number": sop.number, "status": sop.status,
             "category": sop.category, "version": sop.version,
             "company": {"id": "practice" if sop.company.is_practice else str(sop.company_id),
-                        "name": sop.company.name, "is_practice": sop.company.is_practice},
+                        "name": sop.company.name, "is_practice": sop.company.is_practice,
+                        "is_client_company": sop.company.is_client_company},
             "owner": _name(sop.owner), "review_date": sop.review_date.isoformat()
             if sop.review_date else None,
             "published_at": sop.published_at.isoformat() if sop.published_at else None,

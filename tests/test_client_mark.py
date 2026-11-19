@@ -138,8 +138,9 @@ def test_marking_is_recorded_with_who_and_why(seeded_tenant, ff, api, referred):
                                            target_id=company.pk)
     assert events.count() == 1
     assert events[0].actor_id == ff.user.pk
+    # It had no seat count, so it starts with the 25 included (2026-11-18).
     assert events[0].payload == {"is_client_company": True,
-                                 "because": "marked by the practice owner"}
+                                 "because": "marked by the practice owner", "seat_count": 25}
 
 
 @pytest.mark.django_db

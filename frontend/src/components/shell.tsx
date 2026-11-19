@@ -119,6 +119,24 @@ export function Sheet({ title, onClose, children, label }: {
  * saved until its own Save; closing it any other way discards what was typed.
  * The first field takes the focus when it opens.
  */
+/**
+ * A KPI's connector settings, one component in two places (2026-11-18): a
+ * pop-up from the tile's details, or in place inside the scorecard setup's
+ * KPI form. `inline` draws the same content as a section of the page.
+ */
+export function ModalOrInline({ inline = false, title, onClose, children, label, wide = false }: {
+  inline?: boolean; title: ReactNode; onClose: () => void; children: ReactNode; label: string;
+  wide?: boolean;
+}) {
+  if (!inline) return <Modal title={title} onClose={onClose} label={label} wide={wide}>{children}</Modal>;
+  return (
+    <section className="inline-panel" aria-label={label}>
+      <h4 className="inline-panel-head">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
 export function Modal({ title, onClose, children, label, wide = false }: {
   title: ReactNode; onClose: () => void; children: ReactNode; label: string;
   wide?: boolean;

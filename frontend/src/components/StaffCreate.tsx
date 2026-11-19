@@ -7,6 +7,7 @@ import { useWords } from "../lib/words";
 import { HOW_A_COMPANY_BECOMES_A_CLIENT } from "./ClientStatus";
 import { TeamField } from "./ClientTeams";
 import { Banner, Card, Field } from "./ui";
+import { CompanyOptions, companyName, sortCompanies } from "../lib/companies";
 
 const TENANT_ROLES = ["FF", "CF", "VA"];
 
@@ -122,7 +123,9 @@ function useScopedLists(company: string) {
   // "" is internal: a goal or project with no client company of its own.
   const ours = (rows: WorkParent[]) => rows.filter((r) => (r.client_company ?? "") === company);
   return {
-    clientCompanies: (companies.data ?? []).filter((c) => c.is_client_company),
+    // Clients only, so simply alphabetical (2026-11-18).
+    clientCompanies: sortCompanies((companies.data ?? []).filter((c) => c.is_client_company),
+      companyName),
     otherCompanies: (companies.data ?? []).filter((c) => !c.is_client_company).length,
     goals: ours(goals.data ?? []),
     projects: ours(projects.data ?? []),
@@ -142,7 +145,7 @@ function CompanyField({ value, onChange, companies, others }: {
       <select aria-label="Client company for the new item" value={value}
         onChange={(e) => onChange(e.target.value)}>
         <option value="">Internal</option>
-        {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <CompanyOptions items={companies} id={(c) => c.id} name={companyName} />
       </select>
       {/* A new practice adds a company, opens this and finds only "Internal"
           (beta feedback, 2026-10-05). Said only when a company is missing. */}

@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
-import { Modal } from "./shell";
+import { ModalOrInline } from "./shell";
 import { Banner, Card, Pill } from "./ui";
 import { Me, api } from "../lib/api";
 import { longDate } from "../lib/money";
@@ -257,8 +257,10 @@ export function ReviewsCard({ companyId }: { companyId: string }) {
 }
 
 /** A KPI's reviews measure, from a fixed menu. */
-export function ReviewsFeedModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function ReviewsFeedModal({ companyId, kpiId, onClose, onSaved, inline = false }: {
+  companyId: string; kpiId: string; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean; onSaved: (text: string) => void;
 }) {
   const qc = useQueryClient();
   const state = useQuery<ReviewsFeedState>({
@@ -295,7 +297,7 @@ export function ReviewsFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const s = state.data;
   const title = s ? `Feed ${s.kpi.name} from Google reviews` : "Google reviews measure";
   return (
-    <Modal label={title} title={title} onClose={onClose}>
+    <ModalOrInline inline={inline} label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : !s.connected ? (
         <p>This company has no Google Business Profile location connected yet. The practice owner
           connects it on the company page, under Google Business Profile.</p>
@@ -330,6 +332,6 @@ export function ReviewsFeedModal({ companyId, kpiId, onClose, onSaved }: {
           </div>
         </div>
       )}
-    </Modal>
+    </ModalOrInline>
   );
 }

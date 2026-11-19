@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { ConnectionRead } from "./ConnectionRead";
 import { ReadOpenChoice, readOpenValue } from "./ReadOpenChoice";
 
-import { Modal } from "./shell";
+import { ModalOrInline } from "./shell";
 import { Banner, Card } from "./ui";
 import { Me, api } from "../lib/api";
 
@@ -113,8 +113,10 @@ export function TrackConnectionCard({ me, companyId }: { me: Me; companyId: stri
 
 /** M5 part 4: a KPI's Track measure, from a fixed menu, for the company's
  *  total, one property or one Track user. */
-export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
-  companyId: string; kpiId: string; onClose: () => void; onSaved: (text: string) => void;
+export function TrackFeedModal({ companyId, kpiId, onClose, onSaved, inline = false }: {
+  companyId: string; kpiId: string; onClose: () => void;
+  /** In place, inside the setup's KPI form, rather than a pop-up. */
+  inline?: boolean; onSaved: (text: string) => void;
 }) {
   const qc = useQueryClient();
   const state = useQuery<TrackFeedState>({
@@ -162,7 +164,7 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
   const groups = Object.entries(STREAMS).map(([k, label]) =>
     [label, measures.filter((m) => m.stream === k)] as const);
   return (
-    <Modal label={title} title={title} onClose={onClose}>
+    <ModalOrInline inline={inline} label={title} title={title} onClose={onClose}>
       {!s ? <p>Loading…</p> : !s.connected ? (
         <p>This company has no Track connection yet. The practice owner adds it on the company page, under Track PMS.</p>
       ) : (
@@ -207,6 +209,6 @@ export function TrackFeedModal({ companyId, kpiId, onClose, onSaved }: {
           </div>
         </div>
       )}
-    </Modal>
+    </ModalOrInline>
   );
 }

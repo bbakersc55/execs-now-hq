@@ -310,9 +310,11 @@ def list_notes(p, contact_id: str = "", company_id: str = "", query: str = "",
 
 
 def scorecard_readings(p, company_id: str, window: str = "this_week", from_date: str = "",
-                       to_date: str = "") -> dict:
+                       to_date: str = "", page: str = "") -> dict:
     """A company's scorecard for a window: this_week, last_week, this_month,
-    last_month, last_13_weeks… or custom with from_date and to_date."""
+    last_month, last_13_weeks… or custom with from_date and to_date. One page
+    by its id or name, or, with none named, every page the person can see
+    (2026-11-18: it used to give the first page only)."""
     from apps.scorecard import board
     from apps.scorecard import periods as P
     from apps.scorecard.access import Reader, company_for
@@ -335,7 +337,17 @@ def scorecard_readings(p, company_id: str, window: str = "this_week", from_date:
     except (ValueError, P.WindowInvalid) as exc:
         raise ToolRefused(str(exc) if isinstance(exc, P.WindowInvalid)
                           else "Dates are YYYY-MM-DD.") from exc
-    out = _plain(board.build(reader, scorecard, None, win, today))
+    wanted = (page or "").strip()
+    page_id = None
+    if wanted:
+        shown = [pg for pg, _ in board.visible_pages(reader, scorecard)]
+        found = [pg for pg in shown if str(pg.pk) == wanted] or \
+            [pg for pg in shown if pg.name.casefold() == wanted.casefold()]
+        if not found:
+            raise ToolRefused(f"No page called {wanted} on {company.name}'s scorecard that you "
+                              "can see. Leave page empty for every page.")
+        page_id = found[0].pk
+    out = _plain(board.build(reader, scorecard, page_id, win, today, every=page_id is None))
     out["exists"] = True
     return out
 

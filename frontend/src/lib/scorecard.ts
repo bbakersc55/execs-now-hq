@@ -73,6 +73,30 @@ export interface KpiDef {
     mode?: "column" | "cell" } | null;
   /** "Helper: not shown as a tile": it only feeds a target or a formula. */
   helper?: boolean;
+  /** Where it shows on its page: Top first (2026-11-18). */
+  priority?: Priority;
+}
+
+export type Priority = "top" | "medium" | "low";
+
+/** The priority groups, in the order a page shows them, and their headings. */
+export const PRIORITIES: { key: Priority; label: string; heading: string }[] = [
+  { key: "top", label: "Top", heading: "Top priority" },
+  { key: "medium", label: "Medium", heading: "Medium" },
+  { key: "low", label: "Low", heading: "Low" },
+];
+
+/**
+ * A page's KPIs in priority order, Top, then Medium, then Low, each group in
+ * the KPIs' own order (the server already sends them so; this keeps it true
+ * for anything drawn here). Only the groups that have KPIs.
+ */
+export function byPriority<T extends { priority?: Priority }>(list: readonly T[]):
+  { key: Priority; heading: string; items: T[] }[] {
+  return PRIORITIES.map((p) => ({
+    key: p.key, heading: p.heading,
+    items: list.filter((k) => (k.priority ?? "medium") === p.key),
+  })).filter((g) => g.items.length > 0);
 }
 
 /** What a live target or a computed KPI's operand is taken from. */

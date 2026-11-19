@@ -2009,6 +2009,10 @@ button.sc-feed-cell:focus-visible { outline: 2px solid #E87722; }
 .sc-component { margin-bottom: var(--s6); }
 .sc-component-head { font-size: var(--t-14); font-weight: 650; text-transform: uppercase;
                      letter-spacing: .05em; color: var(--muted); margin: 0 0 var(--s2); }
+/* A page in priority order (2026-11-18): light headings over each group. */
+.sc-priority { margin-bottom: var(--s6); }
+.sc-priority-head { font-size: var(--t-14); font-weight: 500; color: var(--muted);
+                    margin: 0 0 var(--s2); }
 .sc-ai-buttons { flex-wrap: wrap; }
 .sc-ai-answer { margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2);
                 align-items: flex-start; }
@@ -2509,3 +2513,8 @@ label.sop-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cu
   .sop-msg { max-width: 100%; }
   .sop-ack-button { width: 100%; }
 }
+
+/* A KPI's connector settings in place, in the setup's KPI form (2026-11-18). */
+.inline-panel { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s3) var(--s4);
+                margin: var(--s3) 0; background: var(--surface, transparent); }
+.inline-panel-head { margin: 0 0 var(--s2); font-size: var(--t-14); }

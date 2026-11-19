@@ -18,7 +18,7 @@ import { Banner, Card } from "../components/ui";
 import { Me, api } from "../lib/api";
 import {
   BONUS_VIEW_LABEL, Board, BonusViewKey, CADENCE_LABEL, COMPONENTS, Cadence, Point, STATUS_LABEL,
-  Starter, StarterKpi, Tile, WINDOWS, WindowKey, fmt,
+  Starter, StarterKpi, Tile, WINDOWS, WindowKey, byPriority, fmt,
 } from "../lib/scorecard";
 import { useRemembered } from "../lib/remembered";
 import { useWords } from "../lib/words";
@@ -238,18 +238,13 @@ export function Scorecard({ me }: { me: Me }) {
           onClose={() => setRequesting(false)} />
       )}
       {editKpi && (
-        <KpiEditModal companyId={companyId} kpiId={editKpi} onClose={() => setEditKpi(null)}
+        <KpiEditModal me={me} companyId={companyId} kpiId={editKpi} onClose={() => setEditKpi(null)}
           onSaved={(text) => {
             setEditKpi(null); setManaged({ kind: "ok", text });
             qc.invalidateQueries({ queryKey: ["scorecard", companyId] });
             qc.invalidateQueries({ queryKey: ["scorecard-setup", companyId] });
           }} />
       )}
-
-      {b.may_set_up && view === "tiles" && (
-        <AiRecord.Provider value={`${b.company.name} (company id ${b.company.id}), ${b.window?.label ?? "this week"}`}>
-          <AskClaude companyId={companyId} />
-        </AiRecord.Provider>)}
 
       {view === "grid" ? <Grid tiles={tiles} b={b} /> : (() => {
         const drawn = (list: Tile[]) => list.map((t) => <ScorecardTile key={t.id} t={t}
@@ -286,6 +281,16 @@ export function Scorecard({ me }: { me: Me }) {
                     <div className="sc-grid">{drawn(list)}</div>
                   </section>
                 ))
+            ) : byPriority(tiles).length > 1 ? (
+              // 2026-11-18: Top first, then Medium, then Low, under light
+              // headings, so the page opens on its Top KPIs. A page whose
+              // KPIs share one priority reads as before, with no heading.
+              byPriority(tiles).map((g) => (
+                <section key={g.key} className="sc-priority" aria-label={g.heading}>
+                  <h2 className="sc-priority-head">{g.heading}</h2>
+                  <div className="sc-grid">{drawn(g.items)}</div>
+                </section>
+              ))
             ) : (
               <div className="sc-grid">
                 {tiles.length === 0 && <p className="sc-empty">No {w.kpis} on this page yet.</p>}
@@ -295,6 +300,12 @@ export function Scorecard({ me }: { me: Me }) {
           </>
         );
       })()}
+      {/* Below the tiles (2026-11-18), so a page opens on its Top KPIs, on a
+          phone too. */}
+      {b.may_set_up && view === "tiles" && (
+        <AiRecord.Provider value={`${b.company.name} (company id ${b.company.id}), ${b.window?.label ?? "this week"}`}>
+          <AskClaude companyId={companyId} />
+        </AiRecord.Provider>)}
       {view === "meeting" && (
         <Meeting b={b} onExit={() => setView("tiles")} onPage={setPage} />
       )}

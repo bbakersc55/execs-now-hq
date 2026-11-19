@@ -167,6 +167,14 @@ class Kpi(TenantScopedModel):
         RATIO = "ratio", "Ratio"
         AVERAGE = "average", "Average"
 
+    class Priority(models.TextChoices):
+        """Bryan, 2026-11-18: a page shows its Top KPIs first, then Medium,
+        then Low, each group in the KPIs' own order."""
+
+        TOP = "top", "Top priority"
+        MEDIUM = "medium", "Medium"
+        LOW = "low", "Low"
+
     scorecard = models.ForeignKey(Scorecard, on_delete=models.CASCADE, related_name="kpis")
     page = models.ForeignKey(ScorecardPage, on_delete=models.PROTECT, related_name="kpis")
     name = models.CharField(max_length=120)
@@ -229,14 +237,25 @@ class Kpi(TenantScopedModel):
     #: "Helper: not shown as a tile": a value that only feeds a target or a
     #: formula. Entered and fed as any KPI; never drawn on the page.
     helper = models.BooleanField(default=False, db_default=False)
+    #: Where it shows on its page: Top first (2026-11-18). Every KPI made
+    #: before then is Medium.
+    priority = models.CharField(max_length=6, choices=Priority.choices,
+                                default=Priority.MEDIUM, db_default=Priority.MEDIUM)
     position = models.PositiveSmallIntegerField(default=0, db_default=0)
     archived_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
 
+    #: The order of the groups on a page.
+    PRIORITY_RANK = {"top": 0, "medium": 1, "low": 2}
+
     @property
     def is_computed(self) -> bool:
         return bool(self.formula)
+
+    @property
+    def priority_rank(self) -> int:
+        return self.PRIORITY_RANK.get(self.priority, 1)
 
     class Meta(TenantScopedModel.Meta):
         db_table = "kpi"
