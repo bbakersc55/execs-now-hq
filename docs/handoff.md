@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-18 UTC**, after Release 47. **The next session starts at
-"2026-11-18: Release 47, KPIs from a sheet" just below**; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-19 UTC**, after Release 48. **The next session starts at
+"2026-11-19: Release 48, priority, company order, connectors in setup" just below**; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +32,33 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-19: Release 48, priority, company order, connectors in setup
+
+- **Release 48 is live:** `main` at `239e3a3`. One migration, `scorecard
+  0019_kpi_priority` (additive), applied 01:14:57–15:01 by the runbook
+  sequence; web and `mcp` came up by themselves; serving 01:15:41. Recorded
+  in the runbook ("Observed at Release 48").
+- **Company lists:** every picker and filter lists clients first, then other
+  companies, each A–Z ignoring case, under "Clients" / "Other companies"
+  where both show (`frontend/src/lib/companies.tsx`). Plans, SOPs and tool
+  runs keep "Our practice" first. Left alone: the Companies table (its own
+  sort headers) and the Dashboard's client cards (by overdue work).
+- **Scorecard priority:** Top, Medium or Low per KPI (all Medium before); a
+  page shows Top, then Medium, then Low under light headings when it has
+  more than one, in the app and the portal. Ask Claude sits below the tiles.
+  There is no "Focus filter" in the code; the brief named one.
+- **Connectors in setup:** the KPI form's "The number comes from" opens that
+  connector's settings in place (the tile's pop-ups drawn inline); a new KPI
+  is added, then connected. Walked with a webhook; the other connectors'
+  inline settings were not walked.
+- **Seats:** a company becoming a client with no seat count gets 25;
+  p4_billing.md §9 records the decision; charging for extra blocks not built.
+- **AI apps:** `scorecard_readings` takes a page by id or name, or returns
+  every page.
+- **Open:** "spend" still guesses lower-is-better in sheet setup (not asked);
+  the evening UTC-date test window (about ten tests, 17:00–24:00 Mountain)
+  wants `timezone.localdate()` in those tests.
 
 ## 2026-11-18: Release 47, KPIs from a sheet
 

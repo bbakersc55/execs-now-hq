@@ -991,6 +991,24 @@ them?", and `/api/scorecard/sheet-setup/open/` answers 403 signed out.
 watcher names its service (`--service qcluster` with `-p`/`-e`) and shows its
 first read before it is trusted.
 
+**Observed at Release 48 (2026-11-19 UTC, one migration,
+`scorecard 0019_kpi_priority` (one column with a database default, no
+write); `239e3a3`: company lists clients first, scorecard priority, a KPI's
+connector in setup, 25 seats for a new client):** R1: the owner ran the
+backup by hand: `execsnowhq_prod_20261119_011135.sql.gz`, 18.7 MB, landed
+01:11:40. R2: `main` fast-forwarded `751850f..239e3a3`, pushed 01:13:36; the
+worker deployment `e1e6f7fd` appeared 11 s later. R3: the watcher (a Monitor
+on `railway deployment list` and `railway logs <id> --service qcluster` with
+`-p`/`-e`, its first read checked) saw `WAITING` for exactly
+`scorecard.0019` at 01:14:41. R4: applied by me 01:14:57–15:01, `OK`. R5:
+`migrations current` 01:15:15, running 01:15:20. R5b: no new scheduled job.
+R6: web `e0e7eed0` and `mcp` `64fedd6c` SUCCESS by themselves by 01:15:41,
+`/healthz` 200 and `ok`; the served bundle carries "The number comes from",
+"Top priority" and "Other companies". **Push to serving: about 2 min 5 s.**
+The commit's gate ran with `TZ=UTC`: between 17:00 and midnight Mountain
+about ten older tests compare the laptop's date with the app's UTC date and
+fail on any commit; all pass in UTC.
+
 ---
 
 ## Part A — the owner's steps, in order
