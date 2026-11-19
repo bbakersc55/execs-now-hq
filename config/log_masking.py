@@ -21,10 +21,17 @@ MASK = "<token>"
 #: path or a full URL; and `via=sign:<token>`, with the colon encoded or not.
 _SIGN_PATH = re.compile(r'(/(?:api/)?sign/)[^/?#\s"]+')
 _SIGN_VIA = re.compile(r'(via=sign(?::|%3[Aa]))[^&#\s"]+')
+#: Intake links (docs/p14_intake_forms.md): `/api/f/<token>…`,
+#: `/forms/<slug>/<token>`, and `/<token>` on a form's own domain.
+_INTAKE_API = re.compile(r'(/api/f/)[^/?#\s"]+')
+_INTAKE_PAGE = re.compile(r'(/forms/[a-z0-9-]+/)[^/?#\s"]+')
+_INTAKE_ROOT = re.compile(r'((?:^|[\s"]|https?://[^/\s"]+)/)[A-Za-z0-9_-]{40,100}(?=[/?#\s"]|$)')
 
 
 def mask(text: str) -> str:
-    return _SIGN_VIA.sub(rf"\g<1>{MASK}", _SIGN_PATH.sub(rf"\g<1>{MASK}", text))
+    text = _SIGN_VIA.sub(rf"\g<1>{MASK}", _SIGN_PATH.sub(rf"\g<1>{MASK}", text))
+    text = _INTAKE_API.sub(rf"\g<1>{MASK}", _INTAKE_PAGE.sub(rf"\g<1>{MASK}", text))
+    return _INTAKE_ROOT.sub(rf"\g<1>{MASK}", text)
 
 
 class MaskedAccessLogger(glogging.Logger):

@@ -490,3 +490,17 @@ register(BrainstormSource, factories.BrainstormSourceFactory, api_exposed=False)
 register(BrainstormMessage, factories.BrainstormMessageFactory, api_exposed=False)
 register(BrainstormProposal, factories.BrainstormProposalFactory, api_exposed=False)
 register(PackPrompts, factories.PackPromptsFactory, api_exposed=False)
+
+from apps.intake.models import (  # noqa: E402
+    IntakeForm, OwnerDate, SendRun, Submission, SubmissionEvent, SubmissionFile,
+    SubmissionSecret, TrackListSnapshot,
+)
+
+register(IntakeForm, factories.IntakeFormFactory, api_exposed=True)
+register(Submission, factories.IntakeSubmissionFactory, api_exposed=True)
+register(SubmissionFile, factories.IntakeSubmissionFileFactory, api_exposed=True)
+register(SubmissionSecret, factories.IntakeSubmissionSecretFactory, api_exposed=False)
+register(SubmissionEvent, factories.IntakeSubmissionEventFactory, api_exposed=True)
+register(SendRun, factories.IntakeSendRunFactory, api_exposed=True)
+register(OwnerDate, factories.IntakeOwnerDateFactory, api_exposed=True)
+register(TrackListSnapshot, factories.IntakeTrackListFactory, api_exposed=False)

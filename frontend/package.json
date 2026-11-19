@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --config vite.forms.config.ts",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:forms": "vite build --config vite.forms.config.ts",
+    "dev:forms": "vite --config vite.forms.config.ts"
   },
   "dependencies": {
     "@nmipayments/nmi-pay": "1.1.1",

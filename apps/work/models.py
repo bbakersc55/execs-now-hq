@@ -671,6 +671,8 @@ class TaskUpdate(TenantScopedModel):
         TOOL = "tool", "A tool"
         #: P10: made from an SOP brainstorm's checklist.
         SOP = "sop", "An SOP checklist"
+        #: Intake forms: the onboarding checklist made by a send to Track.
+        INTAKE = "intake", "An owner intake"
 
     task = models.ForeignKey(Task, null=True, blank=True, on_delete=models.CASCADE,
                              related_name="updates")

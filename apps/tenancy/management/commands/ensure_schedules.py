@@ -112,6 +112,12 @@ SCHEDULES = [
     # it moves each one's next run back onto its hour (`keep_local_hours`).
     ("tenancy.keep_local_hours", "apps.tenancy.tasks.keep_local_hours",
      Schedule.HOURLY, None, None),
+    # Intake forms (docs/p14_intake_forms.md): owner dates held in ENHQ are
+    # placed in Track once the unit is bookable. A no-op with none held.
+    ("intake.place_owner_dates", "apps.intake.tasks.place_owner_dates",
+     Schedule.HOURLY, None, None),
+    # Intake forms: sensitive values of intakes never sent, 90 days on.
+    ("intake.purge", "apps.intake.tasks.purge", Schedule.DAILY, None, 3),
 ]
 
 

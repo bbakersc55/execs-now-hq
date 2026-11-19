@@ -1,0 +1,270 @@
+/* The owner's intake form. Its colours come from the form's own settings
+   (--ix-*), defaulting to SkyRun Park City's; the type is Montserrat, as on
+   skyrun.com (SIL Open Font License, fonts/OFL.txt). Everything is scoped
+   under .ix-root so the review screen can host the same sections. */
+
+@font-face {
+  font-family: "Montserrat Intake";
+  src: url("./fonts/montserrat-latin-wght-normal.woff2") format("woff2-variations"),
+       url("./fonts/montserrat-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.ix-root {
+  --ix-primary: #428227;
+  --ix-primary-dark: #356a1f;
+  --ix-heading: #36424a;
+  --ix-text: #4a4a4a;
+  --ix-bg: #faf9f5;
+  --ix-accent: #006ba6;
+  --ix-error: #b3261e;
+  --ix-muted: #6b6b6b;
+  --ix-line: #dee2e6;
+  --ix-card: #ffffff;
+  --ix-tint: color-mix(in srgb, var(--ix-primary) 9%, white);
+  --ix-radius: 14px;
+  font-family: "Montserrat Intake", "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ix-text);
+  background: var(--ix-bg);
+  min-height: 100vh;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+}
+.ix-root *, .ix-root *::before, .ix-root *::after { box-sizing: border-box; }
+.ix-root a { color: var(--ix-primary-dark); text-underline-offset: 3px; }
+.ix-root button { font-family: inherit; }
+.ix-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; }
+
+/* ---------------------------------------------------------------- frame */
+.ix-header {
+  background: #fff;
+  border-bottom: 1px solid var(--ix-line);
+  display: flex; justify-content: center; align-items: center;
+  padding: 14px 16px; min-height: 68px;
+}
+.ix-logo { max-height: 40px; max-width: 220px; display: block; }
+.ix-wordmark { font-weight: 800; font-size: 1.25rem; color: var(--ix-heading); }
+
+.ix-progress { max-width: 720px; width: 100%; margin: 18px auto 0; padding: 0 16px; }
+.ix-progress-bar { height: 6px; background: #e6e8e4; border-radius: 999px; overflow: hidden; }
+.ix-progress-bar span { display: block; height: 100%; background: var(--ix-primary);
+  border-radius: 999px; transition: width .35s ease; }
+.ix-progress-text { display: flex; justify-content: space-between; margin: 8px 2px 0;
+  font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ix-muted); }
+.ix-saved { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.ix-saved.ix-saved::before { content: ""; }
+.ix-saved.ix-saved { color: var(--ix-primary-dark); }
+.ix-saved.ix-retry { color: var(--ix-error); }
+
+.ix-main {
+  width: 100%; max-width: 720px; margin: 16px auto 24px;
+  background: var(--ix-card); border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(31, 41, 47, .06), 0 8px 28px rgba(31, 41, 47, .07);
+  padding: 28px 22px 32px;
+}
+.ix-message { text-align: left; margin-top: 32px; }
+.ix-title { font-size: 1.7rem; line-height: 1.2; font-weight: 800; color: var(--ix-heading);
+  letter-spacing: -.01em; margin: 0 0 10px; outline: none; }
+.ix-subtitle { font-size: 1.1rem; font-weight: 700; color: var(--ix-heading); margin: 22px 0 8px; }
+.ix-lead { font-size: 1.05rem; margin: 0 0 20px; }
+.ix-muted { color: var(--ix-muted); }
+.ix-section { display: flex; flex-direction: column; gap: 22px; }
+.ix-handy, .ix-next { margin: 0 0 20px; padding-left: 1.25rem; }
+.ix-handy li, .ix-next li { margin: 6px 0; }
+
+/* On a phone the step bar is fixed at the bottom: a field that scrolls into
+   view for focus lands above it, not under it (WCAG 2.4.11). */
+html { scroll-padding-bottom: 104px; }
+@media (min-width: 760px) { html { scroll-padding-bottom: 0; } }
+.ix-footer { text-align: center; padding: 8px 16px 110px; font-size: .95rem; color: var(--ix-muted); }
+.ix-footer a { color: var(--ix-heading); font-weight: 600; text-decoration: none; }
+.ix-footer a:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------- fields */
+.ix-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ix-label { font-weight: 650; color: var(--ix-heading); font-size: 1rem; padding: 0; }
+.ix-small-label { font-size: .85rem; font-weight: 600; color: var(--ix-muted); }
+.ix-hint { margin: -2px 0 2px; font-size: .92rem; color: var(--ix-muted); }
+.ix-error { margin: 2px 0 0; color: var(--ix-error); font-weight: 600; font-size: .95rem; }
+.ix-error::before { content: "⚠ "; }
+.ix-input {
+  width: 100%; min-height: 52px; padding: 12px 14px;
+  font: inherit; font-size: 1.0625rem; color: var(--ix-heading);
+  background: #fff; border: 1.5px solid #cfd4d8; border-radius: 10px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ix-input:hover { border-color: #aeb5ba; }
+.ix-input:focus { outline: none; border-color: var(--ix-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ix-primary) 25%, transparent); }
+.ix-has-error .ix-input { border-color: var(--ix-error); }
+.ix-area { min-height: 84px; resize: vertical; line-height: 1.45; }
+.ix-select { appearance: none; padding-right: 40px; background-image:
+  linear-gradient(45deg, transparent 50%, var(--ix-heading) 50%),
+  linear-gradient(135deg, var(--ix-heading) 50%, transparent 50%);
+  background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
+  background-size: 6px 6px; background-repeat: no-repeat; }
+.ix-stack { display: flex; flex-direction: column; gap: 14px; }
+.ix-two, .ix-three { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 560px) {
+  .ix-two { grid-template-columns: 1fr 1fr; }
+  .ix-three { grid-template-columns: 2fr 1fr 1fr; }
+}
+
+/* ---------------------------------------------------------------- cards */
+.ix-fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px;
+  min-width: 0; }
+.ix-cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* A question's own column count holds only where three cards fit side by
+   side; on a phone they wrap like the rest ("Text message" stays whole). */
+@media (min-width: 560px) {
+  .ix-cards.ix-cols { grid-template-columns: repeat(var(--ix-cols), minmax(0, 1fr)); }
+}
+.ix-card {
+  position: relative; display: flex; align-items: center; gap: 12px;
+  min-height: 54px; padding: 12px 14px 12px 46px;
+  background: #fff; border: 1.5px solid #d4d8db; border-radius: 12px;
+  cursor: pointer; font-weight: 550; color: var(--ix-heading);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ix-card:hover { border-color: #a9b0b5; }
+.ix-card input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.ix-card::before {
+  content: ""; position: absolute; left: 14px; top: 50%; width: 20px; height: 20px;
+  transform: translateY(-50%); border: 2px solid #9aa2a8; border-radius: 50%; background: #fff;
+}
+.ix-check::before { border-radius: 6px; }
+.ix-card.ix-on { border-color: var(--ix-primary); background: var(--ix-tint); }
+.ix-card.ix-on::before { border-color: var(--ix-primary); background: var(--ix-primary);
+  box-shadow: inset 0 0 0 3px #fff; }
+.ix-check.ix-on::before { box-shadow: none; background: var(--ix-primary) no-repeat center/14px
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.ix-card:has(input:focus-visible) { outline: 3px solid color-mix(in srgb, var(--ix-primary) 45%,
+  transparent); outline-offset: 2px; }
+.ix-wide { grid-column: 1 / -1; }
+
+/* ---------------------------------------------------------------- blocks */
+.ix-block { border: 1.5px solid var(--ix-line); border-radius: var(--ix-radius); padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 16px; background: #fff; }
+.ix-block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ix-block-head h2, .ix-block-head h3 { margin: 0; font-size: 1.1rem; font-weight: 750;
+  color: var(--ix-heading); }
+.ix-summary { margin: -6px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--ix-bg);
+  color: var(--ix-primary-dark); font-weight: 600; font-size: .95rem; }
+.ix-beds { display: flex; flex-direction: column; gap: 10px; }
+.ix-bed { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
+.ix-bed .ix-remove { grid-column: 1 / -1; justify-self: start; }
+@media (min-width: 560px) {
+  .ix-bed { grid-template-columns: 1fr auto auto; }
+  .ix-bed .ix-remove { grid-column: auto; }
+}
+.ix-fixtures { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .ix-fixtures { grid-template-columns: 1fr 1fr; } }
+.ix-fixture { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 54px; padding: 6px 8px 6px 12px; border: 1.5px solid #d4d8db; border-radius: 12px; }
+.ix-fixture.ix-on { border-color: var(--ix-primary); background: var(--ix-tint); }
+.ix-fixture-name { display: flex; align-items: center; gap: 10px; font-weight: 550;
+  color: var(--ix-heading); cursor: pointer; flex: 1; min-height: 42px; }
+.ix-fixture-name input { width: 20px; height: 20px; accent-color: var(--ix-primary); }
+.ix-more { border: 1.5px solid var(--ix-line); border-radius: 12px; padding: 4px 14px; }
+.ix-more > summary { cursor: pointer; font-weight: 650; color: var(--ix-heading);
+  padding: 12px 0; list-style-position: inside; }
+.ix-more[open] > summary { margin-bottom: 8px; }
+.ix-more .ix-cards { padding-bottom: 14px; }
+.ix-groups { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------------------------------------------------------------- stepper */
+.ix-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.ix-step { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--ix-primary);
+  background: #fff; color: var(--ix-primary-dark); font-size: 1.4rem; font-weight: 700;
+  line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.ix-step:hover:not(:disabled) { background: var(--ix-tint); }
+.ix-step:disabled { border-color: #c9cdd0; color: #b7bcbf; cursor: default; }
+.ix-step:focus-visible { outline: 3px solid color-mix(in srgb, var(--ix-primary) 45%, transparent);
+  outline-offset: 2px; }
+.ix-count { min-width: 2ch; text-align: center; font-weight: 750; font-size: 1.15rem;
+  color: var(--ix-heading); }
+
+/* ---------------------------------------------------------------- buttons */
+.ix-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 50px; padding: 12px 26px; border-radius: 999px; border: 2px solid transparent;
+  font-weight: 700; font-size: 1.02rem; cursor: pointer; text-decoration: none;
+  transition: background .15s, border-color .15s, color .15s; }
+.ix-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--ix-primary) 45%, transparent);
+  outline-offset: 3px; }
+.ix-btn-primary { background: var(--ix-primary); color: #fff; }
+.ix-btn-primary:hover:not(:disabled) { background: var(--ix-primary-dark); }
+.ix-btn-primary:disabled { opacity: .55; cursor: default; }
+.ix-btn-ghost { background: #fff; color: var(--ix-primary-dark); border-color: var(--ix-primary); }
+.ix-btn-ghost:hover { background: var(--ix-tint); }
+.ix-btn-big { width: 100%; }
+.ix-btn-small { min-height: 44px; padding: 8px 18px; font-size: .95rem; }
+.ix-link { background: none; border: 0; padding: 6px 2px; color: var(--ix-primary-dark);
+  font-weight: 650; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+  font-size: .95rem; }
+.ix-remove { color: var(--ix-muted); }
+.ix-remove:hover { color: var(--ix-error); }
+
+.ix-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, #fff 92%, transparent);
+  backdrop-filter: blur(8px); border-top: 1px solid var(--ix-line);
+}
+.ix-nav .ix-btn { flex: 1; max-width: 340px; }
+@media (min-width: 760px) {
+  .ix-nav { position: static; background: none; border: 0; backdrop-filter: none;
+    max-width: 720px; margin: -8px auto 8px; padding: 0 0 8px; width: 100%; }
+  .ix-nav .ix-btn { flex: 0 0 auto; min-width: 160px; }
+  .ix-footer { padding-bottom: 40px; }
+  .ix-main { padding: 40px 44px 44px; margin-top: 22px; }
+  .ix-title { font-size: 2rem; }
+}
+
+/* ---------------------------------------------------------------- notes */
+.ix-note { border-radius: 12px; padding: 14px 16px 14px 46px; position: relative; font-size: .98rem;
+  margin: 4px 0 10px; }
+.ix-note::before { position: absolute; left: 16px; top: 13px; font-size: 1.1rem; }
+.ix-note-info { background: color-mix(in srgb, var(--ix-accent) 8%, white);
+  color: #1d3f55; }
+.ix-note-info::before { content: "ℹ︎"; color: var(--ix-accent); font-weight: 700; }
+.ix-note-safe { background: var(--ix-tint); color: #24451a; }
+.ix-note-safe::before { content: "🔒"; font-size: 1rem; }
+
+.ix-secret-saved { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  min-height: 52px; padding: 8px 14px; border: 1.5px dashed var(--ix-primary); border-radius: 10px;
+  background: var(--ix-tint); color: var(--ix-heading); font-weight: 600; }
+.ix-lock { color: var(--ix-primary); font-size: .7rem; }
+.ix-secret-row { display: flex; gap: 10px; align-items: stretch; }
+.ix-secret-row .ix-input { flex: 1; }
+
+.ix-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.ix-range .ix-remove { grid-column: 1 / -1; justify-self: start; }
+.ix-date { display: flex; flex-direction: column; gap: 4px; }
+.ix-files { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column;
+  gap: 8px; }
+.ix-files li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 14px;
+  border: 1.5px solid var(--ix-line); border-radius: 10px; }
+.ix-files li .ix-remove { margin-left: auto; }
+.ix-file { font: inherit; padding: 12px; border: 1.5px dashed #b9c0c4; border-radius: 12px;
+  background: var(--ix-bg); width: 100%; }
+
+.ix-review { border-top: 1px solid var(--ix-line); padding: 14px 0 6px; }
+.ix-review:first-of-type { border-top: 0; }
+.ix-review h2 { font-size: 1.05rem; }
+.ix-review ul { margin: 6px 0 4px; padding-left: 1.1rem; }
+.ix-review li { margin: 3px 0; }
+.ix-another { margin-top: 28px; padding: 20px; border-radius: 14px; background: var(--ix-bg);
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.ix-another p { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-root * { transition: none !important; }
+}

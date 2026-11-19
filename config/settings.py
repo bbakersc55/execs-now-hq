@@ -79,10 +79,14 @@ INSTALLED_APPS = [
     "apps.plans",
     "apps.tools",
     "apps.sops",
+    "apps.intake",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Intake forms on their own domain answer only the form's routes, assets
+    # included, so it comes before WhiteNoise (docs/p14_intake_forms.md).
+    "apps.intake.hosts.FormDomainMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -237,6 +241,12 @@ SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 TRUSTED_PROXY_HOPS = env.int("TRUSTED_PROXY_HOPS", default=0)
 CSRF_TRUSTED_ORIGINS = ([] if IS_LOCAL else [PUBLIC_BASE_URL.rstrip("/")]) + env.list(
     "CSRF_TRUSTED_ORIGINS", default=[])
+# Intake forms' own domains (docs/p14_intake_forms.md): each also needs adding
+# to the web service in Railway and a DNS record. Only the form answers there.
+INTAKE_FORM_HOSTS = [h.strip().lower() for h in env.list("INTAKE_FORM_HOSTS", default=[])
+                     if h.strip()]
+ALLOWED_HOSTS = [*ALLOWED_HOSTS, *INTAKE_FORM_HOSTS]
+CSRF_TRUSTED_ORIGINS += [f"https://{h}" for h in INTAKE_FORM_HOSTS]
 CLIENT_SESSION_AGE = 60 * 60 * 24 * 30
 
 REST_FRAMEWORK = {

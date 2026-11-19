@@ -70,6 +70,9 @@ class Company(TenantScopedModel):
     #: their teammates' tasks in the current sprint (title, owner, status),
     #: read only. Off: their own tasks and the team line only.
     sprint_team_tasks = models.BooleanField(default=True, db_default=True)
+    #: Intake forms (docs/p14_intake_forms.md), switched on by the practice
+    #: owner for a client company with a Track connection.
+    intake_forms_enabled = models.BooleanField(default=False, db_default=False)
     fiscal_year_start = models.PositiveSmallIntegerField(default=1, db_default=1)
 
     class Meta(TenantScopedModel.Meta):
@@ -1362,6 +1365,10 @@ class OutboxMessage(TenantScopedModel):
         # P10: "Remind" on an SOP: one draft to each person who hasn't read
         # it yet, waiting for approval.
         SOP_REMINDER = "sop_reminder", "SOP reminder"
+        # Intake forms: "an owner submitted", "owner dates", to the client
+        # company's managers and the practice owner. Never an answer in it,
+        # and never to an owner (ENHQ doesn't email owners).
+        INTAKE_NOTICE = "intake_notice", "Owner intake notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -1389,6 +1396,8 @@ class OutboxMessage(TenantScopedModel):
         # E-signature: fixed wording about a document already sent, and the
         # signed copy once both sides have signed.
         Producer.SIGNATURE_REMINDER, Producer.SIGNED_COPY,
+        # Intake forms: internal, fixed wording, no answers.
+        Producer.INTAKE_NOTICE,
     }
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)

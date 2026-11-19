@@ -2376,3 +2376,93 @@ class PackPromptsFactory(TenantScopedFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     prompts = factory.LazyFunction(lambda: [{"title": "Ours", "prompt": "Our own prompt."}])
+
+
+# ---------------------------------------------------------------- intake forms
+
+class IntakeFormFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.IntakeForm"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    brand_name = "Mountain Stays"
+    slug = factory.Sequence(lambda n: f"mountain-stays-{n}")
+
+
+class IntakeSubmissionFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.Submission"
+
+    tenant = factory.SubFactory(TenantFactory)
+    form = factory.SubFactory(IntakeFormFactory, tenant=factory.SelfAttribute("..tenant"))
+    company = factory.SelfAttribute("form.company")
+    number = factory.Sequence(lambda n: n + 1)
+    token_hash = factory.Sequence(lambda n: f"{n:064d}")
+    token_ciphertext = b"not-a-token"
+    invite_first_name = "Alex"
+
+
+class IntakeSubmissionFileFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.SubmissionFile"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    stored_file = factory.SubFactory(StoredFileFactory, tenant=factory.SelfAttribute("..tenant"),
+                                     purpose="intake_file")
+    name = "declarations.pdf"
+    content_type = "application/pdf"
+    byte_size = 21
+
+
+class IntakeSubmissionSecretFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.SubmissionSecret"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    kind = "code"
+    slot = factory.Sequence(lambda n: f"extra-{n}")
+    ciphertext = b"encrypted"
+
+
+class IntakeSubmissionEventFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.SubmissionEvent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    kind = "started"
+
+
+class IntakeSendRunFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.SendRun"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+
+
+class IntakeOwnerDateFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.OwnerDate"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    start = factory.LazyFunction(lambda: __import__("datetime").date(2027, 7, 1))
+    end = factory.LazyFunction(lambda: __import__("datetime").date(2027, 7, 8))
+
+
+class IntakeTrackListFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.TrackListSnapshot"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = factory.Sequence(lambda n: f"kind-{n}")

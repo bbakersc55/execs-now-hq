@@ -10,6 +10,8 @@ from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
 from apps.crm import views_site_leads as crm_site_leads
 from apps.esign import views_sign as esign_sign
+from apps.intake import hosts as intake_hosts
+from apps.intake import views_public as intake_public
 from apps.finance.bankfeeds import views as bank_views
 from apps.strategy import views_precall as strategy_precall
 from apps.work import views_cadence as work_cadence
@@ -70,6 +72,20 @@ urlpatterns = [
     path("api/", include("apps.sops.urls")),
     path("api/", include("apps.scorecard.urls")),
     path("api/", include("apps.esign.urls")),
+    path("api/", include("apps.intake.urls")),
+    # Intake forms, the owner's side (docs/p14_intake_forms.md): a personal
+    # link, no session. White label: nothing here names the practice.
+    path("api/f/<str:token>", intake_public.form_page, name="intake-form"),
+    path("api/f/<str:token>/answers", intake_public.answers, name="intake-answers"),
+    path("api/f/<str:token>/secret", intake_public.secret, name="intake-secret"),
+    path("api/f/<str:token>/files", intake_public.files, name="intake-files"),
+    path("api/f/<str:token>/files/<str:file_id>", intake_public.file_delete,
+         name="intake-file"),
+    path("api/f/<str:token>/submit", intake_public.submit, name="intake-submit"),
+    path("api/f/<str:token>/another", intake_public.another, name="intake-another"),
+    path("api/forms/<slug:slug>/<str:which>", intake_public.form_image, name="intake-image"),
+    path("forms/<slug:slug>/<str:token>", intake_hosts.shell, name="intake-page"),
+    path("forms/<slug:slug>", intake_hosts.shell, name="intake-page-bare"),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed
     # token IS the authentication, and it grants that one capability. Under
     # /api/ so the app's own page can render it (the dev proxy forwards /api);

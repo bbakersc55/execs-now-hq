@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-19 UTC**, after Release 48. **The next session starts at
-"2026-11-19: Release 48, priority, company order, connectors in setup" just below**; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-19 UTC**, after Release 48 and the intake forms build. **The next session starts at
+"2026-11-19, evening: intake forms (P14)" just below**; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +32,38 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-19, evening: intake forms (P14), built on `intake-forms`, not merged
+
+- **What:** SkyRun Park City's new-owner and property intake, written into
+  SkyRun's Track. Spec as built: `docs/p14_intake_forms.md` (the Track write
+  behaviour proven live today is there, moved from session memory). Branch
+  `intake-forms` from `dev` (`8b15831`); **merged nowhere, released nowhere**.
+- **Live Track work today** (SkyRun's account, all ZZ TEST, left inactive): the
+  first write test was refused by Track's AWS firewall because of an
+  @example.com email, not by the key; then the full write test (unit 221 with
+  rooms 1502–1507, owner 265 / company 301, contacts 10919–10920, ownership 225,
+  codes 534–552) and a live check (room 1506 typed half bath, sofa-bed room 1507).
+  Bryan deletes unit 221 and owner 265 in Track (no API delete); none of it is
+  bookable, and the hourly owner-dates job never touches them.
+- **Migrations:** `intake 0001`, `crm 0061_company_intake_forms`,
+  `notify 0007_intake_notices`, `work 0016_intake_task_source`, all additive;
+  applied on the laptop's `execsnowhq_local` after a green gate. At release:
+  the runbook's "Releasing a migration", then `ensure_schedules` (R5b) for
+  `intake.place_owner_dates` (hourly) and `intake.purge` (daily 3:00).
+- **The owner's bundle** builds separately (`npm run build` now runs both;
+  `vite.forms.config.ts` → `frontend/dist/forms/`, served at `/static/forms/`).
+- **A form's own domain** needs Railway + DNS + `INTAKE_FORM_HOSTS` (steps in
+  the spec); until then links use `app.getexecutivesnow.com/forms/<slug>/…`
+  and the settings warn.
+- **Proof so far:** the full gate, the fake-Track run (new owner, existing
+  owner, a failed step resumed, owner dates held then placed) and a browser
+  walk; screenshots in `~/projects/execs-now-hq-walks/intake-2026-11-19/`
+  (outside the repo).
+- **Open:** the production proof (`scripts/intake_track_proof.sh`, ZZ TEST 2)
+  is prepared, not run; a block on a bookable-but-inactive unit is untested;
+  every SkyRun portal user still at the default Manager level counts as a
+  manager for intakes.
 
 ## 2026-11-19: Release 48, priority, company order, connectors in setup
 

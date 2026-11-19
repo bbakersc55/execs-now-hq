@@ -312,6 +312,9 @@ def me(request):
         # M5 part 1: the portal's Scorecard entry shows only for someone who
         # sees at least one KPI.
         "has_scorecard": _has_scorecard(request),
+        # Intake forms: the practice owner, or a client company's managers
+        # and above, with intake forms on for a company they run.
+        "has_intake": _has_intake(membership),
         # Whether this build offers the development-only controls (the digest
         # "Generate now", for instance). False anywhere that is not localhost,
         # so the control cannot appear in front of a client.
@@ -325,6 +328,14 @@ def me(request):
         # its AI is off, if it is. Null everywhere else.
         "demo_visitor": _demo_visitor(membership),
     })
+
+
+def _has_intake(membership) -> bool:
+    if membership is None:
+        return False
+    from apps.intake.access import has_intake
+
+    return has_intake(membership)
 
 
 def _has_scorecard(request) -> bool:

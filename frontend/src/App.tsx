@@ -5,7 +5,7 @@ import {
   Contact as ContactIcon, FileText, Inbox, LayoutGrid, Mail,
   Reply, Store, Target, Upload, Workflow, Megaphone, Send, Hourglass,
   Receipt, Landmark, Users, Gauge, X, FileSignature, Compass, CalendarRange,
-  ListChecks, Wrench, BookOpen } from "lucide-react";
+  ListChecks, Wrench, BookOpen, House } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, matchPath, useLocation, Navigate } from "react-router-dom";
 import { PlanScreen, PlansScreen, ThisWeekScreen } from "./screens/Plan";
@@ -95,6 +95,9 @@ import { Sessions } from "./screens/Sessions";
 import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
+import { IntakeScreen } from "./screens/Intake";
+import { IntakeReview } from "./screens/IntakeReview";
+import { IntakeSettings } from "./screens/IntakeSettings";
 import { Work } from "./screens/Work";
 import { WorkParentDetail } from "./screens/WorkParentDetail";
 import { TopScrollbars } from "./components/TopScrollbars";
@@ -207,6 +210,10 @@ export const NAV: NavItem[] = [
   { to: "/invoices", label: "Invoices", roles: ["FF", "CF"], icon: Receipt },
   // P5. The practice owner's only (matrix 13.1, 13.6–13.10).
   { to: "/finance", label: "Finance", roles: ["FF"], icon: Landmark },
+  // Intake forms (docs/p14_intake_forms.md): the practice owner's, while a
+  // client company has them on.
+  { to: "/intake", label: "Owner intake", roles: ["FF"], icon: House,
+    when: (me) => !!me.has_intake },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   // P11: the plan and the week, while the practice has a Command Center on.
@@ -232,6 +239,9 @@ export const NAV: NavItem[] = [
   { to: "/documents", label: "Documents", roles: CLIENT, icon: FileSignature },
   // P7 phase 3: the client owner sets up their company's teams.
   { to: "/team", label: "Your team", roles: ["FCC"], icon: Users },
+  // Intake forms: the company's managers and above, while they're on.
+  { to: "/intake", label: "Owner intake", roles: CLIENT, icon: House,
+    when: (me) => !!me.has_intake },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
   { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
@@ -527,6 +537,10 @@ export function App() {
                 (design brief, Tier 1), so the task's URL renders the board
                 with the sheet on top of it. */}
             <Route path="/tasks/:id" element={<Tasks me={me} />} />
+            {me.has_intake && <Route path="/intake" element={<IntakeScreen me={me} />} />}
+            {me.has_intake && <Route path="/intake/:id" element={<IntakeReview me={me} />} />}
+            {me.has_intake && <Route path="/intake/settings/:companyId"
+              element={<IntakeSettings me={me} />} />}
             <Route path="/work" element={<Work me={me} />} />
             <Route path="/plan" element={<PlanScreen me={me} />} />
             <Route path="/plan/week" element={<ThisWeekScreen />} />

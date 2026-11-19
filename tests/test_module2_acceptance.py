@@ -652,8 +652,9 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     # part 5's subscription charge, M5's scorecard reminders, and M5 part
     # 3's hourly read of the sheet feeds, stage rules' daily pass, and P4 §4's
     # daily NMI read-back, and the calendars' fifteen-minute read (2026-10-27),
-    # and the hourly pass that keeps daily jobs on practice time (2026-11-17).
-    assert Schedule.objects.count() == 20
+    # and the hourly pass that keeps daily jobs on practice time (2026-11-17),
+    # and intake forms' hourly owner dates and daily purge (2026-11-19).
+    assert Schedule.objects.count() == 22
     assert Schedule.objects.filter(name=f"scorecard.read_feeds:{seeded_tenant.slug}",
                                    schedule_type=Schedule.HOURLY).exists()
     assert Schedule.objects.filter(

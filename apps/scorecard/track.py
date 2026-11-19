@@ -28,12 +28,21 @@ Streams and the fields each measure reads:
 Everything that decides a number is a plain function over those rows, so
 the tests run against recorded answers shaped as the reference documents
 them (`tests/fixtures/track/`), never against Track.
+
+Writes (intake forms, docs/p14_intake_forms.md) go through `send`. Every call,
+read or write, sends `Accept: application/json` (Track answers 406 without
+one) and a User-Agent naming ENHQ. Track sits behind an AWS load balancer with
+a firewall: its refusals are a 403 with `Server: awselb/2.0` and an HTML body,
+and they are about the request's content (an @example.com email, for one),
+never the key; they are said so in words (`TrackFirewall`).
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -50,8 +59,27 @@ MOST_PAGES = 200
 RETRIES = 3
 
 
+log = logging.getLogger(__name__)
+
+USER_AGENT = "ExecsNowHQ/1.0 (+https://getexecutivesnow.com)"
+
+
 class TrackUnavailable(Exception):
     """Track could not be reached, or refused. Said in words."""
+
+
+class TrackFirewall(TrackUnavailable):
+    """Track's firewall refused the content of a request: not the key."""
+
+
+class TrackRefusal(TrackUnavailable):
+    """Track answered a write with a refusal it explained (400/404/409/422):
+    `messages` are Track's own words, for the person who sent it."""
+
+    def __init__(self, text, *, status, messages=()):
+        super().__init__(text)
+        self.status = status
+        self.messages = list(messages)
 
 
 class TrackRefused(ValueError):
@@ -130,6 +158,54 @@ def http_transport(url, headers):
     return response.status_code, dict(response.headers), response.text
 
 
+def http_send(method, url, headers, body):
+    """One write (POST, PUT, PATCH or DELETE) with a JSON body, or none.
+    Returns (status, headers, body text)."""
+    import requests
+
+    try:
+        response = requests.request(method, url, headers=headers, timeout=45,
+                                    data=None if body is None else json.dumps(body),
+                                    allow_redirects=False)
+    except requests.RequestException as exc:
+        raise TrackUnavailable("Track didn't answer. Nothing more was sent; try the rest "
+                               "again in a minute.") from exc
+    return response.status_code, dict(response.headers), response.text
+
+
+def is_firewall(status, headers, body) -> bool:
+    """Track's load balancer refused it: a 403 from `awselb` with an HTML body."""
+    lowered = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    return (status == 403 and "awselb" in lowered.get("server", "").lower()
+            and "<html" in (body or "")[:200].lower())
+
+
+FIREWALL_TEXT = ("Track's firewall refused the content of this request. It was not the key: "
+                 "something in what was sent (an @example.com email, for one) looks wrong to "
+                 "Track. Change it and try again.")
+
+
+def path_template(path: str) -> str:
+    """A path with its ids taken out, for logs: /pms/units/{n}/rooms."""
+    return re.sub(r"/\d+", "/{n}", path.split("?")[0])
+
+
+def _messages(data) -> list[str]:
+    if not isinstance(data, dict):
+        return []
+    said = data.get("validation_messages")
+    if isinstance(said, dict):
+        flat = []
+        for key, value in said.items():
+            for item in (value.values() if isinstance(value, dict) else
+                         value if isinstance(value, list) else [value]):
+                flat.append(f"{key}: {item}")
+        return flat
+    if isinstance(said, list):
+        return [str(m) for m in said]
+    return [str(data["detail"])] if data.get("detail") else []
+
+
 def base_url(domain: str) -> str:
     """The client's Track domain as `https://host/api`, from whatever was
     typed ("acme.trackhs.com", a full address, with or without /api)."""
@@ -147,12 +223,13 @@ class TrackClient:
     the company's own encrypted secrets and never leave the Authorization
     header, never a log line or an error."""
 
-    def __init__(self, domain, key, secret, *, transport=None, sleep=time.sleep,
+    def __init__(self, domain, key, secret, *, transport=None, sender=None, sleep=time.sleep,
                  clock=time.monotonic):
         self.base = base_url(domain)
         self.auth = "Basic " + base64.b64encode(f"{key}:{secret}".encode()).decode()
         # Looked up when made, not when defined, so a test's stand-in applies.
         self.transport = transport or globals()["http_transport"]
+        self.sender = sender or globals()["http_send"]
         self.sleep = sleep
         host = urlparse(self.base).hostname
         self.budget = _BUDGETS.setdefault(host, Budget(sleep=sleep, clock=clock))
@@ -166,8 +243,7 @@ class TrackClient:
         for attempt in range(RETRIES + 1):
             self.budget.take()
             self.calls += 1
-            status, headers, body = self.transport(url, {"Authorization": self.auth,
-                                                         "Accept": "application/json"})
+            status, headers, body = self.transport(url, self._headers())
             if status == 429 and attempt < RETRIES:
                 wait = headers.get("Retry-After") or headers.get("retry-after") or 60
                 try:
@@ -177,6 +253,8 @@ class TrackClient:
                 self.sleep(wait)
                 continue
             break
+        if is_firewall(status, headers, body):
+            raise TrackFirewall(FIREWALL_TEXT)
         if status == 401:
             raise TrackUnavailable("Track refused the key and secret. Check them on the "
                                    "company page and test the connection again.")
@@ -192,6 +270,62 @@ class TrackClient:
             return json.loads(body or "{}")
         except ValueError:
             raise TrackUnavailable("Track's answer couldn't be read.") from None
+
+    def _headers(self, *, body=False):
+        headers = {"Authorization": self.auth, "Accept": "application/json",
+                   "User-Agent": USER_AGENT}
+        if body:
+            headers["Content-Type"] = "application/json"
+        return headers
+
+    def send(self, method, path, body=None):
+        """One write. Returns Track's answer as data (None for an empty one).
+        Raises `TrackFirewall`, `TrackRefusal` (Track's own words) or
+        `TrackUnavailable`, each said for a person. A 429 waits and tries
+        again, politely; anything else is never retried here, so a write is
+        never sent twice by this method."""
+        method = method.upper()
+        if method not in ("POST", "PUT", "PATCH", "DELETE"):
+            raise ValueError(f"send() is for writes, not {method}")
+        url = f"{self.base}{path}"
+        for attempt in range(RETRIES + 1):
+            self.budget.take()
+            self.calls += 1
+            status, headers, text = self.sender(method, url, self._headers(body=body is not None),
+                                                body)
+            log.info("track %s %s -> %s", method, path_template(path), status)
+            if status == 429 and attempt < RETRIES:
+                wait = (headers or {}).get("Retry-After") or (headers or {}).get("retry-after") or 30
+                try:
+                    wait = min(120.0, float(wait))
+                except ValueError:
+                    wait = 30.0
+                self.sleep(wait)
+                continue
+            break
+        if is_firewall(status, headers, text):
+            raise TrackFirewall(FIREWALL_TEXT)
+        try:
+            data = json.loads(text) if text else None
+        except ValueError:
+            data = None
+        if status in (200, 201, 202, 204):
+            return data
+        if status == 401:
+            raise TrackUnavailable("Track refused the key and secret. Check them on the company "
+                                   "page.")
+        if status == 403:
+            raise TrackUnavailable("Track's key doesn't allow this change. It needs a server key "
+                                   "with write access.")
+        if status == 429:
+            raise TrackUnavailable("Track's request limit was reached. Try the rest again in a "
+                                   "few minutes.")
+        if status in (400, 404, 405, 409, 422):
+            messages = _messages(data)
+            text = "Track refused it: " + ("; ".join(messages) if messages
+                                           else f"it answered {status}.")
+            raise TrackRefusal(text, status=status, messages=messages)
+        raise TrackUnavailable(f"Track answered {status}. Try the rest again in a minute.")
 
     def collection(self, path, key, params=None, most_pages=MOST_PAGES):
         """Every row of a paged collection (or its first `most_pages` pages)."""

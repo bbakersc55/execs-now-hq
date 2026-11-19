@@ -31,6 +31,8 @@ class Kind(models.TextChoices):
     #: also a card charge passed over, automatic billing's news, and
     #: scheduled card jobs refused.
     PAYMENTS = "payments", "Card payments that need you"
+    #: Intake forms: an owner submitted, a send's result, owner dates.
+    INTAKE = "intake", "Owner intake forms"
 
 
 class Notice(TenantScopedModel):

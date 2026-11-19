@@ -1,0 +1,4138 @@
+{
+ "custom_fields": [
+  {
+   "id": 1,
+   "name": "Contract Effective Date",
+   "reference": "pms_units_contract_effective_date",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 2,
+   "name": "Contract Termination Date",
+   "reference": "pms_units_contract_termination_date",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 19,
+   "name": "Management Agreement Type",
+   "reference": "pms_units_management_agreement_type",
+   "type": "select",
+   "subType": "",
+   "values": [
+    {
+     "id": 1,
+     "handle": "full_service",
+     "name": "Full Service (Default)"
+    },
+    {
+     "id": 2,
+     "handle": "light_service",
+     "name": "Light Service"
+    },
+    {
+     "id": 3,
+     "handle": "guaranteed_income",
+     "name": "Guaranteed Income"
+    },
+    {
+     "id": 4,
+     "handle": "osr",
+     "name": "Owner Self-Rental"
+    },
+    {
+     "id": 5,
+     "handle": "wholesale",
+     "name": "Wholesale"
+    },
+    {
+     "id": 6,
+     "handle": "property_care",
+     "name": "Property Care Only (No Rentals)"
+    },
+    {
+     "id": 7,
+     "handle": "other",
+     "name": "Other"
+    }
+   ]
+  },
+  {
+   "id": 86,
+   "name": "Wifi Network Name",
+   "reference": "pms_units_wifi_network_name",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 192,
+   "name": "Nightly Rental Permit",
+   "reference": "pms_units_nightly_rental_permit",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 87,
+   "name": "Wifi Password",
+   "reference": "pms_units_wifi_password",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 115,
+   "name": "Wifi Router Location & Notes",
+   "reference": "pms_units_wifi_router_location_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 91,
+   "name": "Parking Instructions",
+   "reference": "pms_units_parking_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 89,
+   "name": "Trash Instructions",
+   "reference": "pms_units_trash_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 92,
+   "name": "Storage Instructions",
+   "reference": "pms_units_storage_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 93,
+   "name": "Other Amenity Instructions",
+   "reference": "pms_units_other_amenity_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 95,
+   "name": "Pet-Friendly Property Instructions",
+   "reference": "pms_units_pet_friendly_property_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 94,
+   "name": "Check-Out Instructions",
+   "reference": "pms_units_check_out_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 90,
+   "name": "Directions to the Primary Activity",
+   "reference": "pms_units_directions_to_the_primary_activity",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 114,
+   "name": "Other Access Instructions",
+   "reference": "pms_units_other_access_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 193,
+   "name": "Arrival Video Instructions",
+   "reference": "pms_units_arrival_video_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 194,
+   "name": "Property HOA Booking Link",
+   "reference": "pms_units_property_hoa_booking_link",
+   "type": "string",
+   "subType": "url",
+   "values": []
+  },
+  {
+   "id": 195,
+   "name": "Trigger/Automation Keywords",
+   "reference": "pms_units_trigger_automation_keywords",
+   "type": "multiselect",
+   "subType": "",
+   "values": [
+    {
+     "id": 26,
+     "handle": "Unit has Parking Pass that Requires Return",
+     "name": "Parking Pass"
+    },
+    {
+     "id": 27,
+     "handle": "Unit has Hot Tub that Requires Service Every Few Days",
+     "name": "Private Hot Tub"
+    },
+    {
+     "id": 28,
+     "handle": "Unit Does Not Have AC",
+     "name": "No AC"
+    },
+    {
+     "id": 29,
+     "handle": "Unit Has Access to the Deer Valley Shuttle",
+     "name": "Deer Valley Shuttle"
+    }
+   ]
+  },
+  {
+   "id": 96,
+   "name": "BBQ Grill Instructions",
+   "reference": "pms_units_bbq_grill_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 97,
+   "name": "Fireplace or Wood Stove Instructions",
+   "reference": "pms_units_fireplace_or_wood_stove_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 98,
+   "name": "Heating & Air Conditioning Instructions",
+   "reference": "pms_units_heating_air_conditioning_instructions",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 99,
+   "name": "Extra Linens & Towels Information",
+   "reference": "pms_units_extra_linens_towels_information",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 100,
+   "name": "HOA Management Company Name",
+   "reference": "pms_units_hoa_management_company_name",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 101,
+   "name": "HOA Management Company Point of Contact",
+   "reference": "pms_units_hoa_management_company_point_of_contact",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 102,
+   "name": "HOA Management Company Phone Number",
+   "reference": "pms_units_hoa_management_company_phone_number",
+   "type": "string",
+   "subType": "phone",
+   "values": []
+  },
+  {
+   "id": 103,
+   "name": "HOA Management Company After Hours Phone Number",
+   "reference": "pms_units_hoa_management_company_after_hours_phone_number",
+   "type": "string",
+   "subType": "phone",
+   "values": []
+  },
+  {
+   "id": 104,
+   "name": "HOA Management Company Email Address",
+   "reference": "pms_units_hoa_management_company_email_address",
+   "type": "string",
+   "subType": "email",
+   "values": []
+  },
+  {
+   "id": 105,
+   "name": "HOA Management Company Other Notes",
+   "reference": "pms_units_hoa_management_company_other_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 116,
+   "name": "Cable or Satellite TV Provider",
+   "reference": "pms_units_cable_or_satellite_tv_provider",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 190,
+   "name": "Video Tour",
+   "reference": "pms_units_video_tour",
+   "type": "string",
+   "subType": "url",
+   "values": []
+  },
+  {
+   "id": 191,
+   "name": "3D Tour",
+   "reference": "pms_units_3d_tour",
+   "type": "string",
+   "subType": "url",
+   "values": []
+  },
+  {
+   "id": 43,
+   "name": "Cable or Satellite TV Account Number",
+   "reference": "pms_units_cable_or_satellite_tv_account_number",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 117,
+   "name": "Cable or Satellite TV Notes",
+   "reference": "pms_units_cable_or_satellite_tv_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 118,
+   "name": "Internet Service Provider",
+   "reference": "pms_units_internet_service_provider",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 46,
+   "name": "Internet Service Account Number",
+   "reference": "pms_units_internet_service_account_number",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 119,
+   "name": "Internet Service Notes",
+   "reference": "pms_units_internet_service_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 120,
+   "name": "Pool or Hot Tub Service Provider",
+   "reference": "pms_units_pool_or_hot_tub_service_provider",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 121,
+   "name": "Pool or Hot Tub Service Notes",
+   "reference": "pms_units_pool_or_hot_tub_service_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 122,
+   "name": "Laundry Notes",
+   "reference": "pms_units_laundry_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 51,
+   "name": "Coffee Maker Type",
+   "reference": "pms_units_coffee_maker_type",
+   "type": "select",
+   "subType": "",
+   "values": [
+    {
+     "id": 8,
+     "handle": "drip_coffee",
+     "name": "Drip Coffee Maker"
+    },
+    {
+     "id": 9,
+     "handle": "keurig_coffee",
+     "name": "Keurig Coffee Maker"
+    },
+    {
+     "id": 10,
+     "handle": "combo_coffee",
+     "name": "Drip & Keurig Coffee Maker"
+    },
+    {
+     "id": 11,
+     "handle": "other_coffee",
+     "name": "Other Coffee Maker"
+    }
+   ]
+  },
+  {
+   "id": 123,
+   "name": "Coffee Maker Notes",
+   "reference": "pms_units_coffee_maker_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 124,
+   "name": "Trash Service Provider",
+   "reference": "pms_units_trash_service_provider",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 125,
+   "name": "Trash Notes",
+   "reference": "pms_units_trash_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 126,
+   "name": "Trash Pickup Day",
+   "reference": "pms_units_trash_pickup_day",
+   "type": "multiselect",
+   "subType": "",
+   "values": [
+    {
+     "id": 19,
+     "handle": "sunday",
+     "name": "Sunday"
+    },
+    {
+     "id": 20,
+     "handle": "monday",
+     "name": "Monday"
+    },
+    {
+     "id": 21,
+     "handle": "tuesday",
+     "name": "Tuesday"
+    },
+    {
+     "id": 22,
+     "handle": "wednesday",
+     "name": "Wednesday"
+    },
+    {
+     "id": 23,
+     "handle": "thursday",
+     "name": "Thursday"
+    },
+    {
+     "id": 24,
+     "handle": "friday",
+     "name": "Friday"
+    },
+    {
+     "id": 25,
+     "handle": "saturday",
+     "name": "Saturday"
+    }
+   ]
+  },
+  {
+   "id": 56,
+   "name": "Heat Tape Notes",
+   "reference": "pms_units_heat_tape_notes",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 127,
+   "name": "Snow Shoveling Provider",
+   "reference": "pms_units_snow_shoveling_provider",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 128,
+   "name": "Snow Shoveling Notes",
+   "reference": "pms_units_snow_shoveling_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 129,
+   "name": "Snow Plowing Provider",
+   "reference": "pms_units_snow_plowing_provider",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 130,
+   "name": "Snow Plowing Notes",
+   "reference": "pms_units_snow_plowing_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 131,
+   "name": "Common Maintenance Issues",
+   "reference": "pms_units_common_maintenance_issues",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 141,
+   "name": "Other Maintenance or Service Notes",
+   "reference": "pms_units_other_maintenance_or_service_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 132,
+   "name": "Water Provider & Notes",
+   "reference": "pms_units_water_provider_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 133,
+   "name": "Water Filter Notes",
+   "reference": "pms_units_water_filter_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 66,
+   "name": "Last Water Filter Change",
+   "reference": "pms_units_last_water_filter_change",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 134,
+   "name": "Power Provider & Notes",
+   "reference": "pms_units_power_provider_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 135,
+   "name": "Gas Provider & Notes",
+   "reference": "pms_units_gas_provider_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 69,
+   "name": "Last Gas Service",
+   "reference": "pms_units_last_gas_service",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 136,
+   "name": "Sewer Provider & Notes",
+   "reference": "pms_units_sewer_provider_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 71,
+   "name": "Last Sewer Service",
+   "reference": "pms_units_last_sewer_service",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 137,
+   "name": "Other Utility Provider Information & Notes",
+   "reference": "pms_units_other_utility_provider_information_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 73,
+   "name": "Refrigerator Filter Model or Size",
+   "reference": "pms_units_refrigerator_filter_model_or_size",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 74,
+   "name": "Last Refrigerator Filter Change",
+   "reference": "pms_units_last_refrigerator_filter_change",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 75,
+   "name": "Breaker Box Location",
+   "reference": "pms_units_breaker_box_location",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 76,
+   "name": "Furnace Filter Model or Size",
+   "reference": "pms_units_furnace_filter_model_or_size",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 77,
+   "name": "Last Furnace Filter Change",
+   "reference": "pms_units_last_furnace_filter_change",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 78,
+   "name": "Last HVAC Service",
+   "reference": "pms_units_last_hvac_service",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 138,
+   "name": "HVAC Notes",
+   "reference": "pms_units_hvac_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 139,
+   "name": "Emergency Water Shutoff Location & Notes",
+   "reference": "pms_units_emergency_water_shutoff_location_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 140,
+   "name": "Emergency Gas Shutoff Location & Notes",
+   "reference": "pms_units_emergency_gas_shutoff_location_notes",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 82,
+   "name": "Water Flow Alarm Location & Notes",
+   "reference": "pms_units_water_flow_alarm_location_notes",
+   "type": "string",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 83,
+   "name": "Last Fireplace Service",
+   "reference": "pms_units_last_fireplace_service",
+   "type": "date",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 84,
+   "name": "Last Dryer Vent Service",
+   "reference": "pms_units_last_dryer_vent_service",
+   "type": "date",
+   "subType": "",
+   "values": []
+  }
+ ],
+ "bed_types": [
+  {
+   "id": 1,
+   "name": "King",
+   "isActive": true
+  },
+  {
+   "id": 2,
+   "name": "California King",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "name": "Queen",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "name": "Double",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "name": "Twin",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "name": "Murphy Bed",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "name": "Queen Sofa Bed",
+   "isActive": true
+  },
+  {
+   "id": 8,
+   "name": "Twin Sofa Bed",
+   "isActive": true
+  },
+  {
+   "id": 9,
+   "name": "Child Bed",
+   "isActive": true
+  },
+  {
+   "id": 10,
+   "name": "Crib",
+   "isActive": true
+  },
+  {
+   "id": 11,
+   "name": "Futon",
+   "isActive": true
+  },
+  {
+   "id": 12,
+   "name": "Twin Over Twin Bunk Bed",
+   "isActive": true
+  },
+  {
+   "id": 13,
+   "name": "Twin Over Double/Queen Bunk Bed",
+   "isActive": true
+  },
+  {
+   "id": 14,
+   "name": "Double/Queen Over Double/Queen Bunk Bed",
+   "isActive": true
+  },
+  {
+   "id": 15,
+   "name": "Double Sleeper Sofa",
+   "isActive": true
+  },
+  {
+   "id": 16,
+   "name": "Full",
+   "isActive": false
+  },
+  {
+   "id": 17,
+   "name": "Twin Over Full Bunk Bed",
+   "isActive": true
+  },
+  {
+   "id": 18,
+   "name": "Twin Trundle",
+   "isActive": true
+  },
+  {
+   "id": 19,
+   "name": "Twin Day Bed",
+   "isActive": true
+  }
+ ],
+ "bathroom_amenities": [
+  {
+   "id": 1,
+   "name": "Step Free Access",
+   "isActive": true
+  },
+  {
+   "id": 2,
+   "name": "Wide Doorway",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "name": "Toilet Grab Rails",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "name": "Grab Rails in Shower",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "name": "Step Free Shower",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "name": "Shower Chair",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "name": "Bidet",
+   "isActive": true
+  },
+  {
+   "id": 8,
+   "name": "Combo Bathtub & Shower",
+   "isActive": true
+  },
+  {
+   "id": 9,
+   "name": "Jetted Bathtub",
+   "isActive": true
+  },
+  {
+   "id": 10,
+   "name": "Outdoor Shower",
+   "isActive": true
+  },
+  {
+   "id": 11,
+   "name": "Shower",
+   "isActive": true
+  },
+  {
+   "id": 12,
+   "name": "Toilet",
+   "isActive": true
+  },
+  {
+   "id": 13,
+   "name": "Bathtub",
+   "isActive": true
+  },
+  {
+   "id": 14,
+   "name": "Sink",
+   "isActive": true
+  }
+ ],
+ "unit_types": [
+  {
+   "id": 2,
+   "name": "Studio",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "name": "Hotel Room",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "name": "1 Bedroom",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "name": "2 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "name": "3 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "name": "4 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 8,
+   "name": "5 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 9,
+   "name": "6 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 10,
+   "name": "7 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 11,
+   "name": "8 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 12,
+   "name": "9 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 13,
+   "name": "10 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 14,
+   "name": "11 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 15,
+   "name": "12 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 16,
+   "name": "13 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 17,
+   "name": "14 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 18,
+   "name": "15 Bedrooms",
+   "isActive": true
+  },
+  {
+   "id": 19,
+   "name": "White Glove Property Care",
+   "isActive": true
+  },
+  {
+   "id": 20,
+   "name": "Home Watch",
+   "isActive": true
+  },
+  {
+   "id": 21,
+   "name": "Utility Property",
+   "isActive": true
+  }
+ ],
+ "lodging_types": [
+  {
+   "id": 1,
+   "name": "House",
+   "isActive": true
+  },
+  {
+   "id": 2,
+   "name": "Condo",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "name": "Townhouse",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "name": "Duplex",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "name": "Apartment",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "name": "Cabin",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "name": "Studio",
+   "isActive": true
+  },
+  {
+   "id": 8,
+   "name": "Villa",
+   "isActive": true
+  },
+  {
+   "id": 9,
+   "name": "Hotel Room",
+   "isActive": true
+  },
+  {
+   "id": 10,
+   "name": "Aparthotel",
+   "isActive": true
+  },
+  {
+   "id": 11,
+   "name": "Barn",
+   "isActive": true
+  },
+  {
+   "id": 12,
+   "name": "Bed and Breakfast",
+   "isActive": true
+  },
+  {
+   "id": 13,
+   "name": "Boutique Hotel",
+   "isActive": true
+  },
+  {
+   "id": 14,
+   "name": "Bungalow",
+   "isActive": true
+  },
+  {
+   "id": 15,
+   "name": "Chalet",
+   "isActive": true
+  },
+  {
+   "id": 16,
+   "name": "Cottage",
+   "isActive": true
+  },
+  {
+   "id": 17,
+   "name": "Estate",
+   "isActive": true
+  },
+  {
+   "id": 18,
+   "name": "Guest Suite",
+   "isActive": true
+  },
+  {
+   "id": 19,
+   "name": "Guesthouse",
+   "isActive": true
+  },
+  {
+   "id": 20,
+   "name": "Lodge",
+   "isActive": true
+  },
+  {
+   "id": 21,
+   "name": "Loft",
+   "isActive": true
+  },
+  {
+   "id": 22,
+   "name": "Ranch",
+   "isActive": true
+  },
+  {
+   "id": 23,
+   "name": "Resort",
+   "isActive": true
+  },
+  {
+   "id": 24,
+   "name": "Tiny House",
+   "isActive": true
+  },
+  {
+   "id": 25,
+   "name": "Treehouse",
+   "isActive": true
+  }
+ ],
+ "code_types": [
+  {
+   "id": 1,
+   "name": "Door Code",
+   "isActive": true
+  },
+  {
+   "id": 2,
+   "name": "Garage Code",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "name": "Parking Code",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "name": "Beach Code",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "name": "Pool Code",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "name": "Alarm Code",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "name": "Owner Closet",
+   "isActive": true
+  },
+  {
+   "id": 8,
+   "name": "Lockbox Code",
+   "isActive": true
+  },
+  {
+   "id": 9,
+   "name": "Elevator Code",
+   "isActive": true
+  },
+  {
+   "id": 10,
+   "name": "Building/Common Area Code",
+   "isActive": true
+  },
+  {
+   "id": 11,
+   "name": "Gate Code",
+   "isActive": true
+  },
+  {
+   "id": 12,
+   "name": "Hot Tub Code",
+   "isActive": true
+  },
+  {
+   "id": 13,
+   "name": "Ski Locker Code",
+   "isActive": true
+  },
+  {
+   "id": 14,
+   "name": "Laundry Code",
+   "isActive": true
+  },
+  {
+   "id": 15,
+   "name": "Trash Code",
+   "isActive": true
+  },
+  {
+   "id": 16,
+   "name": "Owner Code",
+   "isActive": true
+  },
+  {
+   "id": 17,
+   "name": "Master Programming Code",
+   "isActive": true
+  },
+  {
+   "id": 18,
+   "name": "Storage Code",
+   "isActive": true
+  },
+  {
+   "id": 19,
+   "name": "Ski Tower Elevator",
+   "isActive": true
+  }
+ ],
+ "contracts": [
+  {
+   "id": 1,
+   "code": "",
+   "name": "Standard 30",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 2,
+   "code": "",
+   "name": "25 Commission",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 3,
+   "code": "",
+   "name": "Contract 23.35",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 4,
+   "code": "",
+   "name": "28%",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 5,
+   "code": "",
+   "name": "30%, 20% Long Term",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 6,
+   "code": "",
+   "name": "Property Management Only",
+   "type": "standard",
+   "isActive": true
+  },
+  {
+   "id": 7,
+   "code": "",
+   "name": "20% commission",
+   "type": "standard",
+   "isActive": true
+  }
+ ],
+ "block_reasons": [
+  {
+   "id": 1,
+   "name": "Emergency Out of Order",
+   "code": ""
+  },
+  {
+   "id": 2,
+   "name": "Late Check Out",
+   "code": ""
+  },
+  {
+   "id": 3,
+   "name": "Unit Maintenance Hold",
+   "code": ""
+  },
+  {
+   "id": 4,
+   "name": "Building Maintenance Hold",
+   "code": ""
+  },
+  {
+   "id": 5,
+   "name": "Owner Maintenance Hold",
+   "code": ""
+  },
+  {
+   "id": 6,
+   "name": "Deep Cleaning",
+   "code": ""
+  },
+  {
+   "id": 7,
+   "name": "Property Onboarding - Photography",
+   "code": ""
+  },
+  {
+   "id": 8,
+   "name": "Property Onboarding - Housekeeping Set Up",
+   "code": ""
+  },
+  {
+   "id": 9,
+   "name": "Property Onboarding - Inspection Walkthrough",
+   "code": ""
+  },
+  {
+   "id": 10,
+   "name": "Property Onboarding - Maintenance Walkthrough",
+   "code": ""
+  },
+  {
+   "id": 11,
+   "name": "Property Offboarding",
+   "code": ""
+  },
+  {
+   "id": 12,
+   "name": "Property Remodel/Renovations",
+   "code": ""
+  },
+  {
+   "id": 13,
+   "name": "Property for Sale - Showing",
+   "code": ""
+  },
+  {
+   "id": 14,
+   "name": "Property for Sale - Do Not Sell",
+   "code": ""
+  },
+  {
+   "id": 15,
+   "name": "Inventory",
+   "code": ""
+  },
+  {
+   "id": 16,
+   "name": "Migrated Block",
+   "code": ""
+  },
+  {
+   "id": 17,
+   "name": "Owner Reservation",
+   "code": ""
+  },
+  {
+   "id": 18,
+   "name": "Block For Guest To Book",
+   "code": ""
+  }
+ ],
+ "nodes": [
+  {
+   "id": 1,
+   "name": "SkyRun Park City",
+   "typeId": 1,
+   "typeName": "SkyRun Location",
+   "parentId": null,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 13,
+   "name": "Utah",
+   "typeId": 2,
+   "typeName": "State",
+   "parentId": 25,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 14,
+   "name": "Park City",
+   "typeId": 3,
+   "typeName": "City",
+   "parentId": 13,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 15,
+   "name": "The Canyons",
+   "typeId": 5,
+   "typeName": "Neighborhood",
+   "parentId": 14,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 16,
+   "name": "Greater Park City",
+   "typeId": 5,
+   "typeName": "Neighborhood",
+   "parentId": 14,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 17,
+   "name": "Old Town",
+   "typeId": 5,
+   "typeName": "Neighborhood",
+   "parentId": 14,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 19,
+   "name": "Deer Valley",
+   "typeId": 3,
+   "typeName": "City",
+   "parentId": 13,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 20,
+   "name": "East Deer Valley",
+   "typeId": 5,
+   "typeName": "Neighborhood",
+   "parentId": 13,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 22,
+   "name": "ZInactive",
+   "typeId": 3,
+   "typeName": "City",
+   "parentId": 13,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 24,
+   "name": "ZProperty Management",
+   "typeId": 8,
+   "typeName": "Management Only",
+   "parentId": 13,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 25,
+   "name": "United States",
+   "typeId": 7,
+   "typeName": "Country",
+   "parentId": 1,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  },
+  {
+   "id": 26,
+   "name": "Main Street Area",
+   "typeId": 5,
+   "typeName": "Neighborhood",
+   "parentId": 22,
+   "amenitiesIds": [
+    130,
+    135,
+    140,
+    150,
+    160,
+    170,
+    200,
+    205,
+    220,
+    240,
+    270,
+    305,
+    315,
+    340,
+    345,
+    480,
+    630,
+    635,
+    670,
+    695,
+    715,
+    730,
+    1035,
+    1580,
+    1585,
+    1595,
+    1600,
+    1610,
+    1615,
+    1630,
+    1655,
+    1660,
+    1665,
+    1670,
+    1675,
+    1685,
+    1690,
+    1695,
+    1745,
+    1750,
+    1760,
+    1765,
+    1770,
+    1805,
+    875,
+    750,
+    760,
+    780,
+    790,
+    880,
+    1460,
+    275,
+    680,
+    720,
+    725,
+    740,
+    755,
+    775,
+    1700,
+    1730,
+    115,
+    940,
+    1095,
+    250,
+    690
+   ]
+  }
+ ],
+ "amenities": [
+  {
+   "id": 15,
+   "name": "Bedroom - Step Free Access",
+   "group": "Accessibility"
+  },
+  {
+   "id": 20,
+   "name": "Bedroom - Wide Doorway",
+   "group": "Accessibility"
+  },
+  {
+   "id": 25,
+   "name": "Ceiling Hoist",
+   "group": "Accessibility"
+  },
+  {
+   "id": 30,
+   "name": "Common Space - Step Free Access",
+   "group": "Accessibility"
+  },
+  {
+   "id": 35,
+   "name": "Common Space - Wide Doorway",
+   "group": "Accessibility"
+  },
+  {
+   "id": 40,
+   "name": "Disabled Parking Spot",
+   "group": "Accessibility"
+  },
+  {
+   "id": 45,
+   "name": "Flat Smooth Pathway to Front Door",
+   "group": "Accessibility"
+  },
+  {
+   "id": 60,
+   "name": "Home - Step Free Access",
+   "group": "Accessibility"
+  },
+  {
+   "id": 65,
+   "name": "Home - Wide Doorway",
+   "group": "Accessibility"
+  },
+  {
+   "id": 70,
+   "name": "Path to Entrance Lit at Night",
+   "group": "Accessibility"
+  },
+  {
+   "id": 75,
+   "name": "Pool Hoist",
+   "group": "Accessibility"
+  },
+  {
+   "id": 90,
+   "name": "Wheelchair Accessible",
+   "group": "Accessibility"
+  },
+  {
+   "id": 95,
+   "name": "Wheelchair Inaccessible",
+   "group": "Accessibility"
+  },
+  {
+   "id": 100,
+   "name": "Wide Hallway Clearance",
+   "group": "Accessibility"
+  },
+  {
+   "id": 1817,
+   "name": "Toilet Grab Rails",
+   "group": "Accessibility"
+  },
+  {
+   "id": 1818,
+   "name": "Grab Rails in Shower",
+   "group": "Accessibility"
+  },
+  {
+   "id": 1819,
+   "name": "Shower Chair",
+   "group": "Accessibility"
+  },
+  {
+   "id": 115,
+   "name": "Body Soap",
+   "group": "Bathroom"
+  },
+  {
+   "id": 120,
+   "name": "Cleaning Products",
+   "group": "Bathroom"
+  },
+  {
+   "id": 130,
+   "name": "Conditioner",
+   "group": "Bathroom"
+  },
+  {
+   "id": 135,
+   "name": "Hair Dryer",
+   "group": "Bathroom"
+  },
+  {
+   "id": 140,
+   "name": "Hot Water",
+   "group": "Bathroom"
+  },
+  {
+   "id": 150,
+   "name": "Shampoo",
+   "group": "Bathroom"
+  },
+  {
+   "id": 160,
+   "name": "Shower Gel",
+   "group": "Bathroom"
+  },
+  {
+   "id": 1814,
+   "name": "Bathtub",
+   "group": "Bathroom"
+  },
+  {
+   "id": 1816,
+   "name": "Bidet",
+   "group": "Bathroom"
+  },
+  {
+   "id": 170,
+   "name": "Bed Linens",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 175,
+   "name": "Clothes Drying Rack",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 180,
+   "name": "Dryer - Community",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 185,
+   "name": "Dryer - Private",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 190,
+   "name": "Essentials",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 195,
+   "name": "Extra Pillows & Blankets",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 200,
+   "name": "Hangers",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 205,
+   "name": "Iron & Ironing Board",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 210,
+   "name": "Mosquito Net",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 215,
+   "name": "Room Darkening Shades",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 220,
+   "name": "Towels",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 225,
+   "name": "Wardrobe or Closet",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 230,
+   "name": "Washer - Community",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 235,
+   "name": "Washer - Private",
+   "group": "Bedroom & Laundry"
+  },
+  {
+   "id": 240,
+   "name": "Carbon Monoxide Detector",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 245,
+   "name": "Common Surfaces Disinfected",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 250,
+   "name": "Deadbolt Lock",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 255,
+   "name": "Disinfectant Used While Cleaning",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 260,
+   "name": "Emergency Exit Route",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 265,
+   "name": "Fire Emergency Contact",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 270,
+   "name": "Fire Extinguisher",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 275,
+   "name": "First Aid Kit",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 280,
+   "name": "Guest Gap Period - 24 Hours",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 285,
+   "name": "Guest Gap Period - 48 Hours",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 290,
+   "name": "Guest Gap Period - 72 Hours",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 295,
+   "name": "In Person Check-In",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 300,
+   "name": "Linens High Temp Wash (140 degrees)",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 305,
+   "name": "Medical Emergency Contact",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 310,
+   "name": "Outdoor Lighting",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 315,
+   "name": "Police Emergency Contact",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 320,
+   "name": "Safe",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 325,
+   "name": "SafeHome (VRMA & VRHP Certification)",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 330,
+   "name": "SafeStay (AHLA Certification)",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 335,
+   "name": "Security System",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 340,
+   "name": "Self Check-In & Check-Out",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 345,
+   "name": "Smoke Detector",
+   "group": "Cleanliness & Safety"
+  },
+  {
+   "id": 350,
+   "name": "Arcade Machine",
+   "group": "Entertainment"
+  },
+  {
+   "id": 355,
+   "name": "Batting Cage",
+   "group": "Entertainment"
+  },
+  {
+   "id": 360,
+   "name": "Books",
+   "group": "Entertainment"
+  },
+  {
+   "id": 365,
+   "name": "Bowling Alley",
+   "group": "Entertainment"
+  },
+  {
+   "id": 370,
+   "name": "Climbing Wall",
+   "group": "Entertainment"
+  },
+  {
+   "id": 375,
+   "name": "Computer",
+   "group": "Entertainment"
+  },
+  {
+   "id": 380,
+   "name": "DVD Player",
+   "group": "Entertainment"
+  },
+  {
+   "id": 385,
+   "name": "Foosball",
+   "group": "Entertainment"
+  },
+  {
+   "id": 390,
+   "name": "Game Console",
+   "group": "Entertainment"
+  },
+  {
+   "id": 395,
+   "name": "Game Room",
+   "group": "Entertainment"
+  },
+  {
+   "id": 400,
+   "name": "Games",
+   "group": "Entertainment"
+  },
+  {
+   "id": 405,
+   "name": "Home Theater",
+   "group": "Entertainment"
+  },
+  {
+   "id": 410,
+   "name": "Laser Tag",
+   "group": "Entertainment"
+  },
+  {
+   "id": 415,
+   "name": "Life Size Games",
+   "group": "Entertainment"
+  },
+  {
+   "id": 420,
+   "name": "Mini Golf",
+   "group": "Entertainment"
+  },
+  {
+   "id": 425,
+   "name": "Music Library",
+   "group": "Entertainment"
+  },
+  {
+   "id": 430,
+   "name": "Piano",
+   "group": "Entertainment"
+  },
+  {
+   "id": 435,
+   "name": "Ping Pong Table",
+   "group": "Entertainment"
+  },
+  {
+   "id": 440,
+   "name": "Pool Table",
+   "group": "Entertainment"
+  },
+  {
+   "id": 445,
+   "name": "Record Player",
+   "group": "Entertainment"
+  },
+  {
+   "id": 450,
+   "name": "Satellite or Cable",
+   "group": "Entertainment"
+  },
+  {
+   "id": 455,
+   "name": "Skate Ramp",
+   "group": "Entertainment"
+  },
+  {
+   "id": 460,
+   "name": "Smart TV",
+   "group": "Entertainment"
+  },
+  {
+   "id": 465,
+   "name": "Sound System",
+   "group": "Entertainment"
+  },
+  {
+   "id": 470,
+   "name": "Stereo",
+   "group": "Entertainment"
+  },
+  {
+   "id": 475,
+   "name": "Toys",
+   "group": "Entertainment"
+  },
+  {
+   "id": 480,
+   "name": "TV",
+   "group": "Entertainment"
+  },
+  {
+   "id": 485,
+   "name": "Video Games",
+   "group": "Entertainment"
+  },
+  {
+   "id": 490,
+   "name": "Video Library",
+   "group": "Entertainment"
+  },
+  {
+   "id": 495,
+   "name": "Baby Bath",
+   "group": "Family"
+  },
+  {
+   "id": 500,
+   "name": "Baby Monitor",
+   "group": "Family"
+  },
+  {
+   "id": 505,
+   "name": "Cabinet Locks",
+   "group": "Family"
+  },
+  {
+   "id": 510,
+   "name": "Changing Table",
+   "group": "Family"
+  },
+  {
+   "id": 515,
+   "name": "Childrens Bike",
+   "group": "Family"
+  },
+  {
+   "id": 520,
+   "name": "Childrens Book & Toys",
+   "group": "Family"
+  },
+  {
+   "id": 525,
+   "name": "Childrens Dinnerware",
+   "group": "Family"
+  },
+  {
+   "id": 530,
+   "name": "Crib",
+   "group": "Family"
+  },
+  {
+   "id": 535,
+   "name": "Fireplace Guards",
+   "group": "Family"
+  },
+  {
+   "id": 540,
+   "name": "High Chair",
+   "group": "Family"
+  },
+  {
+   "id": 545,
+   "name": "Outlet Covers",
+   "group": "Family"
+  },
+  {
+   "id": 550,
+   "name": "Pack & Play Travel Crib",
+   "group": "Family"
+  },
+  {
+   "id": 555,
+   "name": "Playground or Play Area",
+   "group": "Family"
+  },
+  {
+   "id": 560,
+   "name": "Playroom",
+   "group": "Family"
+  },
+  {
+   "id": 565,
+   "name": "Stair Gates",
+   "group": "Family"
+  },
+  {
+   "id": 570,
+   "name": "Table Corner Guards",
+   "group": "Family"
+  },
+  {
+   "id": 575,
+   "name": "Toddler Bed",
+   "group": "Family"
+  },
+  {
+   "id": 580,
+   "name": "Window Guards",
+   "group": "Family"
+  },
+  {
+   "id": 1820,
+   "name": "Heat Tape",
+   "group": "Internal Use Amenities"
+  },
+  {
+   "id": 1821,
+   "name": "Water Softener",
+   "group": "Internal Use Amenities"
+  },
+  {
+   "id": 1822,
+   "name": "Heated Walkway Mats",
+   "group": "Internal Use Amenities"
+  },
+  {
+   "id": 1823,
+   "name": "Filter Service Needed",
+   "group": "Internal Use Amenities"
+  },
+  {
+   "id": 585,
+   "name": "Computer Monitor",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 590,
+   "name": "Desk",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 595,
+   "name": "Desk Chair",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 600,
+   "name": "Ethernet Connection",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 605,
+   "name": "Laptop Friendly Workspace",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 610,
+   "name": "Office",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 615,
+   "name": "Pocket Wifi",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 620,
+   "name": "Printer",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 625,
+   "name": "Telephone",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 630,
+   "name": "Wifi",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 635,
+   "name": "Wifi - Free",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 640,
+   "name": "Wifi - Paid",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 645,
+   "name": "Wifi - Speed 100mbps",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 650,
+   "name": "Wifi - Speed 250mbps",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 655,
+   "name": "Wifi - Speed 25mbps",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 660,
+   "name": "Wifi - Speed 500mbps",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 665,
+   "name": "Wifi - Speed 50mbps",
+   "group": "Internet & Office"
+  },
+  {
+   "id": 670,
+   "name": "Baking Sheet",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 675,
+   "name": "BBQ Grill Utensils",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 680,
+   "name": "Blender",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 685,
+   "name": "Bread Maker",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 690,
+   "name": "Coffee",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 695,
+   "name": "Coffee Maker",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 700,
+   "name": "Cooking Basics",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 705,
+   "name": "Dining Area or Room",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 710,
+   "name": "Dining table",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 715,
+   "name": "Dishes & Silverware",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 720,
+   "name": "Dishwasher",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 725,
+   "name": "Freezer",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 730,
+   "name": "Hot Water Kettle",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 735,
+   "name": "Ice Maker",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 740,
+   "name": "Kitchen",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 745,
+   "name": "Kitchen Island",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 750,
+   "name": "Microwave",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 755,
+   "name": "Oven",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 760,
+   "name": "Refrigerator",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 765,
+   "name": "Rice Maker",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 770,
+   "name": "Spices",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 775,
+   "name": "Stove",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 780,
+   "name": "Toaster",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 785,
+   "name": "Trash Compactor",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 790,
+   "name": "Wine Glasses",
+   "group": "Kitchen & Dining"
+  },
+  {
+   "id": 795,
+   "name": "Bay",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 800,
+   "name": "Beach Access",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 805,
+   "name": "Beachfront",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 810,
+   "name": "Car - Available",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 815,
+   "name": "Car - Necessary",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 820,
+   "name": "Car - Not Necessary",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 825,
+   "name": "Car - Recommended",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 830,
+   "name": "Downtown",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 835,
+   "name": "Duty Free",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 840,
+   "name": "Family Themed",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 845,
+   "name": "Health Beauty Spa",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 850,
+   "name": "Historic Themed",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 855,
+   "name": "Lake Access",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 860,
+   "name": "Lakefront",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 865,
+   "name": "Laundromat Nearby",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 870,
+   "name": "Marina",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 875,
+   "name": "Mountain",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 880,
+   "name": "Museums",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 885,
+   "name": "Ocean Nearby",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 890,
+   "name": "Oceanfront",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 895,
+   "name": "On the Golf Course",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 900,
+   "name": "Resort Access",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 905,
+   "name": "River",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 910,
+   "name": "Romantic Themed",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 915,
+   "name": "Rural",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 920,
+   "name": "Ski In",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 925,
+   "name": "Ski In/Ski Out",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 930,
+   "name": "Ski Out",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 935,
+   "name": "Theme Parks",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 940,
+   "name": "Town",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 945,
+   "name": "View - Beach",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 950,
+   "name": "View - City",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 955,
+   "name": "View - Garden",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 960,
+   "name": "View - Golf Course",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 965,
+   "name": "View - Lake",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 970,
+   "name": "View - Mountain",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 975,
+   "name": "View - Ocean",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 980,
+   "name": "View - Water",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 985,
+   "name": "Village",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 990,
+   "name": "Water Parks",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 995,
+   "name": "Waterfront",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 1000,
+   "name": "Winery Tours",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 1005,
+   "name": "Zoo",
+   "group": "Location & Attractions"
+  },
+  {
+   "id": 1010,
+   "name": "Basketball Court - Community",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1015,
+   "name": "Boat Slip or Dock - Community",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1020,
+   "name": "Courtyard - Community",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1025,
+   "name": "Gym/Fitness Room - Community",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1030,
+   "name": "Hockey Rink",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1035,
+   "name": "Hospital",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1040,
+   "name": "Tennis Court - Community",
+   "group": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 1045,
+   "name": "Air Conditioning",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1050,
+   "name": "Basketball Court - Private",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1055,
+   "name": "Boat Slip or Dock - Private",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1060,
+   "name": "Ceiling Fan",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1065,
+   "name": "Courtyard - Private",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1070,
+   "name": "Exercise Equipment",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1075,
+   "name": "Fireplace - Gas",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1080,
+   "name": "Fireplace - Wood or Wood Stove",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1085,
+   "name": "Ground Floor",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1090,
+   "name": "Gym/Fitness Room - Private",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1095,
+   "name": "Heating",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1100,
+   "name": "Living Room",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1105,
+   "name": "Pets - Allowed",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1110,
+   "name": "Pets - Not Allowed",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1115,
+   "name": "Portable Fans",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1120,
+   "name": "Private Entrance",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1125,
+   "name": "Single Level Home",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1130,
+   "name": "Ski Storage",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1135,
+   "name": "Tennis Court - Private",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1826,
+   "name": "Owner Has Pets",
+   "group": "Other Property Amenities"
+  },
+  {
+   "id": 1140,
+   "name": "BBQ Grill Area",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1145,
+   "name": "BBQ Grill - Charcoal",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1150,
+   "name": "BBQ Grill - Community",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1155,
+   "name": "BBQ Grill - Gas",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1160,
+   "name": "BBQ Grill - Private",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1165,
+   "name": "Beach Essentials",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1170,
+   "name": "Bicycle",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1175,
+   "name": "Boat",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1180,
+   "name": "Fenced Yard",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1185,
+   "name": "Fire Pit",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1190,
+   "name": "Garden or Backyard",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1195,
+   "name": "Hammock",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1200,
+   "name": "Jet Skis",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1205,
+   "name": "Kayak or Canoe",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1210,
+   "name": "Outdoor Dining",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1215,
+   "name": "Outdoor Kitchen",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1220,
+   "name": "Outdoor Seating & Furniture",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1225,
+   "name": "Outdoor Shower",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1230,
+   "name": "Patio or Balcony",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1235,
+   "name": "Snow Sports Gear",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1240,
+   "name": "Sun Loungers",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1245,
+   "name": "Veranda",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1250,
+   "name": "Water Sports Gear",
+   "group": "Outdoor"
+  },
+  {
+   "id": 1255,
+   "name": "Electric Vehicle Charger",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1260,
+   "name": "Elevator",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1265,
+   "name": "Garage",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1270,
+   "name": "Parking - Free",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1275,
+   "name": "Parking - Indoor",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1280,
+   "name": "Parking - Off Site Free",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1285,
+   "name": "Parking - Off Site Paid",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1290,
+   "name": "Parking - On Site Free",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1295,
+   "name": "Parking - On Site Paid",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1300,
+   "name": "Parking - Paid",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1305,
+   "name": "Parking - Private",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1310,
+   "name": "Parking - Street",
+   "group": "Parking & Facilities"
+  },
+  {
+   "id": 1315,
+   "name": "Hot Tub",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1320,
+   "name": "Hot Tub - Community",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1325,
+   "name": "Hot Tub - Private",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1330,
+   "name": "Pool",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1335,
+   "name": "Pool - Community",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1340,
+   "name": "Pool - Fenced",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1345,
+   "name": "Pool - Heated",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1350,
+   "name": "Pool - Indoor",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1355,
+   "name": "Pool - Private",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1360,
+   "name": "Sauna - Community",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1365,
+   "name": "Sauna - Private",
+   "group": "Pool & Spa"
+  },
+  {
+   "id": 1370,
+   "name": "Babysitter - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1375,
+   "name": "Babysitter - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1380,
+   "name": "Babysitter On - Request",
+   "group": "Services"
+  },
+  {
+   "id": 1385,
+   "name": "Bartender - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1390,
+   "name": "Bartender - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1395,
+   "name": "Bartender - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1400,
+   "name": "Breakfast or Meal - Included",
+   "group": "Services"
+  },
+  {
+   "id": 1405,
+   "name": "Breakfast or Meal - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1410,
+   "name": "Butler - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1415,
+   "name": "Butler - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1420,
+   "name": "Butler - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1425,
+   "name": "Chauffeur - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1430,
+   "name": "Chef - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1435,
+   "name": "Chef - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1440,
+   "name": "Chef - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1445,
+   "name": "Cleaning During Stay - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1450,
+   "name": "Cleaning During Stay - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1455,
+   "name": "Cleaning During Stay - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1460,
+   "name": "Concierge - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1465,
+   "name": "Dry Cleaning - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1470,
+   "name": "Dry Cleaning - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1475,
+   "name": "Dry Cleaning - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1480,
+   "name": "Events or Weddings Allowed",
+   "group": "Services"
+  },
+  {
+   "id": 1485,
+   "name": "Groceries - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1490,
+   "name": "Groceries - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1495,
+   "name": "Groceries - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1500,
+   "name": "Laundry - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1505,
+   "name": "Laundry - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1510,
+   "name": "Laundry - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1515,
+   "name": "Long Term Stays Allowed",
+   "group": "Services"
+  },
+  {
+   "id": 1520,
+   "name": "Luggage Dropoff Allowed",
+   "group": "Services"
+  },
+  {
+   "id": 1525,
+   "name": "Massage - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1530,
+   "name": "Site Staff - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1535,
+   "name": "Site Staff - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1540,
+   "name": "Site Staff - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1545,
+   "name": "Ski Rental - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1550,
+   "name": "Valet Parking - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1555,
+   "name": "Valet Parking - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1560,
+   "name": "Valet Parking - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1565,
+   "name": "Water Sports - Available",
+   "group": "Services"
+  },
+  {
+   "id": 1570,
+   "name": "Water Sports - Fee",
+   "group": "Services"
+  },
+  {
+   "id": 1575,
+   "name": "Water Sports - On Request",
+   "group": "Services"
+  },
+  {
+   "id": 1580,
+   "name": "Antiquing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1585,
+   "name": "Bird Watching",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1590,
+   "name": "Boating",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1595,
+   "name": "Cross Country Skiing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1600,
+   "name": "Cycling",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1605,
+   "name": "Diving",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1610,
+   "name": "Eco Tourism",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1615,
+   "name": "Fishing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1620,
+   "name": "Fishing - Bay",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1625,
+   "name": "Fishing - Deep Sea",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1630,
+   "name": "Fishing - Fly",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1635,
+   "name": "Fishing - Freshwater",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1640,
+   "name": "Fishing - Pier",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1645,
+   "name": "Fishing - Surf",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1650,
+   "name": "Gambling",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1655,
+   "name": "Golf",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1660,
+   "name": "Hiking",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1665,
+   "name": "Horseback Riding",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1670,
+   "name": "Hunting",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1675,
+   "name": "Ice Skating",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1680,
+   "name": "Jet Skiing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1685,
+   "name": "Mountain Biking",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1690,
+   "name": "Mountain Climbing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1695,
+   "name": "Mountaineering",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1700,
+   "name": "Outlet Shopping",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1705,
+   "name": "Paddle Boating",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1710,
+   "name": "Parasailing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1715,
+   "name": "Rafting",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1720,
+   "name": "Rock Climbing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1725,
+   "name": "Sailing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1730,
+   "name": "Shopping",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1735,
+   "name": "Ski Lift Privileges",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1740,
+   "name": "Ski Lift Privileges - (Optional)",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1745,
+   "name": "Skiing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1750,
+   "name": "Sledding",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1755,
+   "name": "Snorkeling",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1760,
+   "name": "Snowboarding",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1765,
+   "name": "Snowmobiling",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1770,
+   "name": "Spelunking",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1775,
+   "name": "Surfing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1780,
+   "name": "Swimming",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1785,
+   "name": "Water Skiing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1790,
+   "name": "Water Tubing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1795,
+   "name": "Whale Watching",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1800,
+   "name": "Whitewater Rafting",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1805,
+   "name": "Wildlife Viewing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1810,
+   "name": "Wind Surfing",
+   "group": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 1811,
+   "name": "New Listing Badge",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1812,
+   "name": "Featured Property Badge",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1813,
+   "name": "Flexible Cancellation Badge",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1824,
+   "name": "Premium Property Badge",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1827,
+   "name": "Main Street Properties",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1828,
+   "name": "Watchlist",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1829,
+   "name": "Blackstone Properties",
+   "group": "Website Badges"
+  },
+  {
+   "id": 1830,
+   "name": "Helling Properties",
+   "group": "Website Badges"
+  }
+ ],
+ "amenity_groups": [
+  {
+   "id": 1,
+   "name": "Accessibility"
+  },
+  {
+   "id": 2,
+   "name": "Bathroom"
+  },
+  {
+   "id": 3,
+   "name": "Bedroom & Laundry"
+  },
+  {
+   "id": 4,
+   "name": "Cleanliness & Safety"
+  },
+  {
+   "id": 5,
+   "name": "Entertainment"
+  },
+  {
+   "id": 6,
+   "name": "Family"
+  },
+  {
+   "id": 7,
+   "name": "Internal Use Amenities"
+  },
+  {
+   "id": 8,
+   "name": "Internet & Office"
+  },
+  {
+   "id": 9,
+   "name": "Kitchen & Dining"
+  },
+  {
+   "id": 10,
+   "name": "Location & Attractions"
+  },
+  {
+   "id": 11,
+   "name": "Other Building, Complex or Neighborhood Amenities"
+  },
+  {
+   "id": 12,
+   "name": "Other Property Amenities"
+  },
+  {
+   "id": 13,
+   "name": "Outdoor"
+  },
+  {
+   "id": 14,
+   "name": "Parking & Facilities"
+  },
+  {
+   "id": 15,
+   "name": "Pool & Spa"
+  },
+  {
+   "id": 16,
+   "name": "Services"
+  },
+  {
+   "id": 17,
+   "name": "Sports, Leisure & Adventure"
+  },
+  {
+   "id": 18,
+   "name": "Website Badges"
+  }
+ ]
+}

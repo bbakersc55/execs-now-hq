@@ -94,7 +94,7 @@ def test_turning_it_on_makes_one_subscription_per_browser_with_every_kind(world,
     # The practice owner's own: a bank connection that needs them.
     assert {k["key"] for k in state["kinds"] if k["on"]} == {"notice", "client_message", "document",
                                                              "reading", "mention", "bank", "sop",
-                                                             "payments"}
+                                                             "payments", "intake"}
     # The same browser again, even signed in as someone else: still one, now theirs.
     subscribe(api, who["ff"])
     subscribe(api, who["va"])
@@ -102,7 +102,8 @@ def test_turning_it_on_makes_one_subscription_per_browser_with_every_kind(world,
     assert sub.user_id == who["va"].user_id
     # A client's choices are a client's: no pipeline notices.
     state = subscribe(api, who["owner"], "https://updates.push.services.mozilla.com/wpush/v2/x").json()
-    assert {k["key"] for k in state["kinds"]} == {"client_message", "reading", "mention", "sop"}
+    assert {k["key"] for k in state["kinds"]} == {"client_message", "reading", "mention", "sop",
+                                                  "intake"}
     # Turning it off in this browser.
     post(api.as_(who["owner"]), "/api/notify/push/unsubscribe/",
          {"endpoint": "https://updates.push.services.mozilla.com/wpush/v2/x"})

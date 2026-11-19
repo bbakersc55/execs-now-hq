@@ -24,11 +24,11 @@ log = logging.getLogger(__name__)
 
 #: Which kinds each side of the app can receive.
 STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT,
-               Kind.BANK, Kind.SOP, Kind.PAYMENTS]
+               Kind.BANK, Kind.SOP, Kind.PAYMENTS, Kind.INTAKE]
 #: The practice owner's alone: bank connections (docs/p6_bank_feeds.md) and a
 #: card form that would not load (2026-11-13).
 OWNER_KINDS = (Kind.BANK, Kind.PAYMENTS)
-CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.SOP]
+CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.SOP, Kind.INTAKE]
 #: How long a push service keeps a notification for a browser that is off.
 TTL_SECONDS = 24 * 3600
 TIMEOUT_SECONDS = 5
@@ -41,8 +41,13 @@ def kinds_for(membership) -> list[str]:
 
     from apps.tenancy.models import Role
 
-    kinds = CLIENT_KINDS if membership.role in CLIENT_ROLES else STAFF_KINDS
-    return [str(k) for k in kinds if k not in OWNER_KINDS or membership.role == Role.FF]
+    client = membership.role in CLIENT_ROLES
+    kinds = CLIENT_KINDS if client else STAFF_KINDS
+    # Intake forms: on the practice's side only its owner is told; on a
+    # client's side, its managers and above (apps/intake/access.py).
+    return [str(k) for k in kinds
+            if (k not in OWNER_KINDS or membership.role == Role.FF)
+            and (k != Kind.INTAKE or client or membership.role == Role.FF)]
 
 
 def tell(*, tenant_id, recipient_id, kind, title, text, url="", source_type="",

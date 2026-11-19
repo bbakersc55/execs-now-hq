@@ -89,6 +89,8 @@ export const api = {
   patch: <T,>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   put: <T,>(path: string, body?: unknown) => request<T>("PUT", path, body),
   del: <T,>(path: string) => request<T>("DELETE", path),
+  /** A DELETE that says what to delete in its body (an intake's secret). */
+  delWith: <T,>(path: string, body: unknown) => request<T>("DELETE", path, body),
 };
 
 export interface Me {
@@ -113,6 +115,9 @@ export interface Me {
   /** M5 part 1: a client user who sees at least one KPI gets the portal's
    *  Scorecard entry. */
   has_scorecard?: boolean;
+  /** Intake forms: the practice owner, or a client company's managers and
+   *  above, with intake forms on for a company they run. */
+  has_intake?: boolean;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */
