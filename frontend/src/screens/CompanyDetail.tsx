@@ -218,7 +218,9 @@ export function CompanyDetail({ me }: { me: Me }) {
       {/* M5 part 1: the practice sets the client's scorecard up here. */}
       <ScorecardSetup me={me} company={c} />
       {(me.role === "FF" || me.role === "CF") && <TrackConnectionCard me={me} companyId={c.id} />}
-      {me.role === "FF" && c.is_client_company && <IntakeCard companyId={c.id} />}
+      {/* Intake forms: SkyRun's alone, and only once switched on for it. */}
+      {me.role === "FF" && me.has_intake && c.is_client_company
+        && <IntakeCard companyId={c.id} />}
       {(me.role === "FF" || me.role === "CF") && <HubSpotConnectionCard me={me} companyId={c.id} />}
       {(me.role === "FF" || me.role === "CF") && <BestyConnectionCard me={me} companyId={c.id} />}
       {(me.role === "FF" || me.role === "CF") && <GoogleReviewsCard me={me} companyId={c.id} />}

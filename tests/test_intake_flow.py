@@ -250,14 +250,6 @@ def test_another_companys_owner_cannot_reach_it(world):
     assert as_(stranger).get(f"/api/intake/submissions/{sub.pk}").status_code == 404
 
 
-def test_only_the_practice_owner_switches_it_on(world):
-    url = f"/api/intake/companies/{world['company'].pk}/switch"
-    assert as_(world["fcc"]).put(url, {"enabled": False},
-                                 content_type="application/json").status_code == 404
-    assert as_(world["ff"]).put(url, {"enabled": False},
-                                content_type="application/json").json() == {"enabled": False}
-
-
 def test_reveal_is_logged_and_discard_deletes_secrets(world):
     sub, token = start(world)
     owner_fills(token)

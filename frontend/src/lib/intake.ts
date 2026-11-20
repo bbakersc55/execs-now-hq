@@ -129,10 +129,6 @@ export const intake = {
     api.put<FormSettings>(`/api/intake/companies/${company}/form`, body),
   refresh: (company: string) =>
     api.post<FormSettings>(`/api/intake/companies/${company}/refresh`),
-  switch: (company: string) =>
-    api.get<{ enabled: boolean; has_track: boolean }>(`/api/intake/companies/${company}/switch`),
-  setSwitch: (company: string, enabled: boolean) =>
-    api.put<{ enabled: boolean }>(`/api/intake/companies/${company}/switch`, { enabled }),
   uploadImage: (company: string, which: "logo" | "icon", file: File) => {
     const body = new FormData();
     body.append("which", which);

@@ -41,13 +41,17 @@ def kinds_for(membership) -> list[str]:
 
     from apps.tenancy.models import Role
 
-    client = membership.role in CLIENT_ROLES
-    kinds = CLIENT_KINDS if client else STAFF_KINDS
-    # Intake forms: on the practice's side only its owner is told; on a
-    # client's side, its managers and above (apps/intake/access.py).
-    return [str(k) for k in kinds
-            if (k not in OWNER_KINDS or membership.role == Role.FF)
-            and (k != Kind.INTAKE or client or membership.role == Role.FF)]
+    kinds = CLIENT_KINDS if membership.role in CLIENT_ROLES else STAFF_KINDS
+    kinds = [k for k in kinds if k not in OWNER_KINDS or membership.role == Role.FF]
+    # Intake forms (SkyRun only, owner 2026-11-20): only someone who runs a
+    # company with them switched on, so nobody else ever sees the choice
+    # (apps/intake/access.py: the practice owner, the company's managers).
+    if Kind.INTAKE in kinds:
+        from apps.intake.access import has_intake
+
+        if not has_intake(membership):
+            kinds.remove(Kind.INTAKE)
+    return [str(k) for k in kinds]
 
 
 def tell(*, tenant_id, recipient_id, kind, title, text, url="", source_type="",

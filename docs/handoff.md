@@ -1,8 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-19 UTC**, after Release 48 and the intake forms build. **The next session starts at
-"2026-11-19, evening: intake forms (P14), on `dev`" just below**; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-20 UTC**, after Release 48, the intake forms build and making it SkyRun's alone. **The next session starts at
+"2026-11-20: intake forms are SkyRun's alone" just below**; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +32,25 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-20: intake forms are SkyRun's alone
+
+- **Owner's decision:** intake forms are for SkyRun Park City only, not a
+  feature offered to other ENHQ clients or practices.
+- **Found before the change** (report only, then fixed): the company page
+  showed every practice owner an "Owner intake forms" card with an "On for
+  this company" switch on every client company, in any practice, the demo
+  included (deployed from `dev` on 11-19; disabled there, as the demo refuses
+  Track). The browser-notification choices listed "Owner intake forms" to
+  every practice owner and every client user. A switched-off company's
+  links still opened. The menu, routes, settings, website, feature lists and
+  the AI connector never showed it.
+- **Now:** no switch in the app; `manage.py intake_forms <company-id>
+  on|off` in the Railway shell. The card, menu item and notification choice
+  show only to people who run a company with it on, and only for that
+  company. Switched off, the owner's links, pages and the form's domain
+  answer "This page isn't here". Spec: `docs/p14_intake_forms.md`, "Who".
+  Tests: `tests/test_intake_skyrun_only.py`, `CompanyDetail.test.tsx`.
 
 ## 2026-11-19, evening: intake forms (P14), on `dev`, not released
 
@@ -67,9 +86,10 @@ they don't, and what changed since 9/30.
     these four.
   - **R5b**: `ensure_schedules`, for `intake.place_owner_dates` (hourly) and
     `intake.purge` (daily at 3:00).
-  - After it: the practice owner ticks "Owner intake forms → On for this
-    company" on SkyRun Park City; then Form settings: logo, icon, contact line
-    and "Refresh from Track now".
+  - After it: the owner switches SkyRun Park City on in the Railway shell,
+    `python manage.py intake_forms <SkyRun's company id> on` (there is no
+    switch in the app: SkyRun only, 2026-11-20); then Form settings: logo,
+    icon, contact line and "Refresh from Track now".
   - Before anyone at SkyRun uses it: their portal users' levels, since the
     default Manager level counts as a manager for intakes.
   - **Don't run the proof line again after the release.** The deploy clears

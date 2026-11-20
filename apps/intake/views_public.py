@@ -60,7 +60,8 @@ def _resolve(request, token):
     form = getattr(request, "intake_form", None)
     if form is not None and form.pk != submission.form_id:
         return None, JsonResponse(GONE, status=404)
-    if submission.discarded_at is not None:
+    # Switched off (or the company gone): as if the link never existed.
+    if submission.discarded_at is not None or not hosts.company_on(submission.company):
         return None, JsonResponse(GONE, status=404)
     if not submission.link_open:
         brand = submission.form.brand_name
@@ -280,7 +281,8 @@ def form_image(request, slug, which):
 
     from .models import IntakeForm
 
-    form = IntakeForm.all_objects.filter(slug=slug).first()
+    form = IntakeForm.all_objects.select_related("company").filter(slug=slug).first()
+    form = form if form is not None and hosts.is_on(form) else None
     host_form = getattr(request, "intake_form", None)
     if form is None or (host_form is not None and host_form.pk != form.pk):
         return hosts.not_found(host_form) if host_form else HttpResponse(status=404)

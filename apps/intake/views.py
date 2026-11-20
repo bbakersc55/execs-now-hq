@@ -1,8 +1,8 @@
 """The staff side of intake forms: the company's managers and above, and the
-practice owner (`access.py`). Everyone else gets a 404.
+practice owner (`access.py`). Everyone else gets a 404. Switching intake forms
+on or off for a company is not here: `manage.py intake_forms` (SkyRun only).
 
 GET   /api/intake/companies                          companies whose intakes I run
-GET   /api/intake/companies/<id>/switch              is it on; PUT {enabled} (practice owner)
 GET   /api/intake/companies/<id>/form                settings; PUT to change them
 POST  /api/intake/companies/<id>/form/image          multipart {which: logo|icon, file}
 POST  /api/intake/companies/<id>/refresh             Track's lists, now
@@ -31,7 +31,7 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.tenancy.models import AuditEvent, Role
+from apps.tenancy.models import AuditEvent
 
 from . import access, defaults, derive, hosts, links, plan, schema, services, tracklists, vault
 from .models import IntakeForm, SendRun, Submission
@@ -73,41 +73,6 @@ class CompaniesView(Base):
                 for c in access.companies_for(getattr(request, "membership", None))
                 .order_by("name")]
         return Response({"companies": rows})
-
-
-class SwitchView(Base):
-    """The practice owner switches intake forms on for a client company."""
-
-    def _company(self, request, company_id):
-        membership = getattr(request, "membership", None)
-        if membership is None or membership.role != Role.FF:
-            raise Http404
-        return access.company_or_404(request, company_id, enabled=False)
-
-    def get(self, request, company_id):
-        from apps.scorecard.models import TrackConnection
-
-        company = self._company(request, company_id)
-        return Response({"enabled": company.intake_forms_enabled,
-                         "has_track": TrackConnection.all_objects.filter(company=company)
-                         .exists()})
-
-    def put(self, request, company_id):
-        from apps.scorecard.models import TrackConnection
-
-        company = self._company(request, company_id)
-        enabled = request.data.get("enabled") is True
-        if enabled and not TrackConnection.all_objects.filter(company=company).exists():
-            return Response({"detail": "Connect the company's Track account first: intake "
-                                       "forms write to Track."}, status=400)
-        company.intake_forms_enabled = enabled
-        company.save(update_fields=["intake_forms_enabled"])
-        if enabled:
-            services.form_for(company)
-        AuditEvent.all_objects.create(tenant_id=company.tenant_id, actor=request.user,
-                                      verb="intake.switched", target_type="company",
-                                      target_id=company.pk, payload={"enabled": enabled})
-        return Response({"enabled": enabled})
 
 
 def _form_payload(form, lists, status) -> dict:

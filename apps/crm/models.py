@@ -70,8 +70,8 @@ class Company(TenantScopedModel):
     #: their teammates' tasks in the current sprint (title, owner, status),
     #: read only. Off: their own tasks and the team line only.
     sprint_team_tasks = models.BooleanField(default=True, db_default=True)
-    #: Intake forms (docs/p14_intake_forms.md), switched on by the practice
-    #: owner for a client company with a Track connection.
+    #: Intake forms (docs/p14_intake_forms.md): SkyRun Park City's alone,
+    #: switched by `manage.py intake_forms`, never in the app (owner, 2026-11-20).
     intake_forms_enabled = models.BooleanField(default=False, db_default=False)
     fiscal_year_start = models.PositiveSmallIntegerField(default=1, db_default=1)
 

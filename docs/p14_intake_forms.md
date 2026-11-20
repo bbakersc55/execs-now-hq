@@ -37,8 +37,28 @@ on one of its teams. Nobody else (not associates or assistants; owner,
 **at Manager** unless the client owner lowers it (`work.teams.UNCHOSEN_LEVEL`),
 so every SkyRun portal user still at that default counts as a manager here.
 
-The feature is switched on per company by the practice owner (company page,
-"Owner intake forms"), and needs the company's Track connection.
+**SkyRun Park City's alone** (owner, 2026-11-20): intake forms are not a
+feature offered to other ENHQ clients or practices. There is no switch in the
+app, for any practice owner. The owner switches a company on or off in the
+Railway shell, and on needs the company's Track connection:
+
+    python manage.py intake_forms <company-id>          says whether it's on
+    python manage.py intake_forms <company-id> on|off
+
+The company's id is the end of its page's address. Each change is in the
+audit log (`intake.switched`, no actor, `by: manage.py intake_forms`).
+
+Nothing about intake forms shows anywhere unless they are on for that company:
+the company page's "Owner intake forms" card (practice owner, that company
+only, links to Intakes and Form settings), the "Owner intake" menu item, the
+"Owner intake forms" notification choice (only for someone who runs a company
+with them on), and the routes. Switched off, the owner's links, the form's
+pages, its logo and icon, and its own domain all answer "This page isn't
+here", still white label; switched back on, the same links open again.
+Not changed by switching off: the hourly owner-dates job still places dates
+already held for a unit sent to Track, and reminds the managers weekly.
+Tests: `tests/test_intake_skyrun_only.py`, and the company page's in
+`frontend/src/screens/CompanyDetail.test.tsx`.
 
 ## The owner's form
 

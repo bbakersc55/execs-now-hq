@@ -308,30 +308,19 @@ function AddCommon({ amenities, onAdd }: { amenities: { id: number; name: string
   );
 }
 
-/** On the company page, for the practice owner: switch intake forms on. */
+/** The company page's card, for the practice owner, only while this company
+ *  has intake forms on. Intake forms are SkyRun's alone (owner, 2026-11-20):
+ *  there is no switch in the app; `manage.py intake_forms` turns them on or
+ *  off, so nothing about them shows for any other company or practice. */
 export function IntakeCard({ companyId }: { companyId: string }) {
-  const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["intake-switch", companyId],
-                              queryFn: () => intake.switch(companyId) });
-  const [problem, setProblem] = useState("");
-  if (!data) return null;
+  const { data } = useQuery({ queryKey: ["intake-companies"], queryFn: intake.companies });
+  if (!data?.companies.some((c) => c.id === companyId)) return null;
   return (
     <Card title="Owner intake forms">
       <p className="small" style={{ marginTop: 0 }}>A white-labelled form new property owners
         fill in on a personal link; the company's managers review it and send it to Track.</p>
-      {!data.has_track && <p className="muted small">Connect the company's Track account first.</p>}
-      <label className="intake-inline"><input type="checkbox" checked={data.enabled}
-        disabled={!data.has_track && !data.enabled} onChange={async () => {
-          setProblem("");
-          try {
-            await intake.setSwitch(companyId, !data.enabled);
-            await qc.invalidateQueries({ queryKey: ["intake-switch", companyId] });
-            await qc.invalidateQueries({ queryKey: ["me"] });
-          } catch (e) { setProblem((e as Error).message); }
-        }} /> On for this company</label>
-      {data.enabled && <p className="small"><Link to={`/intake?company=${companyId}`}>Intakes</Link>
-        {" · "}<Link to={`/intake/settings/${companyId}`}>Form settings</Link></p>}
-      {problem && <Banner kind="warn">{problem}</Banner>}
+      <p className="small"><Link to={`/intake?company=${companyId}`}>Intakes</Link>
+        {" · "}<Link to={`/intake/settings/${companyId}`}>Form settings</Link></p>
     </Card>
   );
 }

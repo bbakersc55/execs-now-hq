@@ -59,6 +59,16 @@ def form_for_host(host: str):
         if form_id else None
 
 
+def company_on(company) -> bool:
+    """Whether the company still has intake forms switched on. Off, its
+    links, pages and images answer as if they never existed."""
+    return bool(company.intake_forms_enabled and company.deleted_at is None)
+
+
+def is_on(form) -> bool:
+    return company_on(form.company)
+
+
 def live_hosts() -> set:
     return {h.lower() for h in getattr(settings, "INTAKE_FORM_HOSTS", [])}
 
@@ -75,6 +85,8 @@ class FormDomainMiddleware:
         if form is None:
             return self.get_response(request)
         request.intake_form = form
+        if not is_on(form):
+            return not_found(form)
         path = request.path_info
         match = TOKEN_PATH.match(path)
         if match and request.method in ("GET", "HEAD"):
@@ -141,8 +153,8 @@ def shell(request, token=None, slug=None, form=None):
     from .models import IntakeForm
 
     if form is None:
-        form = IntakeForm.all_objects.filter(slug=slug).first()
-        if form is None:
+        form = IntakeForm.all_objects.select_related("company").filter(slug=slug).first()
+        if form is None or not is_on(form):
             return _respond(_plain("This page isn't here", "Check the link you were sent.",
                                    None), 404)
     index = _built_index()

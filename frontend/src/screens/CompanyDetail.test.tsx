@@ -397,3 +397,47 @@ describe("the primary contact on the People list", () => {
   });
 
 });
+
+// Intake forms are SkyRun's alone (owner, 2026-11-20): no switch anywhere in
+// the app, and the card only on the company that has them on.
+describe("CompanyDetail: owner intake forms", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  function renderFor(me: ReturnType<typeof aMe>, intakeCompanies?: string[]) {
+    const fetchMock = mockApi({
+      [`/api/companies/${COMPANY_ID}/timeline/`]: [],
+      [`/api/companies/${COMPANY_ID}/`]: aCompany(),
+      "/api/contacts/": [],
+      ...(intakeCompanies ? { "/api/intake/companies": {
+        companies: intakeCompanies.map((id) => ({ id, name: "SkyRun Park City" })) } } : {}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderRoute(<CompanyDetail me={me} />, {
+      path: "/companies/:id", route: `/companies/${COMPANY_ID}`,
+    });
+    return fetchMock;
+  }
+
+  it("shows nothing, and asks nothing, in a practice without intake forms", async () => {
+    const fetchMock = renderFor(aMe());
+    expect(await screen.findByRole("heading", { name: "Adapt CFO" })).toBeInTheDocument();
+    expect(screen.queryByText(/intake/i)).not.toBeInTheDocument();
+    expect(fetchMock.calls.some((c) => c.url.includes("/api/intake"))).toBe(false);
+  });
+
+  it("shows nothing on another company of the practice that has them", async () => {
+    renderFor(aMe({ has_intake: true }), ["skyrun-company-id"]);
+    expect(await screen.findByRole("heading", { name: "Adapt CFO" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/intake/i)).not.toBeInTheDocument());
+  });
+
+  it("shows the card with its links, and no switch, on the company that has them on", async () => {
+    renderFor(aMe({ has_intake: true }), [COMPANY_ID]);
+    expect(await screen.findByText("Owner intake forms")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Form settings" }))
+      .toHaveAttribute("href", `/intake/settings/${COMPANY_ID}`);
+    expect(screen.getByRole("link", { name: "Intakes" }))
+      .toHaveAttribute("href", `/intake?company=${COMPANY_ID}`);
+    expect(screen.queryByRole("checkbox", { name: /On for this company/ })).not.toBeInTheDocument();
+  });
+});

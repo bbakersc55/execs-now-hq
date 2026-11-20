@@ -4,7 +4,6 @@ from . import views
 
 urlpatterns = [
     path("intake/companies", views.CompaniesView.as_view()),
-    path("intake/companies/<str:company_id>/switch", views.SwitchView.as_view()),
     path("intake/companies/<str:company_id>/form", views.FormView.as_view()),
     path("intake/companies/<str:company_id>/form/image", views.FormImageView.as_view()),
     path("intake/companies/<str:company_id>/refresh", views.RefreshView.as_view()),
