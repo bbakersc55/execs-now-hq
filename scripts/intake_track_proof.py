@@ -5,11 +5,20 @@ and the Track client), creating a second test set named "ZZ TEST 2 ... DELETE
 ME": the owner inactive, the unit inactive and not bookable.
 
 Run in production's web container with `manage.py shell` (the key lives only
-there), by scripts/intake_track_proof.sh, which ships the modules alongside.
-A guard refuses every write but these: creating a contact, owner or unit whose
-name starts "ZZ TEST 2", and writing to what this proof itself created. Its
-state is kept in /tmp/zztest2_state.json, so running it again carries on
-without duplicates ("Try the rest again").
+there), by scripts/intake_track_proof.sh, which unpacks the modules into a
+private folder ($INTAKE_PROOF_DIR) and removes it afterwards. The modules are
+imported from the END of the import path, and checked to be this run's own.
+
+ENHQ's database: one read (SkyRun's Track connection, with its company) in a
+READ ONLY transaction; then the connection is closed and any further query
+stops the proof. It writes nothing to ENHQ.
+
+Track: only skyrunparkcity.trackhs.com. A guard refuses every write but these:
+creating a contact, owner or unit whose name starts "ZZ TEST 2", and writing
+to what this proof itself created. Progress (Track ids and step names, never a
+value) is kept in /tmp/zztest2_state.json so running it again carries on
+without duplicates ("Try the rest again"), and once everything is done a run
+stops before Track. The file stays in the container until the next deploy.
 """
 
 import json
@@ -18,23 +27,52 @@ import re
 import sys
 from datetime import date
 
-sys.path.insert(0, "/tmp/intake_proof_pkg")
+from django.db import connection, transaction
 
-from intake_proof import defaults, plan, track, track_writer, trackread  # noqa: E402
+from apps.crm.services.secrets import decrypt
+from apps.scorecard.models import TrackConnection
 
-from apps.crm.services.secrets import decrypt  # noqa: E402
-from apps.scorecard.models import TrackConnection  # noqa: E402
+PROOF_DIR = os.path.realpath(os.environ["INTAKE_PROOF_DIR"])
+sys.path.append(os.path.join(PROOF_DIR, "lib"))  # last: it can shadow nothing
+
+from intake_proof import (  # noqa: E402
+    defaults, derive, plan, schema, track, track_writer, trackread,
+)
+
+for _module in (defaults, derive, plan, schema, track, track_writer, trackread):
+    if not os.path.realpath(_module.__file__).startswith(PROOF_DIR + os.sep):
+        raise SystemExit(f"STOPPED: {_module.__name__} isn't this run's own copy")
 
 STATE = "/tmp/zztest2_state.json"
 PREFIX = "ZZ TEST 2"
+TRACK_BASE = "https://skyrunparkcity.trackhs.com/api"
 
 
 def p(*a):
     print(*a, flush=True)
 
 
-conn = TrackConnection.all_objects.select_related("company").filter(
-    company__name__icontains="skyrun").first()
+# ENHQ's database: this one read, in a read-only transaction, and nothing else.
+with transaction.atomic():
+    with connection.cursor() as cursor:
+        cursor.execute("SET TRANSACTION READ ONLY")
+    found = list(TrackConnection.all_objects.select_related("company").filter(
+        company__name__icontains="skyrun"))
+    if len(found) != 1:
+        raise SystemExit(f"STOPPED: expected one SkyRun Track connection, found {len(found)}")
+    conn = found[0]
+    TRACK_DOMAIN = conn.domain
+    TRACK_KEY, TRACK_SECRET = decrypt(conn.key_ciphertext), decrypt(conn.secret_ciphertext)
+connection.close()
+
+
+def _no_database(execute, sql, params, many, context):
+    raise SystemExit("STOPPED: the proof touches ENHQ's database only to read the Track key")
+
+
+connection.execute_wrapper(_no_database).__enter__()
+p("ENHQ database: read SkyRun's Track connection (read-only), then closed")
+
 created = {"contact": set(), "owner": set(), "company": set(), "unit": set()}
 if os.path.exists(STATE):
     saved = json.load(open(STATE))
@@ -47,6 +85,10 @@ if os.path.exists(STATE):
         created["company"].add(int(ids["owner_company"]))
 else:
     saved = {}
+if saved.get("complete"):
+    p("STOPPED: this proof already finished; nothing sent. Track ids: "
+      + json.dumps(saved.get("ids", {})))
+    raise SystemExit(0)
 
 
 def guard(method, path, body):
@@ -71,6 +113,8 @@ def guard(method, path, body):
 
 
 def guarded_send(method, url, headers, body):
+    if not url.startswith(TRACK_BASE + "/"):
+        raise SystemExit(f"GUARD REFUSED {method}: not SkyRun Park City's Track")
     path = re.sub(r"^https?://[^/]+/api", "", url)
     if not guard(method, path, body):
         raise SystemExit(f"GUARD REFUSED {method} {track.path_template(path)}")
@@ -91,8 +135,9 @@ def guarded_send(method, url, headers, body):
     return status, response_headers, text
 
 
-client = track.TrackClient(conn.domain, decrypt(conn.key_ciphertext),
-                           decrypt(conn.secret_ciphertext), sender=guarded_send)
+client = track.TrackClient(TRACK_DOMAIN, TRACK_KEY, TRACK_SECRET, sender=guarded_send)
+if client.base != TRACK_BASE:
+    raise SystemExit(f"STOPPED: SkyRun's Track connection points at {client.base}")
 p(f"Track: {client.base}")
 lists = trackread.fetch(client)
 p("Lists read: " + ", ".join(f"{k} {len(v)}" for k, v in lists.items()))
@@ -139,7 +184,6 @@ answers = {
     "stays": {"has": "yes", "ranges": [{"start": "2027-12-20", "end": "2027-12-27"}]},
     "custom": {},
 }
-# Made-up values, held in memory only, never printed.
 # Made up for each run and kept only in memory: never printed, logged or saved.
 # A tax id starting 00 is never issued, so this one can't be anyone's.
 _rand = __import__("secrets").SystemRandom()
@@ -147,8 +191,6 @@ SECRETS = {"tax_id": "00-" + "".join(str(_rand.randrange(10)) for _ in range(7))
            "wifi_password": "zz-test-2-" + __import__("secrets").token_hex(4),
            "code:door": str(_rand.randrange(1000, 10000)),
            "code:alarm": str(_rand.randrange(1000, 10000))}
-from intake_proof import derive, schema  # noqa: E402
-
 answers = schema.clean(answers, custom_allowed=set())
 staff = derive.staff_with_defaults({
     "node_id": named("nodes", "ZProperty Management"),
@@ -180,6 +222,14 @@ ok, failed, message = track_writer.execute(
     the_plan, client, state, secret=lambda name: SECRETS.get(name), save=save,
     confirm=confirmed.append, track_errors=(track.TrackUnavailable,))
 p(f"\nRESULT: {'all done' if ok else f'stopped at {failed}: {message}'}")
+if ok:
+    state["complete"] = True
+    json.dump(state, open(STATE, "w"))
+    p(f"STATE: complete; {STATE} keeps Track ids and step names only, so running "
+      "the line again stops before Track")
+else:
+    p(f"STATE: kept in {STATE} (Track ids and step names only); run the same line "
+      "again to carry on")
 p(f"Secrets Track confirmed it holds: {sorted(confirmed)}")
 ids = state["ids"]
 p("IDS: " + json.dumps({k: v for k, v in ids.items()}))

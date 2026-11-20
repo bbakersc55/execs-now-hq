@@ -307,12 +307,29 @@ and neither changes `crm/services/secrets.py`. Schedules `intake.place_owner_dat
   Twin x2; a Queen sofa bed in the living room; a full and a half bath), its
   amenities and custom fields, a TV count of 2, a door and an alarm code, and
   the ownership on Standard 30 (standard/pmc). No blocks, nothing on any other
-  record. Its guard refuses any write whose target isn't a ZZ TEST 2 name or an
-  id this run created, and it keeps what it made in `/tmp/zztest2_state.json`
-  in the container, so a second run carries on and makes no duplicates.
-  Dry-run on the laptop against the fake Track, twice: 40 calls, then 23 with
-  every create found and skipped; no owner PUT or PATCH; the guard refused
-  unit 221, owner 265, company 301, a non-ZZ unit and a block.
+  record. Its guard refuses any write that isn't to skyrunparkcity.trackhs.com,
+  to a ZZ TEST 2 name, or to an id this run created.
+  - **Where it runs:** production's web container, under `manage.py shell`.
+    The modules are unpacked into a new private folder
+    (`mktemp -d /tmp/intake_proof.XXXXXXXX`), never the app's folder, and
+    imported from the end of Python's path under the one name `intake_proof`,
+    each checked to be this run's own copy, so nothing of the app's can be
+    overwritten or shadowed.
+  - **ENHQ's database:** one read (SkyRun's Track connection and its company,
+    exactly one or it stops) in a `READ ONLY` transaction; then the connection
+    is closed and any further query stops the proof. It writes nothing.
+  - **Cleanup:** the remote shell removes the folder on any exit (success,
+    failure, hangup, Ctrl-C, terminate), and the laptop's packing folder goes
+    the same way. Progress (Track ids and step names, no values) is kept in
+    `/tmp/zztest2_state.json` until the next deploy: a failed run carries on
+    where it stopped, and a finished one stops before Track if run again.
+  - **Checked on the laptop, 2026-11-19 (not against Track):** against the
+    fake Track, a full run, a repeat (0 calls), a refusal at a code then a
+    re-run (one set, no duplicates), no owner PUT or PATCH; the guard refused
+    unit 221, owner 265, company 301, a non-ZZ unit and a block. Through a
+    stand-in for `railway ssh` on a scratch database: the read-only read, the
+    stop on a connection that isn't SkyRun's before any network call, and no
+    folders left after a normal end, a hangup, Ctrl-C or terminate.
 - The fake-Track run (2026-11-19, `INTAKE_FAKE_RUN_LOG`): a new owner, an
   existing owner (unit and ownership only, nothing on the owner), a refusal at
   the door code then "Try the rest again" (every earlier step found, none
