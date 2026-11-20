@@ -253,15 +253,25 @@ def check_track(submission, client) -> dict:
     return out
 
 
-def staff_choices(submission, form_settings, lists) -> dict:
+def practice_today(submission):
+    """Today in the practice's time zone. Never the server's date: the server
+    runs on UTC, so from 17:00 in Utah its date is already tomorrow (the proof
+    on SkyRun's Track, 2026-11-19 18:30 MST, started its codes on the 20th)."""
+    from apps.scorecard import board
+
+    return board.today_for(submission.tenant)
+
+
+def staff_choices(submission, form_settings, lists, *, today=None) -> dict:
     return derive.staff_with_defaults(submission.staff, submission.answers or {},
-                                      form_settings, lists)
+                                      form_settings, lists,
+                                      today or practice_today(submission))
 
 
 def save_staff(submission, changes: dict, actor):
     if submission.locked:
         raise Refused("This intake was sent to Track. Later changes are made in Track.", 409)
-    allowed = set(derive.staff_defaults({}, {}, {}).keys())
+    allowed = set(derive.staff_defaults({}, {}, {}, practice_today(submission)).keys())
     current = dict(submission.staff or {})
     for key, value in (changes or {}).items():
         if key in allowed:
@@ -272,13 +282,15 @@ def save_staff(submission, changes: dict, actor):
     return submission
 
 
-def build_plan(submission, lists, form_settings, *, owner_active=None, unit_bookable=None):
-    staff = staff_choices(submission, form_settings, lists)
+def build_plan(submission, lists, form_settings, *, owner_active=None, unit_bookable=None,
+               today=None):
+    today = today or practice_today(submission)
+    staff = staff_choices(submission, form_settings, lists, today=today)
     held = vault.masked(submission)
     return plan.build(answers=submission.answers or {}, staff=staff, settings=form_settings,
                       lists=lists, brand=submission.form.brand_name,
                       has_tax_id=bool(held["tax_id"]), owner_active=owner_active,
-                      unit_bookable=unit_bookable)
+                      unit_bookable=unit_bookable, today=today)
 
 
 # ------------------------------------------------------------ sending
@@ -332,14 +344,15 @@ def run_send(run, *, client=None, today=None):
     from . import checklist, notices, ownerdates, track_writer
 
     submission = run.submission
+    today = today or practice_today(submission)
     run.state = SendRun.State.RUNNING
     run.save(update_fields=["state"])
     lists, _ = tracklists.lists_for(submission.company)
     form_settings = settings_of(submission.form, lists)
-    the_plan = build_plan(submission, lists, form_settings)
+    the_plan = build_plan(submission, lists, form_settings, today=today)
     state = dict(submission.track or {})
     state.setdefault("ids", {})
-    staff = staff_choices(submission, form_settings, lists)
+    staff = staff_choices(submission, form_settings, lists, today=today)
     if the_plan["mode"] == "existing" and staff.get("existing_owner_id"):
         state["ids"]["owner"] = staff["existing_owner_id"]
     for index, contact_id in (staff.get("reuse_contacts") or {}).items():
@@ -366,7 +379,7 @@ def run_send(run, *, client=None, today=None):
         track_errors=(track.TrackUnavailable,))
     if not ok:
         return _failed(run, submission, failed_key, message)
-    sent_on = today or timezone.localdate()
+    sent_on = today
     with tenant_context(submission.tenant_id):
         sender = run.started_by
         if submission.project_id is None:

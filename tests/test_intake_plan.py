@@ -21,6 +21,9 @@ def fixture(name):
     return next(f["id"] for f in LISTS["bathroom_amenities"] if f["name"] == name)
 
 
+TODAY = date(2026, 11, 19)  # the practice's date; never the server's
+
+
 def answers(**over):
     a = {
         "about": {"first_name": "Alex", "last_name": "Sample", "account_name": "Sample Homes LLC",
@@ -63,7 +66,7 @@ def answers(**over):
 
 def staff(**over):
     a = answers()
-    s = derive.staff_with_defaults({"node_id": 24, **over}, a, SETTINGS, LISTS)
+    s = derive.staff_with_defaults({"node_id": 24, **over}, a, SETTINGS, LISTS, TODAY)
     return s
 
 
@@ -142,7 +145,7 @@ def test_unit_type_and_name_are_preselected():
     assert s["unit_name"] == "400 Lift Road" and s["start_date"] == "2030-01-10"
     assert s["contract_effective_date"] == "2030-01-10" and s["contract_id"] == 1
     assert derive.unit_type_for(0, LISTS) == 2           # Studio
-    assert derive.staff_defaults(answers(), SETTINGS, LISTS)["node_id"] is None
+    assert derive.staff_defaults(answers(), SETTINGS, LISTS, TODAY)["node_id"] is None
 
 
 # ------------------------------------------------------------ amenities and fields
@@ -204,7 +207,7 @@ def test_new_owner_plan_order_and_bodies():
 def test_existing_owner_plan_writes_nothing_to_the_owner():
     s = staff(owner_mode="existing", existing_owner_id=900)
     p = plan.build(answers=answers(), staff=s, settings=SETTINGS, lists=LISTS, brand="X",
-                   has_tax_id=True)
+                   has_tax_id=True, today=TODAY)
     keys = [step["key"] for step in p["steps"]]
     assert not any(k.startswith(("contact:", "link:")) or k == "owner" for k in keys)
     assert keys[0] == "unit" and keys[-1] == "ownership"
@@ -213,8 +216,8 @@ def test_existing_owner_plan_writes_nothing_to_the_owner():
 
 def test_plan_problems_block_a_send():
     bad = answers(about={**answers()["about"], "email": "alex@example.com"})
-    p = plan.build(answers=bad, staff=derive.staff_with_defaults({}, bad, SETTINGS, LISTS),
-                   settings=SETTINGS, lists=LISTS, brand="X", has_tax_id=False)
+    p = plan.build(answers=bad, staff=derive.staff_with_defaults({}, bad, SETTINGS, LISTS, TODAY),
+                   settings=SETTINGS, lists=LISTS, brand="X", has_tax_id=False, today=TODAY)
     text = " ".join(p["problems"])
     assert "test domain" in text and "Pick the area" in text
     assert any("Tax ID was chosen" in w for w in p["warnings"])
@@ -222,7 +225,7 @@ def test_plan_problems_block_a_send():
 
 def test_the_proof_can_keep_the_owner_inactive():
     p = plan.build(answers=answers(), staff=staff(), settings=SETTINGS, lists=LISTS, brand="X",
-                   has_tax_id=False, owner_active=False, unit_bookable=False)
+                   has_tax_id=False, owner_active=False, unit_bookable=False, today=TODAY)
     owner = next(s for s in p["steps"] if s["key"] == "owner")
     assert owner["body"]["isActive"] is False and "taxId" not in owner["body"]
 

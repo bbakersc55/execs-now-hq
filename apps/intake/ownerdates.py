@@ -53,7 +53,10 @@ def place(submission, client, lists, *, today=None, actor=None) -> dict:
     a sentence for the person who asked."""
     from apps.scorecard import track
 
-    today = today or timezone.localdate()
+    if today is None:
+        from .services import practice_today
+
+        today = practice_today(submission)  # the practice's midnight, not UTC's
     held = list(submission.owner_dates.filter(state=OwnerDate.State.HELD))
     out = {"placed": 0, "held": 0, "refused": 0, "expired": 0, "text": ""}
     unit_id = (submission.track or {}).get("ids", {}).get("unit")

@@ -174,10 +174,12 @@ def ready_date(answers):
     return None
 
 
-def staff_defaults(answers, settings, lists) -> dict:
-    """The reviewer's choices before they change any: what the form preselects."""
+def staff_defaults(answers, settings, lists, today: date) -> dict:
+    """The reviewer's choices before they change any: what the form preselects.
+    `today` is the practice's date (services.practice_today), never the
+    server's: from 17:00 in Utah the server's UTC date is already tomorrow."""
     n = counts(answers, lists)["bedrooms"]
-    start = ready_date(answers) or date.today().isoformat()
+    start = ready_date(answers) or today.isoformat()
     name = street_line(answers.get("property"))
     return {
         "node_id": None,                      # owner, 2026-11-19: the reviewer must pick
@@ -200,8 +202,8 @@ def staff_defaults(answers, settings, lists) -> dict:
     }
 
 
-def staff_with_defaults(staff, answers, settings, lists) -> dict:
-    merged = staff_defaults(answers, settings, lists)
+def staff_with_defaults(staff, answers, settings, lists, today: date) -> dict:
+    merged = staff_defaults(answers, settings, lists, today)
     for key, value in (staff or {}).items():
         if value is not None or key in ("node_id", "existing_owner_id", "sleeps_total"):
             merged[key] = value

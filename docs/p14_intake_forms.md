@@ -231,6 +231,16 @@ from Track's record; new other owners become a checklist task.
 Owner active (as Make does) and new units not bookable are the form's
 defaults; the production proof keeps the owner inactive.
 
+**Dates are the practice's dates** (fixed 2026-11-19, after the production
+proof): "today" is today in the practice's time zone (`services.practice_today`,
+via `scorecard.board.today_for`), never the server's. The server runs on UTC,
+so from 17:00 to midnight in Utah its date is already tomorrow. That date is
+used for the default start and Contract Effective Date when there's no ready
+date, the codes' start date, the send day that checklist due dates count
+from, and the day a held owner date expires. The pure modules (`derive`,
+`plan`) take `today` as a required argument; `tests/test_intake_dates.py` pins
+the clock to 18:30 MST and scans the module for any use of the server's date.
+
 Staff-only choices: the area (must be picked; Make uses node 14), contract (by
 id, "Standard 30" preselected), Management Agreement Type (Full Service), start
 date and Contract Effective Date (both default to the ready date, set
@@ -296,7 +306,7 @@ and neither changes `crm/services/secrets.py`. Schedules `intake.place_owner_dat
   Track in `tests/intake_fake_track.py`, which has SkyRun's real lists, settings
   only, and the write behaviour above), `test_intake_white_label.py`, plus
   tenant isolation for all eight models and `frontend/src/forms/forms.test.tsx`.
-- The production proof, prepared: `scripts/intake_track_proof.sh` sends one
+- The production proof: `scripts/intake_track_proof.sh` sends one
   complete submission through this code to SkyRun's Track, creating a "ZZ TEST 2
   … DELETE ME" set (owner inactive, unit inactive and not bookable).
   It reads Track's lists, builds the plan with `plan.build`, and sends it with
@@ -330,6 +340,28 @@ and neither changes `crm/services/secrets.py`. Schedules `intake.place_owner_dat
     stand-in for `railway ssh` on a scratch database: the read-only read, the
     stop on a connection that isn't SkyRun's before any network call, and no
     folders left after a normal end, a hangup, Ctrl-C or terminate.
+  - **Ran on SkyRun's Track, 2026-11-19 at 18:30 MST** (Bryan's `!` line, log
+    in `~/intake_proof_zztest2.log`): all 16 steps done in 40 calls, no guard
+    refusal, problem or error. ENHQ's database: the one read-only read.
+    Created, all ZZ TEST 2 and inactive: contacts 10922 and 10923; owner 266
+    (company 302) with its tax id set, both contacts linked; unit 222, not
+    bookable, node 24 (ZProperty Management), type 2 Bedrooms, Condo, rooms on;
+    rooms 1508-1512 (Bedroom 1, Bedroom 2, the living room as `common`, a full
+    and a half bath), from which Track derived 2 bedrooms, 1 full and 1 half
+    bath, `maxOccupancy` 6 as sent; amenities and custom fields (PUT 200) and
+    the second TV (201); codes 553 (door) and 554 (alarm); ownership 226 on
+    Standard 30, standard/pmc. Track accepted all four sensitive values.
+    It showed one bug, since fixed: the ownership and codes started on the
+    20th, the server's UTC date (see "Dates are the practice's dates").
+    Bryan deletes these in Track with the first set (unit 221, owner 265 /
+    company 301, contacts 10919 and 10920); contact 10921 isn't ours.
+  - **Still unproven against the real Track:** the amenity and custom-field
+    values were accepted but not read back; the app's own side (the worker,
+    the review screen, Send to Track) has run only against the fake Track,
+    since the proof drove the same `plan` and `track_writer` directly; an
+    existing owner, "Try the rest again" and the duplicate check (nothing
+    failed); and a block on a bookable but inactive unit (owner dates), which
+    stays untested by the owner's choice.
 - The fake-Track run (2026-11-19, `INTAKE_FAKE_RUN_LOG`): a new owner, an
   existing owner (unit and ownership only, nothing on the owner), a refusal at
   the door code then "Try the rest again" (every earlier step found, none

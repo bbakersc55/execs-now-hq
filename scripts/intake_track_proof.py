@@ -25,9 +25,10 @@ import json
 import os
 import re
 import sys
-from datetime import date
+from zoneinfo import ZoneInfo
 
 from django.db import connection, transaction
+from django.utils import timezone
 
 from apps.crm.services.secrets import decrypt
 from apps.scorecard.models import TrackConnection
@@ -56,12 +57,15 @@ def p(*a):
 with transaction.atomic():
     with connection.cursor() as cursor:
         cursor.execute("SET TRANSACTION READ ONLY")
-    found = list(TrackConnection.all_objects.select_related("company").filter(
+    found = list(TrackConnection.all_objects.select_related("company__tenant").filter(
         company__name__icontains="skyrun"))
     if len(found) != 1:
         raise SystemExit(f"STOPPED: expected one SkyRun Track connection, found {len(found)}")
     conn = found[0]
     TRACK_DOMAIN = conn.domain
+    # The practice's date, not the server's (UTC): the first run, at 18:30 MST on
+    # 2026-11-19, started its ownership and codes on the 20th.
+    TODAY = timezone.now().astimezone(ZoneInfo(conn.company.tenant.timezone)).date()
     TRACK_KEY, TRACK_SECRET = decrypt(conn.key_ciphertext), decrypt(conn.secret_ciphertext)
 connection.close()
 
@@ -195,11 +199,11 @@ answers = schema.clean(answers, custom_allowed=set())
 staff = derive.staff_with_defaults({
     "node_id": named("nodes", "ZProperty Management"),
     "unit_name": f"{PREFIX} - ENHQ INTAKE PROOF - DELETE ME", "short_name": f"{PREFIX} PROOF",
-    "shares": {"1": 50}, "start_date": date.today().isoformat(),
-    "contract_effective_date": date.today().isoformat()}, answers, settings, lists)
+    "shares": {"1": 50}, "start_date": TODAY.isoformat(),
+    "contract_effective_date": TODAY.isoformat()}, answers, settings, lists, TODAY)
 the_plan = plan.build(answers=answers, staff=staff, settings=settings, lists=lists,
                       brand="SkyRun Park City", has_tax_id=True, owner_active=False,
-                      unit_bookable=False)
+                      unit_bookable=False, today=TODAY)
 p("\nWHAT WILL BE SENT")
 for line in the_plan["summary"]:
     p(f"  - {line}")

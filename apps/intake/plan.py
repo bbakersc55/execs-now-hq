@@ -71,13 +71,13 @@ def _names(lists, key):
     return derive.by_id(lists.get(key))
 
 
-def build(*, answers, staff, settings, lists, brand, has_tax_id, today=None,
+def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
           owner_active=None, unit_bookable=None) -> dict:
     """The plan for one submission. `staff` is the reviewer's choices merged
     with the defaults (`derive.staff_with_defaults`). `has_tax_id`: a tax id is
     saved and Tax ID was chosen. `owner_active`/`unit_bookable` override the
-    form's settings (the production proof keeps both off)."""
-    today = today or date.today()
+    form's settings (the production proof keeps both off). `today` is the
+    practice's date (services.practice_today), never the server's."""
     staff = staff or {}
     mode = "existing" if staff.get("owner_mode") == "existing" else "new"
     problems, warnings, summary, steps = [], [], [], []

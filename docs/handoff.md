@@ -2,7 +2,7 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-19 UTC**, after Release 48 and the intake forms build. **The next session starts at
-"2026-11-19, evening: intake forms (P14)" just below**; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+"2026-11-19, evening: intake forms (P14), on `dev`" just below**; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -33,37 +33,60 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-19, evening: intake forms (P14), built on `intake-forms`, not merged
+## 2026-11-19, evening: intake forms (P14), on `dev`, not released
 
 - **What:** SkyRun Park City's new-owner and property intake, written into
   SkyRun's Track. Spec as built: `docs/p14_intake_forms.md` (the Track write
-  behaviour proven live today is there, moved from session memory). Branch
-  `intake-forms` from `dev` (`8b15831`); **merged nowhere, released nowhere**.
-- **Live Track work today** (SkyRun's account, all ZZ TEST, left inactive): the
-  first write test was refused by Track's AWS firewall because of an
-  @example.com email, not by the key; then the full write test (unit 221 with
-  rooms 1502–1507, owner 265 / company 301, contacts 10919–10920, ownership 225,
-  codes 534–552) and a live check (room 1506 typed half bath, sofa-bed room 1507).
-  Bryan deletes unit 221 and owner 265 in Track (no API delete); none of it is
-  bookable, and the hourly owner-dates job never touches them.
+  behaviour proven live is there, moved from session memory). Built on
+  `intake-forms` from `dev` (`8b15831`), then fast-forwarded into `dev` and
+  pushed after a green gate (so the demo has it). **Not released.**
+- **Live Track work** (SkyRun's account, everything named ZZ TEST and left
+  inactive):
+  - The first write test was refused by Track's AWS firewall because of an
+    @example.com email, not because of the key.
+  - The full write test made unit 221 (rooms 1502–1507), owner 265 / company
+    301, contacts 10919–10920, ownership 225 and codes 534–552. A live check
+    then typed room 1506 as a half bath and added sofa-bed room 1507.
+  - **The production proof ran at 18:30 MST** through the feature's own
+    `plan` and `track_writer`: all 16 steps in 40 calls. It made unit 222
+    (rooms 1508–1512, codes 553–554), owner 266 / company 302, contacts
+    10922–10923 and ownership 226. Details and what is still unproven are in
+    the spec, "Proof".
+  - **Bryan deletes both sets in Track** (there's no API delete): units 221
+    and 222, owners 265 and 266, contacts 10919, 10920, 10922 and 10923.
+    Contact 10921 isn't ours. None of these units is bookable, and the hourly
+    owner-dates job never touches them.
+- **Dates fixed after the proof:** it started its ownership and codes on the
+  20th, the server's UTC date. Intake now takes "today" in the practice's time
+  zone everywhere; `tests/test_intake_dates.py` pins the clock to 18:30 MST.
 - **Migrations:** `intake 0001`, `crm 0061_company_intake_forms`,
-  `notify 0007_intake_notices`, `work 0016_intake_task_source`, all additive;
-  applied on the laptop's `execsnowhq_local` after a green gate. At release:
-  the runbook's "Releasing a migration", then `ensure_schedules` (R5b) for
-  `intake.place_owner_dates` (hourly) and `intake.purge` (daily 3:00).
+  `notify 0007_intake_notices` and `work 0016_intake_task_source`, all
+  additive, applied on the laptop's `execsnowhq_local`.
+- **What the release needs beyond a normal one:**
+  - R1–R6 with these four migrations: R3's `WAITING` should list exactly
+    these four.
+  - **R5b**: `ensure_schedules`, for `intake.place_owner_dates` (hourly) and
+    `intake.purge` (daily at 3:00).
+  - After it: the practice owner ticks "Owner intake forms → On for this
+    company" on SkyRun Park City; then Form settings: logo, icon, contact line
+    and "Refresh from Track now".
+  - Before anyone at SkyRun uses it: their portal users' levels, since the
+    default Manager level counts as a manager for intakes.
+  - **Don't run the proof line again after the release.** The deploy clears
+    its progress file, so it would make a second ZZ TEST 2 set.
 - **The owner's bundle** builds separately (`npm run build` now runs both;
-  `vite.forms.config.ts` → `frontend/dist/forms/`, served at `/static/forms/`).
-- **A form's own domain** needs Railway + DNS + `INTAKE_FORM_HOSTS` (steps in
-  the spec); until then links use `app.getexecutivesnow.com/forms/<slug>/…`
-  and the settings warn.
-- **Proof so far:** the full gate, the fake-Track run (new owner, existing
+  `vite.forms.config.ts` → `frontend/dist/forms/`, served at `/static/forms/`;
+  the Dockerfile already builds and collects it).
+- **A form's own domain** is optional for the release. It needs Railway, DNS
+  and `INTAKE_FORM_HOSTS` (steps in the spec). Until then links use
+  `app.getexecutivesnow.com/forms/<slug>/…` and the settings warn.
+- **Other proof:** the full gate, the fake-Track run (new owner, existing
   owner, a failed step resumed, owner dates held then placed) and a browser
-  walk; screenshots in `~/projects/execs-now-hq-walks/intake-2026-11-19/`
+  walk. Screenshots are in `~/projects/execs-now-hq-walks/intake-2026-11-19/`
   (outside the repo).
-- **Open:** the production proof (`scripts/intake_track_proof.sh`, ZZ TEST 2)
-  is prepared, not run; a block on a bookable-but-inactive unit is untested;
-  every SkyRun portal user still at the default Manager level counts as a
-  manager for intakes.
+- **Open:**
+  - A block on a bookable but inactive unit is untested.
+  - The amenity and custom-field values in Track haven't been read back.
 
 ## 2026-11-19: Release 48, priority, company order, connectors in setup
 
