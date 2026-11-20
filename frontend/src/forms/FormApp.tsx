@@ -4,6 +4,7 @@ import {
   useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode,
 } from "react";
 import { FormError, ownerApi, type OwnerPage } from "./api";
+import { Pending, PendingContext } from "./pending";
 import { INTROS, SECTIONS, summarize } from "./sections";
 import type { Answers, Brand, Ctx, FileRow, Secrets, Section } from "./types";
 import { Note } from "./ui";
@@ -71,7 +72,11 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
   const [busy, setBusy] = useState(false);
   const pending = useRef<Map<Section, unknown>>(new Map());
   const timer = useRef<number | undefined>(undefined);
+  const chain = useRef<Promise<boolean>>(Promise.resolve(true));
   const heading = useRef<HTMLHeadingElement>(null);
+  // Sensitive values typed but not saved yet (each SecretField adds itself).
+  const unsaved = useMemo(() => new Pending(), []);
+  const [moveError, setMoveError] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -87,22 +92,43 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
     });
   }, [api, token]);
 
-  const flush = useCallback(async () => {
-    const batch = [...pending.current.entries()];
-    pending.current.clear();
-    if (!batch.length) return;
-    setSaving("saving");
-    try {
-      for (const [section, value] of batch) await api.saveSection(section, value);
-      setSaving("saved");
-    } catch {
-      for (const [section, value] of batch)
-        if (!pending.current.has(section)) pending.current.set(section, value);
-      setSaving("retry");
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => void flush(), 4000);
-    }
+  /** Saves the answers waiting, after any save already on its way, so a
+   *  Submit never overtakes one; false if they couldn't be saved. */
+  const flush = useCallback((): Promise<boolean> => {
+    chain.current = chain.current.then(async () => {
+      const batch = [...pending.current.entries()];
+      pending.current.clear();
+      if (!batch.length) return true;
+      setSaving("saving");
+      try {
+        for (const [section, value] of batch) await api.saveSection(section, value);
+        setSaving("saved");
+        return true;
+      } catch {
+        for (const [section, value] of batch)
+          if (!pending.current.has(section)) pending.current.set(section, value);
+        setSaving("retry");
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => void flush(), 4000);
+        return false;
+      }
+    });
+    return chain.current;
   }, [api]);
+
+  /** Everything typed, saved: the answers and any sensitive value. Continue,
+   *  Back, Edit and Submit wait for it and stay put if it fails. */
+  const saveAll = useCallback(async (): Promise<boolean> => {
+    setMoveError("");
+    const [secretsOk, answersOk] = await Promise.all([unsaved.flush(), flush()]);
+    if (secretsOk && answersOk) return true;
+    setMoveError(secretsOk ? "Your answers aren't saved yet. Check your connection, then try "
+      + "again." : "Something you typed isn't saved yet. See the field marked above, then try "
+      + "again.");
+    window.setTimeout(() => document.querySelector<HTMLElement>(
+      '.ix-main [aria-invalid="true"]')?.focus(), 0);
+    return false;
+  }, [flush, unsaved]);
 
   const update = useCallback(<K extends Section>(section: K, value: Answers[K]) => {
     setAnswers((a) => ({ ...a, [section]: value }));
@@ -114,17 +140,17 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
 
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => {
-      if (pending.current.size) { e.preventDefault(); void flush(); }
+      if (pending.current.size || unsaved.dirty()) { e.preventDefault(); void saveAll(); }
     };
     window.addEventListener("beforeunload", leave);
     return () => window.removeEventListener("beforeunload", leave);
-  }, [flush]);
+  }, [saveAll, unsaved]);
 
   const steps = page?.form?.sections ?? [];
   const index = Math.max(0, steps.findIndex((s) => s.key === stepKey));
   const step = steps[index];
   const go = async (key: string) => {
-    await flush();
+    if (!(await saveAll())) return;
     setStepKey(key);
     window.history.replaceState(null, "", `#${key}`);
     window.scrollTo({ top: 0 });
@@ -192,6 +218,7 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
   const position = counted.findIndex((s) => s.key === step.key) + 1;
 
   return (
+    <PendingContext.Provider value={unsaved}>
     <div className="ix-root" style={brandStyle(brand)}>
       <Header brand={brand} />
       {step.key !== "welcome" && (
@@ -245,6 +272,7 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
             {submitError && <p className="ix-error" role="alert">{submitError}</p>}
           </>
         )}
+        {moveError && <p className="ix-error ix-nav-error" role="alert">{moveError}</p>}
       </main>
       <nav className="ix-nav" aria-label="Form steps">
         {index > 0 ? <button type="button" className="ix-btn ix-btn-ghost"
@@ -259,7 +287,7 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
               setBusy(true);
               setSubmitError("");
               try {
-                await flush();
+                if (!(await saveAll())) return;
                 await api.submit();
                 setPhase("submitted");
                 window.scrollTo({ top: 0 });
@@ -273,5 +301,6 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
       </nav>
       <Footer brand={brand} />
     </div>
+    </PendingContext.Provider>
   );
 }

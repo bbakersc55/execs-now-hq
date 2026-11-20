@@ -75,6 +75,15 @@ def masked(submission) -> dict:
     return out
 
 
+def held_names(submission) -> set[str]:
+    """What is held, by name: "tax_id", "wifi_password", "code:<slot>"."""
+    out = set()
+    for kind, slot in SubmissionSecret.all_objects.filter(submission=submission) \
+            .values_list("kind", "slot"):
+        out.add(f"code:{slot}" if kind == Kind.CODE else kind)
+    return out
+
+
 def _row(submission, name):
     """The row for "tax_id", "wifi_password" or "code:<slot>"."""
     kind, _, slot = name.partition(":")

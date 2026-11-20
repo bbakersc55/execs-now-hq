@@ -2,12 +2,13 @@
  *  editable (live on the welcome call), the staff-only choices, the warnings,
  *  what will be sent, and Send to Track with each step's result. */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Banner, Card, Pill, when } from "../components/ui";
 import "../forms/forms.css";
+import { Pending, PendingContext, useSaver } from "../forms/pending";
 import { INTROS, SECTIONS, summarize } from "../forms/sections";
-import type { Answers, Ctx, FileRow, Secrets, Section } from "../forms/types";
+import type { Answers, Ctx, FileRow, Secrets, SecretState, Section } from "../forms/types";
 import type { Me } from "../lib/api";
 import { intake, type Review, staffFormApi, type Staff, STATUS_KIND } from "../lib/intake";
 
@@ -37,6 +38,9 @@ export function IntakeReview({ me }: { me: Me }) {
                                               queryFn: () => intake.review(id) });
   const [busy, setBusy] = useState("");
   const [problem, setProblem] = useState("");
+  // Whatever is typed in the owner's answers and not saved yet: Send saves it
+  // first (owner, 2026-11-20).
+  const unsaved = useMemo(() => new Pending(), []);
   const set = (r: Review) => qc.setQueryData(["intake", id], r);
   const act = async (label: string, fn: () => Promise<Review | unknown>) => {
     setBusy(label);
@@ -55,7 +59,13 @@ export function IntakeReview({ me }: { me: Me }) {
     </div>;
   if (!data) return <div className="page"><p className="muted">Loading…</p></div>;
   const r = data;
+  const markNone = async (name: string, none: boolean) => {
+    const marks = new Set(r.staff.no_value ?? []);
+    if (none) marks.add(name); else marks.delete(name);
+    set(await intake.staff(r.id, { no_value: [...marks] }));
+  };
   return (
+    <PendingContext.Provider value={unsaved}>
     <div className="page intake-review">
       <p className="muted small" style={{ margin: 0 }}>
         <Link to={`/intake?company=${r.form.company_id}`}>Owner intake</Link> · {r.form.company}</p>
@@ -72,8 +82,8 @@ export function IntakeReview({ me }: { me: Me }) {
       <div className="intake-grid">
         <div className="intake-main">
           {!r.locked && r.status !== "discarded" && <LinkCard r={r} act={act} busy={busy} />}
-          <AnswersCard r={r} />
-          <SecretsCard r={r} />
+          <AnswersCard r={r} markNone={markNone} />
+          <SecretsCard r={r} markNone={markNone} />
           {r.files.length > 0 && (
             <Card title="Documents">
               <ul>{r.files.map((f) => <li key={f.id}><a href={`/api/intake/submissions/${r.id}/files/${f.id}`}
@@ -104,6 +114,7 @@ export function IntakeReview({ me }: { me: Me }) {
         </div>
       </div>
     </div>
+    </PendingContext.Provider>
   );
 }
 
@@ -163,33 +174,68 @@ function LinkCard({ r, act, busy }: { r: Review; busy: string;
 
 // ------------------------------------------------------------ the answers
 
-function AnswersCard({ r }: { r: Review }) {
+function needsOf(r: Review): Record<string, SecretState> {
+  return Object.fromEntries((r.plan.secrets ?? []).map((x) => [x.name, x.state]));
+}
+
+function AnswersCard({ r, markNone }: { r: Review;
+  markNone: (name: string, none: boolean) => Promise<void> }) {
   const qc = useQueryClient();
   const api = useMemo(() => staffFormApi(r.id), [r.id]);
   const [answers, setAnswers] = useState<Answers>(r.answers);
   const [secrets, setSecrets] = useState<Secrets>(r.secrets);
   const [files, setFiles] = useState<FileRow[]>(r.files);
   const [state, setState] = useState("");
-  useEffect(() => { setAnswers(r.answers); setSecrets(r.secrets); setFiles(r.files); },
-            [r.answers, r.secrets, r.files]);
-  const [timer, setTimer] = useState<number | undefined>(undefined);
+  const waiting = useRef<Map<Section, unknown>>(new Map());
+  const timer = useRef<number | undefined>(undefined);
+  const chain = useRef<Promise<boolean>>(Promise.resolve(true));
+  useEffect(() => {
+    // A fresh copy from the server doesn't overwrite an answer still being saved.
+    if (!waiting.current.size) setAnswers(r.answers);
+    setSecrets(r.secrets);
+    setFiles(r.files);
+  }, [r.answers, r.secrets, r.files]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const refresh = () => void qc.invalidateQueries({ queryKey: ["intake", r.id] });
+  /** Saves the answers waiting, after any save on its way; false if it failed. */
+  const flush = (): Promise<boolean> => {
+    window.clearTimeout(timer.current);
+    chain.current = chain.current.then(async () => {
+      const batch = [...waiting.current.entries()];
+      waiting.current.clear();
+      if (!batch.length) return true;
+      setState("Saving…");
+      try {
+        for (const [section, value] of batch) await api.saveSection(section, value);
+        setState("Saved");
+        refresh();
+        return true;
+      } catch (e) {
+        for (const [section, value] of batch)
+          if (!waiting.current.has(section)) waiting.current.set(section, value);
+        setState((e as Error).message);
+        return false;
+      }
+    });
+    return chain.current;
+  };
+  useSaver({ flush, dirty: () => waiting.current.size > 0 });
   const update = <K extends Section>(section: K, value: Answers[K]) => {
     setAnswers((a) => ({ ...a, [section]: value }));
+    waiting.current.set(section, value);
     setState("Saving…");
-    window.clearTimeout(timer);
-    setTimer(window.setTimeout(async () => {
-      try {
-        await api.saveSection(section, value);
-        setState("Saved");
-        void qc.invalidateQueries({ queryKey: ["intake", r.id] });
-      } catch (e) {
-        setState((e as Error).message);
-      }
-    }, 800));
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void flush(), 800);
   };
-  const ctx: Ctx = { form: r.owner_form, answers, update, secrets, setSecrets, files, setFiles,
-                     api, brand: r.form.brand_name, mode: "staff" };
+  const needs = needsOf(r);
+  const ctx: Ctx = { form: r.owner_form, answers, update, secrets,
+                     // What will be sent changes with what is held.
+                     setSecrets: (x) => { setSecrets(x); refresh(); },
+                     files, setFiles, api, brand: r.form.brand_name, mode: "staff",
+                     needs, markNone };
   const keys = r.owner_form.sections.filter((s) => SECTIONS[s.key]);
+  const missingIn = new Set((r.plan.secrets ?? []).filter((x) => x.state === "missing")
+    .map((x) => x.section));
   return (
     <Card title="The owner's answers" actions={<span className="muted small"
       aria-live="polite">{state}</span>}>
@@ -199,10 +245,13 @@ function AnswersCard({ r }: { r: Review }) {
         {keys.map((s) => {
           const Body = SECTIONS[s.key];
           return (
-            <details key={s.key} className="ix-more intake-section">
+            <details key={s.key} className="ix-more intake-section"
+              id={`intake-section-${s.key}`}>
               <summary><strong>{s.title}</strong>
                 <span className="muted small"> · {summarize(ctx, s.key).slice(0, 2).join(" · ")
-                  || "Nothing yet"}</span></summary>
+                  || "Nothing yet"}</span>
+                {!r.locked && missingIn.has(s.key) && <span className="intake-needed">
+                  {" "}· Needed before Send</span>}</summary>
               {r.locked ? (
                 <ul>{summarize(ctx, s.key).map((l, i) => <li key={i}>{l}</li>)}</ul>
               ) : (
@@ -219,32 +268,74 @@ function AnswersCard({ r }: { r: Review }) {
   );
 }
 
-function SecretsCard({ r }: { r: Review }) {
+/** Every sensitive value the answers call for, and any other one held: what
+ *  is saved, done in Track, marked as having none, or still missing, with the
+ *  two ways out for a missing one (owner, 2026-11-20). */
+function SecretsCard({ r, markNone }: { r: Review;
+  markNone: (name: string, none: boolean) => Promise<void> }) {
   const [shown, setShown] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
-  const names: { name: string; label: string; held: boolean; hint?: string }[] = [
-    { name: "tax_id", label: "Business Tax ID", held: !!r.secrets.tax_id,
-      hint: r.secrets.tax_id ? `ending ${r.secrets.tax_id.last4}` : undefined },
-    { name: "wifi_password", label: "Wi-Fi password", held: r.secrets.wifi_password },
-    ...r.derived.codes.map((c) => ({ name: `code:${c.slot}`, label: c.label,
-                                     held: !!r.secrets.codes[c.slot] })),
-  ].filter((x) => x.held);
-  if (!names.length) return null;
+  const needed = r.plan.secrets ?? [];
+  const held = [...(r.secrets.tax_id ? ["tax_id"] : []),
+                ...(r.secrets.wifi_password ? ["wifi_password"] : []),
+                ...Object.keys(r.secrets.codes).filter((k) => r.secrets.codes[k])
+                  .map((k) => `code:${k}`)];
+  const asked = new Set(needed.map((x) => x.name));
+  const rows: { name: string; label: string; section?: string; state: SecretState | "extra" }[]
+    = [...needed, ...held.filter((n) => !asked.has(n)).map((n) => ({
+      name: n, state: "extra" as const,
+      label: n === "tax_id" ? "Business Tax ID" : n === "wifi_password" ? "Wi-Fi password"
+        : `Code (${n.slice(5).replace(/[_-]/g, " ")})` }))];
+  if (!rows.length) return null;
+  const enter = (name: string, section?: string) => {
+    const block = document.getElementById(`intake-section-${section}`) as HTMLDetailsElement
+      | null;
+    if (block) block.open = true;
+    window.setTimeout(() => {
+      const field = document.querySelector<HTMLElement>(`[data-secret="${name}"]`);
+      field?.scrollIntoView({ block: "center" });
+      field?.focus();
+    }, 0);
+  };
+  const act = async (fn: () => Promise<void>) => {
+    setError("");
+    try { await fn(); } catch (e) { setError((e as Error).message); }
+  };
+  const editable = !r.locked && r.status !== "discarded";
   return (
     <Card title="Sensitive values">
-      <p className="muted small" style={{ marginTop: 0 }}>Encrypted, and deleted from ENHQ the
-        moment Track confirms it has them. Each reveal is recorded with who and when.</p>
+      <p className="muted small" style={{ marginTop: 0 }}>What the send needs. Encrypted, and
+        deleted from ENHQ the moment Track confirms it has them. Each reveal is recorded with
+        who and when.</p>
       <ul className="intake-secrets">
-        {names.map((n) => (
-          <li key={n.name}>
-            <span>{n.label}{n.hint ? ` (${n.hint})` : ""}</span>
-            {shown[n.name] ? <code>{shown[n.name]}</code> : (
-              <button type="button" className="ghost small" onClick={async () => {
-                try {
+        {rows.map((n) => (
+          <li key={n.name} className={`secret-${n.state}`}>
+            <span>{n.label}{n.name === "tax_id" && r.secrets.tax_id
+              ? ` (ending ${r.secrets.tax_id.last4})` : ""}
+              <span className="muted small"> · {{
+                held: "saved securely",
+                sent: "done in Track; ENHQ keeps no copy",
+                none: "marked as having none: nothing is sent",
+                missing: "not in ENHQ: needed before Send",
+                extra: "saved, but the answers don't ask for it now: not sent",
+              }[n.state]}</span></span>
+            {(n.state === "held" || n.state === "extra") && (shown[n.name]
+              ? <code>{shown[n.name]}</code> : (
+                <button type="button" className="ghost small" onClick={() => void act(async () => {
                   const out = await intake.reveal(r.id, n.name);
-                  setShown((s) => ({ ...s, [n.name]: out.value }));
-                } catch (e) { setError((e as Error).message); }
-              }}>Reveal</button>
+                  setShown((x) => ({ ...x, [n.name]: out.value }));
+                })}>Reveal</button>))}
+            {editable && n.state === "missing" && (
+              <span className="row" style={{ gap: ".4rem" }}>
+                <button type="button" className="ghost small"
+                  onClick={() => enter(n.name, n.section)}>Enter it</button>
+                <button type="button" className="ghost small"
+                  onClick={() => void act(() => markNone(n.name, true))}>There is none</button>
+              </span>
+            )}
+            {editable && n.state === "none" && (
+              <button type="button" className="link small"
+                onClick={() => void act(() => markNone(n.name, false))}>Undo</button>
             )}
           </li>
         ))}
@@ -453,7 +544,9 @@ const STEP_MARK: Record<string, string> = { done: "✓", skipped: "✓", failed:
                                             running: "…", waiting: "·" };
 
 function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
+  const unsaved = useContext(PendingContext);
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const live = r.run && (r.run.state === "queued" || r.run.state === "running");
   const { data: polled } = useQuery({
@@ -469,6 +562,16 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
   }, [polled, onDone]);
   const send = async () => {
     setError("");
+    // Anything typed in the owner's answers is saved first; if it can't be,
+    // nothing is sent (owner, 2026-11-20).
+    setSaving(true);
+    const saved = !unsaved || await unsaved.flush();
+    setSaving(false);
+    if (!saved) {
+      setError("Something typed in the owner's answers isn't saved yet. See the field marked "
+        + "there, then press Send again.");
+      return;
+    }
     setSending(true);
     try { await intake.send(r.id); } catch (e) { setError((e as Error).message); setSending(false); }
   };
@@ -496,10 +599,10 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
         duplicates.</Banner>}
       {error && <Banner kind="warn">{error}</Banner>}
       {!r.locked && (
-        <button type="button" className="primary" disabled={!r.may_send || sending || !!live}
-          onClick={() => void send()}>
-          {sending || live ? "Sending…" : run?.state === "failed" ? "Try the rest again"
-            : "Send to Track"}</button>
+        <button type="button" className="primary"
+          disabled={!r.may_send || sending || saving || !!live} onClick={() => void send()}>
+          {saving ? "Saving…" : sending || live ? "Sending…" : run?.state === "failed"
+            ? "Try the rest again" : "Send to Track"}</button>
       )}
     </Card>
   );

@@ -1,6 +1,8 @@
 /** Intake forms, the staff side (apps/intake/views.py). */
 import { api } from "./api";
-import type { Answers, FileRow, FormApi, OwnerForm, Secrets, Section } from "../forms/types";
+import type {
+  Answers, FileRow, FormApi, OwnerForm, Secrets, SecretState, Section,
+} from "../forms/types";
 
 export interface IntakeRow {
   id: string; number: number; status: string; status_label: string; owner: string;
@@ -28,6 +30,8 @@ export interface Staff {
   keywords: string[] | null; custom: Record<string, string | string[]>;
   owner_mode: "new" | "existing"; existing_owner_id: number | null;
   reuse_contacts: Record<string, number>;
+  /** Sensitive values marked as having none ("code:door"). */
+  no_value: string[];
 }
 export interface Named { id: number; name: string; [k: string]: unknown }
 
@@ -56,7 +60,9 @@ export interface Review extends IntakeRow {
     unit_type_suggested: number | null;
   };
   plan: { mode: string; summary: string[]; problems: string[]; warnings: string[];
-          steps: { key: string; label: string }[] };
+          steps: { key: string; label: string }[];
+          /** Each sensitive value the answers call for, and its state. */
+          secrets: { name: string; label: string; section: string; state: SecretState }[] };
   check: {
     owners?: { id: number; name: string; isActive?: boolean }[];
     contacts?: Record<string, { id: number; name: string }[]>;

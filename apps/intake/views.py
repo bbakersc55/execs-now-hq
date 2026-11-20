@@ -285,7 +285,10 @@ def review_payload(sub, request) -> dict:
         },
         "plan": {"mode": the_plan["mode"], "summary": the_plan["summary"],
                  "problems": the_plan["problems"], "warnings": the_plan["warnings"],
-                 "steps": [{"key": s["key"], "label": s["label"]} for s in the_plan["steps"]]},
+                 "steps": [{"key": s["key"], "label": s["label"]} for s in the_plan["steps"]],
+                 # Every sensitive value the answers call for, and whether it is
+                 # held, done in Track, marked as none, or missing.
+                 "secrets": the_plan["secrets"]},
         "check": sub.track_check or {}, "checked_at": sub.checked_at.isoformat()
         if sub.checked_at else None,
         "files": [{"id": str(f.pk), "name": f.name, "size": f.byte_size,

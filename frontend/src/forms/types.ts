@@ -115,4 +115,11 @@ export interface Ctx {
   brand: string;
   /** "staff" on the review screen: the same questions, a reviewer's wording. */
   mode: "owner" | "staff";
+  /** The review screen only: each sensitive value the send needs, by name
+   *  ("code:door"), and whether it is held, done in Track, marked as none or
+   *  missing; and the way to mark one as having none, or undo that. */
+  needs?: Record<string, SecretState>;
+  markNone?: (name: string, none: boolean) => Promise<void>;
 }
+
+export type SecretState = "held" | "sent" | "none" | "missing";

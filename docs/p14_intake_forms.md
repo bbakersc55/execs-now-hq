@@ -299,6 +299,53 @@ Nothing from a submission is exposed to the MCP server or AI features (no tool
 reads these models; task titles carry nothing from the answers but the street
 in the project's name).
 
+**They save like every other answer** (fixed 2026-11-20, after intake #1, the
+first live SkyRun send, stopped at "Add the door code": the owner typed the
+code, the field wanted its own Save, nobody pressed it, and the plan made the
+code step anyway). In detail:
+
+- **No Save button.** A value saves 0.7 s after the last key and at once on
+  leaving the field, and shows "Saved securely" (`forms/ui.tsx`, SecretField).
+  An error (a half-typed Tax ID) waits until the field is left.
+- **Nothing moves on with a value unsaved.** Continue, Back, Edit and Submit
+  on the owner's form, and Send on the review screen, first save anything
+  typed and not saved yet (`forms/pending.ts`), and stay put if that fails.
+  The answers' own saves now run one after another, so Submit can't overtake
+  one still on its way.
+- **Never start a send that can't finish.** The plan knows which values the
+  answers call for (`plan.needed`): the Tax ID for a new owner who chose one,
+  the Wi-Fi password when there is Wi-Fi and its field is sent, and a code
+  for each door, closet, alarm and extra that has one. Each is held, already
+  in Track ("sent"), marked by the reviewer as having none, or missing. A
+  missing one is a problem, so Send stays off. It is shown beside its
+  question on the review screen and in the "Sensitive values" card, with two
+  ways out: enter it, or mark that there is none (`staff.no_value`). The
+  worker checks again before any write (a value removed after Send was
+  pressed), and so does `track_writer.execute`, for the steps still to run.
+  The owner can still submit without a code.
+- **A code step is planned only for a code that is held**, or already in
+  Track. "Is there a locked owner's closet?" now says how it opens (with a
+  code, with a key, no), and "Does the property have an alarm?" says whether
+  it has a code. A closet that opens with a key, or an alarm without a code,
+  plans no code step. The door already had "A key only". An answer of "yes"
+  saved before this reads as "with a code".
+- **What Track has is done.** Track's confirmation is recorded in the
+  submission's `track.sent` before ENHQ deletes its copy. A value whose step
+  is done counts as sent too, which covers intake #1, stopped before this
+  record existed. "Try the rest again" and the review screen don't ask for
+  it again, and the old "Tax ID was chosen but none was entered" warning is
+  gone: a missing Tax ID is now a problem, and a sent one is done.
+- **Wording:** a missing value "isn't in ENHQ". ENHQ keeps no record of a
+  value being saved or removed (no event is written for either), so it can't
+  tell "never saved" from "removed", and never says "no longer".
+- **Tests:** `tests/test_intake_sensitive.py` (against the fake Track) and
+  `tests/test_intake_browser.py`. The browser test runs Chrome with Playwright
+  against a live server, with both bundles built from the tree at the start.
+  The owner types each value and presses nothing else before Continue, goes
+  to the end and submits; the reviewer sends; the fake Track holds every
+  value as typed. A second walk does the same with a closet that opens with
+  a key. With the old Save-button field, the first walk fails.
+
 ## Settings (managers and above, and the practice owner)
 
 Look and address (brand name, title, colours, logo, icon, contact line, slug,

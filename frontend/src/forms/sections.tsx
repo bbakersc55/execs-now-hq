@@ -13,6 +13,59 @@ import {
 
 const opts = (form: OwnerForm, name: string): Option[] => form.options[name] ?? [];
 
+/** A closet or alarm answered "yes" before the question said how it opens. */
+const withCode = (value: string | undefined) => (value === "yes" ? "code" : value);
+
+/** The codes the answers call for, by slot, as the server works them out
+ *  (apps/intake/derive.py, code_slots). */
+export function codeSlots(a: Access): string[] {
+  const out: string[] = [];
+  if (a.door === "smart_lock" || a.door === "keypad" || a.door === "lockbox") out.push("door");
+  if (withCode(a.owner_closet) === "code") out.push("owner_closet");
+  if (withCode(a.alarm) === "code") out.push("alarm");
+  (a.extra_codes ?? []).forEach((x, i) => { if (x.type > 0) out.push(`extra-${i}`); });
+  return out;
+}
+
+/** The review screen only: beside a sensitive value the send needs and
+ *  doesn't have, the two ways out (owner, 2026-11-20): enter it here, or
+ *  mark that there is none. Nothing on the owner's form. */
+function Needed({ ctx, name, label }: { ctx: Ctx; name: string; label: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const state = ctx.needs?.[name];
+  if (ctx.mode !== "staff" || !ctx.markNone || (state !== "missing" && state !== "none"))
+    return null;
+  const mark = async (none: boolean) => {
+    setBusy(true);
+    setError("");
+    try { await ctx.markNone!(name, none); } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  // "door code", "business Tax ID", "Wi-Fi password": as in a sentence.
+  const what = name.startsWith("code:") ? label.toLowerCase()
+    : name === "tax_id" ? "business Tax ID" : label;
+  return (
+    <div className={`ix-needed${state === "none" ? " ix-none" : ""}`} data-needed={name}>
+      {state === "missing" ? (
+        <>
+          <span><strong>Needed before Send:</strong> the {what} isn't in ENHQ. Enter it above,
+            or</span>
+          <button type="button" className="ix-link" disabled={busy}
+            onClick={() => void mark(true)}>mark that there is none</button>
+        </>
+      ) : (
+        <>
+          <span>Marked as having no {what}: nothing is sent for it.</span>
+          <button type="button" className="ix-link" disabled={busy}
+            onClick={() => void mark(false)}>Undo</button>
+        </>
+      )}
+      {error && <span className="ix-error" role="alert">{error}</span>}
+    </div>
+  );
+}
+
 function Block({ title, summary, children, onRemove, removeLabel }: {
   title: string; summary?: string; children: ReactNode; onRemove?: () => void;
   removeLabel?: string;
@@ -167,11 +220,14 @@ export function TaxSection({ ctx }: { ctx: Ctx }) {
         options={opts(ctx.form, "tax_kind")} value={kind}
         onChange={(v) => ctx.update("tax", { kind: v })} />
       {kind === "tax_id" && (
-        <SecretField label="Business Tax ID (EIN)" inputMode="numeric"
-          hint="9 digits, like 12-3456789. Please don't enter a Social Security number here."
-          saved={!!ctx.secrets.tax_id} last4={ctx.secrets.tax_id?.last4}
-          onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("tax_id", "", v))}
-          onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("tax_id", ""))} />
+        <>
+          <SecretField label="Business Tax ID (EIN)" inputMode="numeric" name="tax_id"
+            hint="9 digits, like 12-3456789. Please don't enter a Social Security number here."
+            saved={!!ctx.secrets.tax_id} last4={ctx.secrets.tax_id?.last4}
+            onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("tax_id", "", v))}
+            onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("tax_id", ""))} />
+          <Needed ctx={ctx} name="tax_id" label="Business Tax ID" />
+        </>
       )}
       {kind === "ssn" && (
         <Note tone="safe">You'll add your Social Security number yourself, in your owner portal,
@@ -458,13 +514,16 @@ export function HomeSection({ ctx }: { ctx: Ctx }) {
               {on("wifi_network_name") && <Text label="Wi-Fi network name" value={h.wifi_network}
                 autoComplete="off" onChange={(v) => set({ wifi_network: v })} />}
               {on("wifi_password") && (
-                <SecretField label="Wi-Fi password"
-                  hint="Kept apart from your other answers, and not shown again here."
-                  saved={ctx.secrets.wifi_password}
-                  onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("wifi_password", "",
-                    v))}
-                  onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("wifi_password",
-                    ""))} />
+                <>
+                  <SecretField label="Wi-Fi password" name="wifi_password"
+                    hint="Kept apart from your other answers, and not shown again here."
+                    saved={ctx.secrets.wifi_password}
+                    onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("wifi_password",
+                      "", v))}
+                    onClear={async () => ctx.setSecrets(await ctx.api.clearSecret(
+                      "wifi_password", ""))} />
+                  <Needed ctx={ctx} name="wifi_password" label="Wi-Fi password" />
+                </>
               )}
               {on("wifi_router_location_notes") && <Text label="Where is the router?"
                 value={h.wifi_router} onChange={(v) => set({ wifi_router: v })} />}
@@ -581,12 +640,16 @@ export function AccessSection({ ctx }: { ctx: Ctx }) {
   const a: Access = ctx.answers.access ?? {};
   const set = (patch: Partial<Access>) => ctx.update("access", { ...a, ...patch });
   const extras = a.extra_codes ?? [];
-  const code = (slot: string, title: string, hint?: string) => (
-    <SecretField key={slot} label={title} inputMode="text"
-      hint={hint ?? "Kept apart from your other answers, and not shown again here."}
-      saved={!!ctx.secrets.codes[slot]}
-      onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("code", slot, v))}
-      onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("code", slot))} />
+  const you = ctx.mode === "owner";
+  const code = (slot: string, title: string, needed: string = title) => (
+    <div key={slot}>
+      <SecretField label={title} inputMode="text" name={`code:${slot}`}
+        hint="Kept apart from your other answers, and not shown again here."
+        saved={!!ctx.secrets.codes[slot]}
+        onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("code", slot, v))}
+        onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("code", slot))} />
+      <Needed ctx={ctx} name={`code:${slot}`} label={needed} />
+    </div>
   );
   return (
     <>
@@ -594,13 +657,14 @@ export function AccessSection({ ctx }: { ctx: Ctx }) {
         value={a.door} onChange={(v) => set({ door: v })} />
       {(a.door === "smart_lock" || a.door === "keypad") && code("door", "Door code")}
       {a.door === "lockbox" && code("door", "Lockbox code")}
-      <YesNo label="Is there a locked owner's closet?" value={a.owner_closet}
-        onChange={(v) => set({ owner_closet: v })} />
-      {a.owner_closet === "yes" && code("owner_closet", "Owner's closet code",
-        "If it opens with a key, leave this blank.")}
-      <YesNo label="Does the property have an alarm?" value={a.alarm}
-        onChange={(v) => set({ alarm: v })} />
-      {a.alarm === "yes" && code("alarm", "Alarm code")}
+      <Choice label="Is there a locked owner's closet?" options={opts(ctx.form, "owner_closet")}
+        hint={you ? "If it opens with a key, there's no code to enter." : undefined}
+        value={withCode(a.owner_closet)} onChange={(v) => set({ owner_closet: v })} />
+      {withCode(a.owner_closet) === "code" && code("owner_closet", "Owner's closet code",
+        "Owner closet code")}
+      <Choice label="Does the property have an alarm?" options={opts(ctx.form, "alarm")}
+        value={withCode(a.alarm)} onChange={(v) => set({ alarm: v })} />
+      {withCode(a.alarm) === "code" && code("alarm", "Alarm code")}
       {extras.map((x, i) => (
         <Block key={i} title={`Other code ${i + 1}`}
           onRemove={i === extras.length - 1 ? async () => {
@@ -611,7 +675,8 @@ export function AccessSection({ ctx }: { ctx: Ctx }) {
             options={ctx.form.code_types.map((t) => ({ value: String(t.id), label: t.name }))}
             onChange={(v) => set({ extra_codes: extras.map((e, j) => (j === i ? { type:
               Number(v) } : e)) })} />
-          {x.type > 0 && code(`extra-${i}`, "Code")}
+          {x.type > 0 && code(`extra-${i}`, "Code", ctx.form.code_types.find((t) =>
+            t.id === x.type)?.name ?? "Code")}
         </Block>
       ))}
       <button type="button" className="ix-btn ix-btn-ghost"
@@ -773,14 +838,27 @@ export function summarize(ctx: Ctx, key: string): string[] {
       return [h.heating?.length ? `Heating: ${labels(f, "heating", h.heating)}` : "",
         h.cooling?.length ? `Cooling: ${labels(f, "cooling", h.cooling)}` : "",
         h.wifi ? `Wi-Fi: ${label(f, "yes_no", h.wifi)}` : "",
+        h.wifi === "yes" && f.builtin["pms_units_wifi_password"] !== false
+          && !ctx.secrets.wifi_password
+          ? "Wi-Fi password (not entered yet)" : "",
         h.hoa ? `HOA: ${label(f, "yes_no_unsure", h.hoa)}` : "",
         h.permit === "yes" ? "Has a rental permit" : ""].filter(Boolean);
     }
     case "access": {
       const x = a.access ?? {};
-      const n = Object.keys(ctx.secrets.codes).length;
+      const slots = codeSlots(x);
+      const n = slots.filter((s) => ctx.secrets.codes[s]).length;
+      const names: Record<string, string> = { door: x.door === "lockbox" ? "lockbox code"
+        : "door code", owner_closet: "owner's closet code", alarm: "alarm code" };
+      const waiting = slots.filter((s) => !ctx.secrets.codes[s])
+        .map((s) => names[s] ?? "another code");
       return [x.door ? `Front door: ${label(f, "door", x.door)}` : "",
-        n ? `${n} code(s) saved securely` : ""].filter(Boolean);
+        x.owner_closet ? `Owner's closet: ${label(f, "owner_closet", withCode(x.owner_closet))}`
+          : "",
+        x.alarm ? `Alarm: ${label(f, "alarm", withCode(x.alarm))}` : "",
+        n ? `${n} code(s) saved securely` : "",
+        waiting.length ? `Not entered yet: ${[...new Set(waiting)].join(", ")}` : "",
+      ].filter(Boolean);
     }
     case "stays":
       return a.stays?.has === "yes" ? (a.stays.ranges ?? []).filter((r) => r.start)

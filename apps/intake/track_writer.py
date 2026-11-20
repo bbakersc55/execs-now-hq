@@ -11,6 +11,9 @@
   confirmed (`confirm()`) when Track's answer shows it holds it, so ENHQ can
   delete its copy.
 - The first refusal stops the run, with Track's own words.
+- Before any call, every sensitive value a step still to run needs is looked
+  for (`secret()`); if one isn't there, the run stops before writing anything
+  (owner, 2026-11-20: never start a send that can't finish).
 
 Pure apart from the client it is given: no database, no Django settings. The
 production proof (scripts) runs this same module.
@@ -121,6 +124,22 @@ def find_existing(step, client, ids, secret):
     return None, {}
 
 
+def secrets_in(value) -> list[str]:
+    """The sensitive values a body asks for, by name, in order."""
+    if isinstance(value, dict):
+        if set(value) == {"$secret"}:
+            return [value["$secret"]]
+        return [n for v in value.values() for n in secrets_in(v)]
+    if isinstance(value, list):
+        return [n for v in value for n in secrets_in(v)]
+    return []
+
+
+def missing_message(name: str) -> str:
+    return (f"A sensitive value this step needs isn't in ENHQ ({name}). Enter it on the "
+            "review screen, or mark that there is none.")
+
+
 def _confirmed(step, answer) -> list[str]:
     """The secrets Track's answer shows it now holds."""
     out = []
@@ -145,6 +164,15 @@ def execute(plan, client, state, *, secret, save, confirm, track_errors):
     state.setdefault("done", [])
     state.setdefault("attempted", [])
     ids = state["ids"]
+    sent = set(state.get("sent") or [])
+    for step in plan["steps"]:
+        if step["key"] in state["done"]:
+            continue
+        for name in secrets_in(step.get("body")):
+            if name not in sent and not secret(name):
+                message = missing_message(name) + " Nothing was written to Track this time."
+                save(state, step["key"], "failed", message)
+                return False, step["key"], message
     for step in plan["steps"]:
         key = step["key"]
         if key in state["done"]:
@@ -184,8 +212,7 @@ def execute(plan, client, state, *, secret, save, confirm, track_errors):
             state["done"].append(key)
             save(state, key, "done", f"Track id {ids[key]}" if key in ids else "")
         except LookupError as exc:
-            message = ("A sensitive value this step needs is no longer in ENHQ "
-                       f"({exc.args[0]}). Enter it again on the review screen.")
+            message = missing_message(exc.args[0])
             save(state, key, "failed", message)
             return False, key, message
         except KeyError as exc:

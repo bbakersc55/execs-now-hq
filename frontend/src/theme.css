@@ -2534,6 +2534,9 @@ label.sop-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cu
 .intake-derived li, .intake-plan li, .intake-dates li, .intake-events li { margin: .3rem 0; }
 .intake-secrets { list-style: none; padding: 0; }
 .intake-secrets li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.intake-secrets li { flex-wrap: wrap; }
+.intake-secrets li.secret-missing > span:first-child .muted { color: var(--warn); font-weight: 600; }
+.intake-needed { color: var(--warn); font-weight: 600; font-size: .85rem; }
 .intake-steps { list-style: none; padding: 0; margin: .5rem 0 .9rem; }
 .intake-steps li { padding: .3rem 0; border-bottom: 1px dashed var(--line); }
 .intake-steps .mark { display: inline-block; width: 1.4em; font-weight: 700; }

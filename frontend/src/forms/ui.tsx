@@ -1,6 +1,7 @@
 /** The owner form's own building blocks: big touch targets, a label on every
  *  field, errors in words beside the field, usable by keyboard. */
-import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useSaver } from "./pending";
 import type { Option, Range } from "./types";
 
 export function Field({ label, hint, error, htmlFor, children }: {
@@ -177,53 +178,115 @@ function DateBox({ label, value, onChange }: {
 }
 
 /** A value kept apart and encrypted: once saved it is never shown again here.
- *  The tax id shows its last four; a code or a password shows nothing. */
-export function SecretField({ label, hint, saved, last4, onSave, onClear, inputMode }: {
+ *  The tax id shows its last four; a code or a password shows nothing.
+ *
+ *  It saves like every other answer (owner, 2026-11-20): a moment after the
+ *  last key and at once on leaving the field, with "Saved securely" shown;
+ *  there is no Save button to miss. Continue, Submit and Send save anything
+ *  still waiting first (`pending.ts`). An error waits until the field is left
+ *  or saved by one of those, so a half-typed Tax ID isn't scolded. */
+export function SecretField({ label, hint, saved, last4, onSave, onClear, inputMode, name }: {
   label: string; hint?: string; saved: boolean; last4?: string;
   onSave: (v: string) => Promise<void>; onClear: () => Promise<void>;
   inputMode?: "text" | "numeric";
+  /** "code:door", "tax_id"…: lets the review screen find the field. */
+  name?: string;
 }) {
   const id = useId();
   const [editing, setEditing] = useState(!saved);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<"" | "saving" | "saved" | "unsaved">("");
+  const input = useRef<HTMLInputElement>(null);
+  const typed = useRef("");                       // what is in the box
+  const stored = useRef<string | null>(null);     // what this edit saved last
+  const chain = useRef<Promise<boolean>>(Promise.resolve(true));
+  const timer = useRef<number | undefined>(undefined);
+  const focused = useRef(false);
+  const savedNow = useRef(saved);
+  savedNow.current = saved;
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const collapse = () => {
+    typed.current = "";
+    stored.current = null;
+    setValue("");
+    setStatus("");
+    setEditing(false);
+  };
+  /** Save what is typed, after any save already on its way. `loud`: say why
+   *  it failed (on leaving the field, or for Continue, Submit and Send). */
+  const save = (loud: boolean): Promise<boolean> => {
+    window.clearTimeout(timer.current);
+    chain.current = chain.current.then(async () => {
+      const v = typed.current;
+      if (v === (stored.current ?? "")) return true;
+      setStatus("saving");
+      try {
+        if (v.trim()) {
+          await onSave(v);
+          stored.current = v;
+        } else {
+          // Emptied after it saved: what it saved goes too.
+          await onClear();
+          stored.current = null;
+        }
+        setError("");
+        setStatus(v.trim() ? "saved" : "");
+        return true;
+      } catch (e) {
+        setStatus("unsaved");
+        if (loud) setError((e as Error).message);
+        return false;
+      }
+    });
+    return chain.current;
+  };
+  useSaver({ flush: () => save(true), dirty: () => typed.current !== (stored.current ?? "") });
+
   if (saved && !editing) {
     return (
-      <Field label={label} hint={hint}>
+      <Field label={label} hint={hint} error={error}>
         <div className="ix-secret-saved">
           <span className="ix-lock" aria-hidden="true">●</span>
-          <span>{last4 ? `Saved, ending ${last4}` : "Saved securely"}</span>
-          <button type="button" className="ix-link" onClick={() => setEditing(true)}>Change</button>
-          <button type="button" className="ix-link" onClick={() => void onClear()}>Remove</button>
+          <span>{last4 ? `Saved securely, ending ${last4}` : "Saved securely"}</span>
+          <button type="button" className="ix-link" onClick={() => {
+            setEditing(true);
+            window.setTimeout(() => input.current?.focus(), 0);
+          }}>Change<span className="ix-sr"> {label}</span></button>
+          <button type="button" className="ix-link" onClick={async () => {
+            try { setError(""); await onClear(); } catch (e) { setError((e as Error).message); }
+          }}>Remove<span className="ix-sr"> {label}</span></button>
         </div>
       </Field>
     );
   }
   return (
-    <Field label={label} hint={hint} error={error} htmlFor={id}>
-      <div className="ix-secret-row">
-        <input id={id} className="ix-input" type="text" autoComplete="off" spellCheck={false}
-          inputMode={inputMode} value={value} onChange={(e) => setValue(e.target.value)}
-          aria-invalid={error ? true : undefined} />
-        <button type="button" className="ix-btn ix-btn-primary ix-btn-small"
-          disabled={!value.trim() || busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await onSave(value);
-              setValue("");
-              setEditing(false);
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          }}>{busy ? "Saving…" : "Save"}</button>
-      </div>
-      {saved && <button type="button" className="ix-link"
-        onClick={() => { setEditing(false); setValue(""); }}>Keep the saved one</button>}
+    <Field label={label} hint={saved ? "Type the new one. Leave it empty to keep the saved "
+      + "one." : hint} error={error} htmlFor={id}>
+      <input id={id} ref={input} className="ix-input" type="text" autoComplete="off"
+        spellCheck={false} inputMode={inputMode} value={value} data-secret={name}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={`${id}-status`}
+        onFocus={() => { focused.current = true; }}
+        onChange={(e) => {
+          typed.current = e.target.value;
+          setValue(e.target.value);
+          setStatus("");
+          window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => void save(false), 700);
+        }}
+        onBlur={() => {
+          focused.current = false;
+          void save(true).then((ok) => {
+            if (ok && !focused.current && (stored.current !== null
+              || (savedNow.current && !typed.current))) collapse();
+          });
+        }} />
+      <p id={`${id}-status`} className={`ix-secret-status ix-${status || "idle"}`}
+        aria-live="polite">
+        {status === "saving" ? "Saving…" : status === "saved" ? "Saved securely"
+          : status === "unsaved" ? "Not saved yet" : ""}</p>
     </Field>
   );
 }

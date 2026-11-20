@@ -242,8 +242,16 @@ html { scroll-padding-bottom: 104px; }
   min-height: 52px; padding: 8px 14px; border: 1.5px dashed var(--ix-primary); border-radius: 10px;
   background: var(--ix-tint); color: var(--ix-heading); font-weight: 600; }
 .ix-lock { color: var(--ix-primary); font-size: .7rem; }
-.ix-secret-row { display: flex; gap: 10px; align-items: stretch; }
-.ix-secret-row .ix-input { flex: 1; }
+.ix-secret-status { min-height: 1.3em; margin: 6px 0 0; font-size: .9rem; color: var(--ix-text); }
+.ix-secret-status.ix-saved { color: #24451a; font-weight: 600; }
+.ix-secret-status.ix-saved::before { content: "● "; color: var(--ix-primary); font-size: .7rem; }
+.ix-secret-status.ix-unsaved { color: var(--ix-error); }
+/* The review screen only: a value the send needs and doesn't have. */
+.ix-needed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  margin: -6px 0 18px; padding: 10px 14px; border-radius: 10px; font-size: .95rem;
+  background: #fdf0e2; color: #5a3200; }
+.ix-needed.ix-none { background: var(--ix-tint); color: var(--ix-heading); }
+.ix-nav-error { margin: 0 0 10px; }
 
 .ix-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
 .ix-range .ix-remove { grid-column: 1 / -1; justify-self: start; }

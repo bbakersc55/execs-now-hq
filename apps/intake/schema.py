@@ -55,7 +55,17 @@ OPTIONS = {
                 ("unsure", "Not sure")],
     "door": [("smart_lock", "Wi-Fi smart lock"), ("keypad", "Keypad lock (not on Wi-Fi)"),
              ("lockbox", "Lockbox"), ("key", "A key only"), ("unsure", "Not sure")],
+    # Whether each needs a code is part of the answer (owner, 2026-11-20): a
+    # closet that opens with a key, or an alarm without a code, plans no code
+    # step. An answer of "yes" from before then reads as "code".
+    "owner_closet": [("code", "Yes, it opens with a code"), ("key", "Yes, it opens with a key"),
+                     ("no", "No")],
+    "alarm": [("code", "Yes, it's set with a code"), ("no_code", "Yes, but it has no code"),
+              ("no", "No")],
 }
+
+#: A closet or alarm answer that comes with a code to enter.
+WITH_CODE = ("code", "yes")
 
 #: Custom fields fed by a built-in question: reference -> how it is worded.
 BUILTIN_FIELDS = {
@@ -292,6 +302,11 @@ def clean_home(data) -> dict:
     }
 
 
+def _was_yes(value):
+    """A closet or alarm answered "yes" before the question said how it opens."""
+    return "code" if value == "yes" else value
+
+
 def clean_access(data) -> dict:
     d = data if isinstance(data, dict) else {}
     extras = []
@@ -299,8 +314,8 @@ def clean_access(data) -> dict:
         if isinstance(item, dict):
             extras.append({"type": _int(item.get("type"), 0, 10**9) or 0})
     return {"door": _choice(d.get("door"), "door"),
-            "owner_closet": _choice(d.get("owner_closet"), "yes_no"),
-            "alarm": _choice(d.get("alarm"), "yes_no"),
+            "owner_closet": _choice(_was_yes(d.get("owner_closet")), "owner_closet"),
+            "alarm": _choice(_was_yes(d.get("alarm")), "alarm"),
             "extra_codes": extras}
 
 

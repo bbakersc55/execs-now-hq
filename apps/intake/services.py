@@ -274,7 +274,9 @@ def save_staff(submission, changes: dict, actor):
     allowed = set(derive.staff_defaults({}, {}, {}, practice_today(submission)).keys())
     current = dict(submission.staff or {})
     for key, value in (changes or {}).items():
-        if key in allowed:
+        if key == "no_value":
+            current[key] = plan.clean_none_marks(value)
+        elif key in allowed:
             current[key] = value
     submission.staff = current
     submission.last_changed_at = timezone.now()
@@ -286,11 +288,10 @@ def build_plan(submission, lists, form_settings, *, owner_active=None, unit_book
                today=None):
     today = today or practice_today(submission)
     staff = staff_choices(submission, form_settings, lists, today=today)
-    held = vault.masked(submission)
     return plan.build(answers=submission.answers or {}, staff=staff, settings=form_settings,
                       lists=lists, brand=submission.form.brand_name,
-                      has_tax_id=bool(held["tax_id"]), owner_active=owner_active,
-                      unit_bookable=unit_bookable, today=today)
+                      held=vault.held_names(submission), sent=plan.sent_from(submission.track),
+                      owner_active=owner_active, unit_bookable=unit_bookable, today=today)
 
 
 # ------------------------------------------------------------ sending
@@ -350,6 +351,11 @@ def run_send(run, *, client=None, today=None):
     lists, _ = tracklists.lists_for(submission.company)
     form_settings = settings_of(submission.form, lists)
     the_plan = build_plan(submission, lists, form_settings, today=today)
+    if the_plan["problems"]:
+        # Something changed between Send and the worker (a value removed, an
+        # answer changed): stop before any write, as Send itself would.
+        return _failed(run, submission, None, "Not ready to send: "
+                       + " ".join(the_plan["problems"]) + " Nothing was written to Track.")
     state = dict(submission.track or {})
     state.setdefault("ids", {})
     staff = staff_choices(submission, form_settings, lists, today=today)
@@ -368,6 +374,13 @@ def run_send(run, *, client=None, today=None):
         return vault.value(submission, name) if name else None
 
     def confirm(name):
+        # Recorded before ENHQ's copy goes, so a retry knows Track has it even
+        # if the worker stops before the step is marked done.
+        sent = state.setdefault("sent", [])
+        if name not in sent:
+            sent.append(name)
+        submission.track = state
+        submission.save(update_fields=["track"])
         vault.confirmed(submission, name)
 
     try:

@@ -22,6 +22,9 @@ def fixture(name):
 
 
 TODAY = date(2026, 11, 19)  # the practice's date; never the server's
+#: Every sensitive value `answers()` calls for, all held.
+HELD = {"tax_id", "wifi_password", "code:door", "code:owner_closet", "code:alarm",
+        "code:extra-0"}
 
 
 def answers(**over):
@@ -182,7 +185,7 @@ def test_custom_values_go_by_handle_and_respect_states():
 
 def test_new_owner_plan_order_and_bodies():
     p = plan.build(answers=answers(), staff=staff(), settings=SETTINGS, lists=LISTS,
-                   brand="Mountain Stays", has_tax_id=True, today=date(2026, 11, 20))
+                   brand="Mountain Stays", held=HELD, today=date(2026, 11, 20))
     keys = [s["key"] for s in p["steps"]]
     assert keys[:6] == ["contact:0", "contact:1", "owner", "link:0", "link:1", "unit"]
     assert keys[-1] == "ownership" and "details" in keys and "count:tv" in keys
@@ -207,7 +210,7 @@ def test_new_owner_plan_order_and_bodies():
 def test_existing_owner_plan_writes_nothing_to_the_owner():
     s = staff(owner_mode="existing", existing_owner_id=900)
     p = plan.build(answers=answers(), staff=s, settings=SETTINGS, lists=LISTS, brand="X",
-                   has_tax_id=True, today=TODAY)
+                   held=HELD, today=TODAY)
     keys = [step["key"] for step in p["steps"]]
     assert not any(k.startswith(("contact:", "link:")) or k == "owner" for k in keys)
     assert keys[0] == "unit" and keys[-1] == "ownership"
@@ -217,15 +220,19 @@ def test_existing_owner_plan_writes_nothing_to_the_owner():
 def test_plan_problems_block_a_send():
     bad = answers(about={**answers()["about"], "email": "alex@example.com"})
     p = plan.build(answers=bad, staff=derive.staff_with_defaults({}, bad, SETTINGS, LISTS, TODAY),
-                   settings=SETTINGS, lists=LISTS, brand="X", has_tax_id=False, today=TODAY)
+                   settings=SETTINGS, lists=LISTS, brand="X", held=set(), today=TODAY)
     text = " ".join(p["problems"])
     assert "test domain" in text and "Pick the area" in text
-    assert any("Tax ID was chosen" in w for w in p["warnings"])
+    # A missing Tax ID stops a send now; it is no longer a note beside it.
+    assert "The business Tax ID isn't in ENHQ: enter it beside its question, or mark that " \
+        "there is none." in p["problems"]
+    assert not any("Tax ID" in w for w in p["warnings"])
 
 
 def test_the_proof_can_keep_the_owner_inactive():
     p = plan.build(answers=answers(), staff=staff(), settings=SETTINGS, lists=LISTS, brand="X",
-                   has_tax_id=False, owner_active=False, unit_bookable=False, today=TODAY)
+                   held=HELD - {"tax_id"}, owner_active=False, unit_bookable=False,
+                   today=TODAY)
     owner = next(s for s in p["steps"] if s["key"] == "owner")
     assert owner["body"]["isActive"] is False and "taxId" not in owner["body"]
 
@@ -246,3 +253,171 @@ def test_no_checklist_title_names_anyone():
                                    for i in holds)
     assert any(i["title"] == "Right after the listing is made bookable, press Place owner "
                              "dates now" for i in defaults.CHECKLIST)
+
+
+# ------------------------------------------------------------ sensitive values
+# Owner, 2026-11-20, after intake #1 stopped at "Add the door code": a code
+# was never saved (the form wanted its own Save), and the plan made the step
+# anyway. Never start a send that can't finish.
+
+def build(a=None, held=HELD, sent=frozenset(), **staff_over):
+    a = a or answers()
+    s = derive.staff_with_defaults({"node_id": 24, **staff_over}, a, SETTINGS, LISTS, TODAY)
+    return plan.build(answers=a, staff=s, settings=SETTINGS, lists=LISTS, brand="X",
+                      held=held, sent=sent, today=TODAY)
+
+
+def states(p):
+    return {item["name"]: item["state"] for item in p["secrets"]}
+
+
+def test_a_code_step_is_planned_only_for_a_code_that_is_held():
+    p = build(held=HELD - {"code:door", "code:alarm", "wifi_password"})
+    assert "The Wi-Fi password isn't in ENHQ: enter it beside its question, or mark that " \
+        "there is none." in p["problems"]
+    keys = {s["key"] for s in p["steps"]}
+    assert "code:door" not in keys and "code:alarm" not in keys
+    assert {"code:owner_closet", "code:extra-0"} <= keys
+    assert "The door code isn't in ENHQ: enter it beside its question, or mark that there " \
+        "is none." in p["problems"]
+    assert any(x.startswith("The alarm code isn't in ENHQ") for x in p["problems"])
+    assert states(p)["code:door"] == "missing" and states(p)["code:owner_closet"] == "held"
+    assert "2 access codes (values hidden)" in " ".join(p["summary"])
+
+
+def test_marked_as_none_it_is_left_out_and_stops_nothing():
+    p = build(held=HELD - {"code:door", "tax_id", "wifi_password"},
+              no_value=["code:door", "tax_id", "wifi_password"])
+    assert p["problems"] == []
+    assert states(p) == {"tax_id": "none", "wifi_password": "none", "code:door": "none",
+                         "code:owner_closet": "held", "code:alarm": "held",
+                         "code:extra-0": "held"}
+    by = {s["key"]: s for s in p["steps"]}
+    assert "code:door" not in by and "taxId" not in by["owner"]["body"]
+    assert "pms_units_wifi_password" not in by["details"]["body"]["custom"]
+    assert by["details"]["confirms"] == []
+    assert "pms_units_wifi_network_name" in by["details"]["body"]["custom"]
+    text = " ".join(p["summary"])
+    assert "No door code is sent: marked as having none." in text
+    assert "No business Tax ID is sent: marked as having none." in text
+    assert "No Wi-Fi password is sent: marked as having none." in text
+    # Entered after all, it is sent: the mark no longer matters.
+    p = build(held=HELD, no_value=["code:door"])
+    assert "code:door" in {s["key"] for s in p["steps"]} and states(p)["code:door"] == "held"
+
+
+def test_none_marks_keep_known_names_only():
+    assert plan.clean_none_marks(["code:door", "code:door", "tax_id", "rm -rf", 7,
+                                  "code:" + "x" * 30, "wifi_password"]) == \
+        ["code:door", "tax_id", "wifi_password"]
+    assert plan.clean_none_marks("code:door") == []
+
+
+def test_a_closet_that_opens_with_a_key_needs_no_code():
+    a = answers(access={"door": "keypad", "owner_closet": "key", "alarm": "no",
+                        "extra_codes": []})
+    assert [c["slot"] for c in derive.code_slots(a, LISTS, SETTINGS)] == ["door"]
+    p = build(a, held={"tax_id", "wifi_password", "code:door"})
+    assert p["problems"] == []
+    assert [s["key"] for s in p["steps"] if s["key"].startswith("code:")] == ["code:door"]
+    assert [x["name"] for x in p["secrets"]] == ["tax_id", "wifi_password", "code:door"]
+    # With a code, it needs one.
+    a = answers(access={"door": "key", "owner_closet": "code", "alarm": "no"})
+    assert [c["slot"] for c in derive.code_slots(a, LISTS, SETTINGS)] == ["owner_closet"]
+    assert any(x.startswith("The owner closet code isn't in ENHQ")
+               for x in build(a, held={"tax_id", "wifi_password"})["problems"])
+
+
+def test_the_door_and_the_alarm_ask_for_a_code_only_when_they_have_one():
+    a = answers(access={"door": "key", "owner_closet": "no", "alarm": "no_code"})
+    assert derive.code_slots(a, LISTS, SETTINGS) == []
+    assert build(a, held={"tax_id", "wifi_password"})["problems"] == []
+    # An alarm without a code is still an alarm.
+    assert "Security System" in {d["name"] for d in derive.derived_amenities(a, LISTS, None)}
+    for door in ("unsure", "key"):
+        a = answers(access={"door": door})
+        assert derive.code_slots(a, LISTS, SETTINGS) == []
+    a = answers(access={"door": "lockbox", "alarm": "code"})
+    assert [(c["slot"], c["label"]) for c in derive.code_slots(a, LISTS, SETTINGS)] == \
+        [("door", "Lockbox code"), ("alarm", "Alarm code")]
+
+
+def test_a_closet_or_alarm_answered_yes_before_the_rewording_reads_as_with_a_code():
+    raw = {"door": "smart_lock", "owner_closet": "yes", "alarm": "yes"}
+    assert schema.clean_access(raw)["owner_closet"] == "code"
+    assert schema.clean_access(raw)["alarm"] == "code"
+    # Answers saved before then, never saved again, still ask for their codes.
+    a = answers()
+    a["access"] = {**raw, "extra_codes": []}
+    assert [c["slot"] for c in derive.code_slots(a, LISTS, SETTINGS)] == \
+        ["door", "owner_closet", "alarm"]
+    assert schema.clean_access({"owner_closet": "maybe", "alarm": "loud"}) == \
+        {"door": "", "owner_closet": "", "alarm": "", "extra_codes": []}
+
+
+def test_values_track_already_has_are_done_on_a_retry():
+    # Intake #1's state after its stop: the owner and the details done (the
+    # Tax ID and the Wi-Fi password sent, then deleted from ENHQ), and from
+    # before this change, no record of what was sent.
+    legacy = {"ids": {"unit": 223}, "attempted": ["owner", "details"],
+              "done": ["contact:0", "contact:1", "owner", "link:0", "link:1", "unit",
+                       "details"]}
+    p = build(held=HELD - {"tax_id", "wifi_password"}, sent=plan.sent_from(legacy))
+    assert p["problems"] == [] and not any("Tax ID" in w for w in p["warnings"])
+    assert states(p)["tax_id"] == "sent" and states(p)["wifi_password"] == "sent"
+    # A code Track confirmed, though the worker stopped before marking it done.
+    state = {**legacy, "attempted": legacy["attempted"] + ["code:door"], "sent": ["code:door"]}
+    p = build(held=HELD - {"tax_id", "wifi_password", "code:door"}, sent=plan.sent_from(state))
+    assert p["problems"] == [] and states(p)["code:door"] == "sent"
+    assert "code:door" in {s["key"] for s in p["steps"]}   # found in Track on the retry
+    # The Wi-Fi password sent, its step not marked done: not asked for again.
+    state = {"done": [], "attempted": ["details"], "sent": ["wifi_password"]}
+    p = build(held=HELD - {"wifi_password"}, sent=plan.sent_from(state))
+    by = {s["key"]: s for s in p["steps"]}
+    assert "pms_units_wifi_password" not in by["details"]["body"]["custom"]
+    assert not any("Wi-Fi" in x for x in p["problems"])
+
+
+def test_an_existing_owner_needs_no_tax_id():
+    p = build(held=HELD - {"tax_id"}, owner_mode="existing", existing_owner_id=900)
+    assert "tax_id" not in states(p) and p["problems"] == []
+
+
+def test_the_writer_stops_before_any_write_when_a_value_is_missing():
+    from apps.intake import track_writer
+
+    p = build()
+    calls, saved = [], []
+
+    class Client:
+        def get(self, *a):
+            calls.append(("GET",) + a)
+            return {}
+
+        def send(self, *a):
+            calls.append(a)
+            return {"id": 1}
+
+    held = {"tax_id": "12-3456789", "wifi_password": "pw", "code:door": "1",
+            "code:owner_closet": "2", "code:extra-0": "4"}      # no alarm code
+    ok, key, message = track_writer.execute(
+        p, Client(), {}, secret=held.get, save=lambda *a: saved.append(a[1:]),
+        confirm=lambda n: None, track_errors=())
+    assert not ok and key == "code:alarm" and calls == []
+    assert message == ("A sensitive value this step needs isn't in ENHQ (code:alarm). Enter it "
+                       "on the review screen, or mark that there is none. Nothing was written "
+                       "to Track this time.")
+    assert saved == [("code:alarm", "failed", message)]
+    # A step already done is not looked at: the writing starts.
+    track_writer.execute(p, Client(), {"done": ["code:alarm"]}, secret=held.get,
+                         save=lambda *a: None, confirm=lambda n: None, track_errors=())
+    assert calls[0] == ("POST", "/crm/contacts", p["steps"][0]["body"])
+
+
+def test_no_message_says_no_longer_for_a_value_never_saved():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    for path in [*root.glob("apps/intake/*.py"), *root.glob("frontend/src/forms/*.tsx"),
+                 root / "frontend/src/screens/IntakeReview.tsx"]:
+        assert "no longer in ENHQ" not in path.read_text(), path

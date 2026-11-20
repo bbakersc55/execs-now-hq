@@ -202,7 +202,8 @@ staff = derive.staff_with_defaults({
     "shares": {"1": 50}, "start_date": TODAY.isoformat(),
     "contract_effective_date": TODAY.isoformat()}, answers, settings, lists, TODAY)
 the_plan = plan.build(answers=answers, staff=staff, settings=settings, lists=lists,
-                      brand="SkyRun Park City", has_tax_id=True, owner_active=False,
+                      brand="SkyRun Park City", held=set(SECRETS),
+                      sent=plan.sent_from(saved), owner_active=False,
                       unit_bookable=False, today=TODAY)
 p("\nWHAT WILL BE SENT")
 for line in the_plan["summary"]:

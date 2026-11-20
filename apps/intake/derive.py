@@ -199,6 +199,9 @@ def staff_defaults(answers, settings, lists, today: date) -> dict:
         "owner_mode": "new",
         "existing_owner_id": None,
         "reuse_contacts": {},
+        # Sensitive values the reviewer marked as having none ("code:door"):
+        # nothing is sent for them, and they don't stop a send.
+        "no_value": [],
     }
 
 
@@ -247,7 +250,7 @@ def _derived_rules(answers):
         rules.append((["Air Conditioning"], "Cooling: air conditioning"))
     if "fans" in cooling:
         rules.append((["Ceiling Fan"], "Cooling: Ceiling fans"))
-    if access.get("alarm") == "yes":
+    if access.get("alarm") in ("code", "no_code", "yes"):
         rules.append((["Security System"], "Alarm: yes"))
     if home.get("heat_tape") == "yes":
         rules.append((["Heat Tape"], "Heat tape: yes"))
@@ -483,8 +486,11 @@ def owner_notes(answers, brand: str) -> str:
 # ------------------------------------------------------------ codes
 
 def code_slots(answers, lists, settings) -> list[dict]:
-    """[{slot, type_id, label}] the owner was asked for, in order. Their values
-    are secrets, read only at the moment of sending."""
+    """[{slot, type_id, label}] the answers call for, in order: a door with a
+    keypad, smart lock or lockbox, a closet or an alarm that has a code, and
+    each extra code. A closet that opens with a key, or an alarm without a
+    code, has none. Their values are secrets, read only at the moment of
+    sending; whether one is held is the plan's business (`plan.build`)."""
     names = by_name(lists.get("code_types"))
     ids = by_id(lists.get("code_types"))
 
@@ -500,10 +506,10 @@ def code_slots(answers, lists, settings) -> list[dict]:
     elif door == "lockbox":
         out.append({"slot": "door", "type_id": type_named("Lockbox Code"),
                     "label": "Lockbox code"})
-    if access.get("owner_closet") == "yes":
+    if access.get("owner_closet") in schema.WITH_CODE:
         out.append({"slot": "owner_closet", "type_id": type_named("Owner Closet"),
                     "label": "Owner closet code"})
-    if access.get("alarm") == "yes":
+    if access.get("alarm") in schema.WITH_CODE:
         out.append({"slot": "alarm", "type_id": type_named("Alarm Code"), "label": "Alarm code"})
     offered = {int(i) for i in settings.get("code_type_ids") or []}
     for i, extra in enumerate(access.get("extra_codes") or []):

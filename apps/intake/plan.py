@@ -14,6 +14,13 @@ unit, which can't be deleted by API, only once those passed; the owner's
 link to the unit last, so the owner's statements and portal never show a
 half-built unit. An existing owner is left untouched: only the unit and the
 owner-to-unit link are written (owner, change 4).
+
+Never start a send that can't finish (owner, 2026-11-20, after intake #1
+stopped at its door code): every sensitive value the answers call for is
+held, already in Track, or marked by the reviewer as having none, or the plan
+has a problem and Send stays off. A code step is planned only for a code
+that is held (or already in Track), so a send never reaches a step whose
+value isn't there.
 """
 
 from __future__ import annotations
@@ -71,14 +78,79 @@ def _names(lists, key):
     return derive.by_id(lists.get(key))
 
 
-def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
+#: The step that carries each sensitive value; a code's is its own key.
+CARRIER = {"tax_id": "owner", "wifi_password": "details"}
+WIFI_FIELD = "pms_units_wifi_password"
+_NAME = re.compile(r"^(?:tax_id|wifi_password|code:[\w-]{1,24})$")
+
+
+def sent_from(track_state) -> set[str]:
+    """The sensitive values already done in Track: confirmed by Track
+    (`track_writer`'s confirm, recorded as "sent"), or whose step is done.
+    ENHQ deletes its copy of each, so these are never asked for again."""
+    state = track_state or {}
+    done = set(state.get("done") or [])
+    out = {n for n in state.get("sent") or [] if isinstance(n, str)}
+    out |= {name for name, key in CARRIER.items() if key in done}
+    out |= {key for key in done if key.startswith("code:")}
+    return out
+
+
+def none_marked(staff) -> set[str]:
+    return {n for n in (staff or {}).get("no_value") or [] if isinstance(n, str) and
+            _NAME.match(n)}
+
+
+def clean_none_marks(value) -> list[str]:
+    """The reviewer's "there is none" marks, as saved: known names only."""
+    if not isinstance(value, list):
+        return []
+    return [n for n in dict.fromkeys(value) if isinstance(n, str) and _NAME.match(n)][:20]
+
+
+def needed(answers, staff, settings, lists) -> list[dict]:
+    """Every sensitive value the answers call for, in the order the form asks:
+    [{name, label, noun, section}] ("noun" for a sentence: "door code"). The
+    Tax ID only for a new owner who chose one; the Wi-Fi password only when
+    there is Wi-Fi and its field is sent."""
+    staff = staff or {}
+    out = []
+    if staff.get("owner_mode") != "existing" and \
+            (answers.get("tax") or {}).get("kind") == "tax_id":
+        out.append({"name": "tax_id", "label": "Business Tax ID", "noun": "business Tax ID",
+                    "section": "tax"})
+    if WIFI_FIELD in derive.custom_values(answers, staff, settings, lists):
+        out.append({"name": "wifi_password", "label": "Wi-Fi password",
+                    "noun": "Wi-Fi password", "section": "home"})
+    for code in derive.code_slots(answers, lists, settings):
+        out.append({"name": f"code:{code['slot']}", "label": code["label"],
+                    "noun": code["label"].lower(), "section": "access"})
+    return out
+
+
+def secret_states(answers, staff, settings, lists, *, held, sent) -> list[dict]:
+    """Each needed value with its state: "sent" (done in Track), "held",
+    "none" (the reviewer marked that there is none) or "missing"."""
+    none = none_marked(staff)
+    out = []
+    for item in needed(answers, staff, settings, lists):
+        name = item["name"]
+        state = ("sent" if name in sent else "held" if name in held
+                 else "none" if name in none else "missing")
+        out.append({**item, "state": state})
+    return out
+
+
+def build(*, answers, staff, settings, lists, brand, held, today: date, sent=frozenset(),
           owner_active=None, unit_bookable=None) -> dict:
     """The plan for one submission. `staff` is the reviewer's choices merged
-    with the defaults (`derive.staff_with_defaults`). `has_tax_id`: a tax id is
-    saved and Tax ID was chosen. `owner_active`/`unit_bookable` override the
+    with the defaults (`derive.staff_with_defaults`). `held`: the sensitive
+    values ENHQ holds now, by name (`vault.held_names`); `sent`: those already
+    done in Track (`sent_from`). `owner_active`/`unit_bookable` override the
     form's settings (the production proof keeps both off). `today` is the
     practice's date (services.practice_today), never the server's."""
     staff = staff or {}
+    held, sent = set(held or ()), set(sent or ())
     mode = "existing" if staff.get("owner_mode") == "existing" else "new"
     problems, warnings, summary, steps = [], [], [], []
     about = answers.get("about") or {}
@@ -142,9 +214,12 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
         if not room.get("beds"):
             warnings.append(f"Bedroom {i + 1} has no beds.")
     tax_kind = (answers.get("tax") or {}).get("kind")
-    if mode == "new" and tax_kind == "tax_id" and not has_tax_id:
-        warnings.append("Tax ID was chosen but none was entered: the owner is created without "
-                        "one.")
+    secrets = secret_states(answers, staff, settings, lists, held=held, sent=sent)
+    state_of = {item["name"]: item["state"] for item in secrets}
+    for item in secrets:
+        if item["state"] == "missing":
+            problems.append(f"The {item['noun']} isn't in ENHQ: enter it beside its "
+                            "question, or mark that there is none.")
 
     # ----------------------------------------------------- the calls
     owner_active = settings.get("owner_active", True) if owner_active is None else owner_active
@@ -188,7 +263,7 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
         # Required by Track even when there is none.
         owner_body["taxExtendedAddress"] = about.get("street2") or ""
         owner_body["openingBalance"] = 0
-        if tax_kind == "tax_id" and has_tax_id:
+        if state_of.get("tax_id") == "held":
             owner_body["taxId"] = {"$secret": "tax_id"}
         steps.append({"key": "owner", "kind": "create",
                       "label": "Create the owner" + (" (active)" if owner_active
@@ -241,6 +316,8 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
                       "find": {"kind": "room", "name": room["name"]}})
     amenities = derive.chosen_amenities(answers, settings, lists, staff)
     custom = derive.custom_values(answers, staff, settings, lists)
+    if WIFI_FIELD in custom and state_of.get("wifi_password") != "held":
+        del custom[WIFI_FIELD]               # not held: nothing to send for it
     details = {}
     if amenities:
         details["amenitiesIds"] = [a["id"] for a in amenities]
@@ -259,6 +336,8 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
                       "label": f"Set the number of TVs ({tv_count})",
                       "amenity_id": int(tv["id"]), "count": tv_count})
     for code in derive.code_slots(answers, lists, settings):
+        if state_of.get(f"code:{code['slot']}") not in ("held", "sent"):
+            continue
         steps.append({"key": f"code:{code['slot']}", "kind": "create",
                       "label": f"Add the {code['label'].lower()}", "method": "POST",
                       "path": "/pms/units/{unit}/security-codes",
@@ -287,7 +366,7 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
         names = ", ".join(f"{p['first']} {p['last']}".strip() for p in persons)
         summary.append(f"A new owner, {'active' if owner_active else 'inactive'}: "
                        f"{account_name(answers)}, with contacts {names} (the first is primary).")
-        if tax_kind == "tax_id" and has_tax_id:
+        if state_of.get("tax_id") == "held":
             summary.append("The owner's business Tax ID goes with it.")
         elif tax_kind == "ssn":
             summary.append("No tax id is sent: the owner chose Social Security and adds it "
@@ -309,10 +388,13 @@ def build(*, answers, staff, settings, lists, brand, has_tax_id, today: date,
     summary.append(f"{len(amenities)} amenities, {len(custom)} details, "
                    f"{sum(1 for s in steps if s['key'].startswith('code:'))} access codes "
                    "(values hidden).")
+    for item in secrets:
+        if item["state"] == "none":
+            summary.append(f"No {item['noun']} is sent: marked as having none.")
     if contract:
         summary.append(f"The owner linked to the unit on {contract['name']} from "
                        f"{staff.get('start_date')} (standard, pmc).")
     summary.append("Never sent: Social Security numbers and bank details (not collected). "
                    "Owner dates, current bookings and documents stay in ENHQ.")
     return {"mode": mode, "steps": steps, "summary": summary, "problems": problems,
-            "warnings": warnings}
+            "warnings": warnings, "secrets": secrets}
