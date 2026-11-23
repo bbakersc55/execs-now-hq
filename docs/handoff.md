@@ -1,8 +1,13 @@
 # Execs NOW HQ — handoff to the next chat
 
+> **2026-11-23: committed on `dev` after a green gate, not pushed.** `dev` is
+> two commits ahead of `origin/dev`: Friday's fix round (`0ba527d`) and the
+> 2026-11-23 commit. Ask Bryan before pushing.
+
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-20 UTC**, after Release 48, the intake forms build and making it SkyRun's alone. **The next session starts at
-"2026-11-20: intake forms are SkyRun's alone" just below**; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
+2026-11-23**, after the intake read and the link's start date. **The next session starts at
+"2026-11-23: the intake read, start here" just below**; then "2026-11-21:
+stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
 Operations Command Center's engines"; then "2026-11-13, later: the plans engine (P11)"; then
@@ -32,6 +37,234 @@ where it and a newer section disagree, the newer holds. Upload this at the
 start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
+
+## 2026-11-23: the intake read, start here
+
+### Committed on `dev` (the commit after `0ba527d`), not pushed
+
+One gate over everything that was waiting:
+
+- **The link's start date, made plain** (Bryan's decision, 2026-11-23).
+  - The default stays the owner's ready date.
+  - The review screen says "Track shows the owner on the unit from this date."
+    beside the start date, with "Start today" (the practice's date; the
+    Contract Effective Date is left alone).
+  - A link that starts after the send day says so on its send step and on
+    the locked record.
+  - Spec: `docs/p14_intake_forms.md`, "The start date is when Track shows the
+    owner on the unit". No migration.
+- `docs/handoff.md` (the 11-21 and 11-23 updates).
+- `docs/phase7_cutover_runbook.md`: Release 49's record.
+- `scripts/intake_inspect.py` and `.sh`: the read below.
+- Tests: `tests/test_intake_inspect.py`, `tests/test_intake_link_date.py` and
+  `frontend/src/screens/IntakeReview.test.tsx`.
+
+### Next, in order
+
+1. Ask Bryan before pushing `dev`: two commits, Friday's fix round
+   (`0ba527d`) and the 2026-11-23 commit.
+2. Release only on "release": the fix round and the start-date note, with no
+   migration. Production still has the Save-button field.
+3. Bryan deletes the test records below in Track, and tidies ENHQ.
+4. Optional: confirm the cause in Track (owner 266 lists unit 222; owner 267
+   lists nothing until December 1).
+
+### The read (2026-11-23, Bryan's `!` line)
+
+- `sh scripts/intake_inspect.sh <log>`, log in
+  `~/intake_inspect_2026-11-23.log`. ENHQ: one read-only transaction,
+  rolled back. Track: 14 GETs, no writes. It prints only ids, kinds, states,
+  times and yes/no.
+- **SkyRun has two intakes, both sent** (all times MST, Friday 2026-11-20):
+  - **#1 (`bb8765b0`):** three runs. 11:48:25 stopped at `code:door` (no
+    value). 15:03:45 stopped the same way. 15:05:38 succeeded at 15:05:40.
+  - **#2 (`99c219a9`):** one run, 15:44:34 to 15:44:41, succeeded.
+- **Both owner-to-unit links exist in Track**, each with
+  `startDate=2026-12-01` and no end date:
+  - #1: link 227 (owner 267, unit 223), created 15:05:39.
+  - #2: link 228 (owner 268, unit 225), created 15:44:41.
+- 2026-12-01 is each owner's ready date, which is the default start when
+  the reviewer doesn't set one (`derive.staff_defaults`).
+- Both owners are active, with `activeUnitCount=0`. Both units are inactive
+  and not bookable.
+- The codes started 2026-11-20, the practice's date, so the date fix holds.
+- "Confirmed by Track: none" is expected on Release 49, which doesn't record
+  `track.sent` (the fix round adds it). The `secrets_deleted` events show that
+  Track confirmed each value.
+- Unit 223 was changed in Track at 14:09 MST Friday, between ENHQ's runs, so
+  not by ENHQ.
+
+### Why Bryan saw owner and unit untied (Friday about 15:54 MST)
+
+- **Not "not made yet", for either intake.** At 15:54, #1's link was 49
+  minutes old and #2's was 13 minutes old.
+- **The one difference seen is the start date.** Both links start on
+  2026-12-01. The proof's link 226, which showed as tied, started the day it
+  was made. Track's `activeUnitCount=0` on both owners fits a Track that
+  shows only current ownerships.
+- **Not proven:** Track's own screen wasn't read, and neither was owner 266's
+  `activeUnitCount` for comparison. Bryan can settle it in Track: owner 266
+  should list unit 222, and owner 267 should list nothing until December 1.
+- **Decided (Bryan, 2026-11-23):** keep the owner's ready date as the
+  default and make it plain, not move it to the send day. Built and
+  committed: see "Committed on `dev`" above.
+
+### Test records in SkyRun's Track (complete; replaces 11-21's item 6)
+
+There's no API delete; Bryan deletes these by hand.
+
+- **ZZ TEST (2026-11-19):** ownership 225, unit 221 (rooms 1502–1507, codes
+  534–552), owner 265 / company 301, contacts 10919 and 10920.
+- **ZZ TEST 2, the proof (2026-11-19):** ownership 226, unit 222 (rooms
+  1508–1512, codes 553–554), owner 266 / company 302, contacts 10922 and
+  10923.
+- **Intake #1 (`bb8765b0`):** ownership 227, unit 223 (rooms 1513–1519,
+  codes 555–556), owner 267 (active) / company 303, contact 10927.
+- **Intake #2 (`99c219a9`):** ownership 228, unit 225 (rooms 1523–1528,
+  codes 557–559), owner 268 (active) / company 304, contact 10931.
+- **Not ENHQ's:** contact 10921. The gaps between our ids are not ENHQ's
+  either: unit 224, contacts 10928–10930 and rooms 1520–1522. They're
+  Bryan's only if Bryan also tested through Tally/Make that afternoon.
+
+### Test records in ENHQ
+
+- The two intakes' onboarding projects (#1 with 9 tasks, #2 with 12).
+- #2's owner date, held for 2026-12-22 to 12-28. Cancel it before unit 225
+  is deleted, so the hourly job stops looking for that unit.
+
+## 2026-11-21: stopping until Monday
+
+### Monday, in order
+
+1. Gate and commit this handoff (see the note at the top).
+2. Ask Bryan before pushing `dev`: it holds Friday's fix round, unpushed.
+3. Write Release 49's runbook record (below: it isn't written yet).
+4. Get Bryan's three checks on the owner-to-unit link (open issue below)
+   and the Track ids of everything made since Friday's read.
+5. Release the fix round only when Bryan says "release". Until then
+   production still has the Save-button field and the old plan.
+
+### 1. Friday's fix round: committed on `dev`, not pushed, not released
+
+- **What was built** (from Bryan's first live test: intake #1 stopped at
+  "Add the door code", because the code was typed, never saved, and the plan
+  made the step anyway). The details are in `docs/p14_intake_forms.md`,
+  "They save like every other answer".
+  - Codes, the Tax ID and the Wi-Fi password save as they're typed and on
+    leaving the field, showing "Saved securely". The Save button is gone.
+  - Continue, Back, Edit, Submit and Send save anything typed first, and
+    stay put if that fails (`frontend/src/forms/pending.ts`).
+  - The plan lists every sensitive value the answers call for. A missing
+    one blocks Send. It shows beside its question and in the "Sensitive
+    values" card, with "enter it" or "there is none" (`staff.no_value`).
+    The worker and the writer check again before any write.
+  - A code step only for a code that is held. The closet and alarm
+    questions now say whether there's a code; an old "yes" reads as "with
+    a code".
+  - A missing value "isn't in ENHQ" (never "no longer").
+  - Values Track confirmed (`track.sent`), or whose step is done, count as
+    done on a retry. The "Tax ID was chosen but none was entered" warning
+    is gone.
+- **Tests:** `tests/test_intake_sensitive.py` (fake Track),
+  `tests/test_intake_browser.py` (Chrome via Playwright on a live server,
+  both bundles built from the tree; needs the laptop's Chrome), and
+  `frontend/src/forms/forms.test.tsx`.
+- **Gate: green** on tree `f07c99a`. Backend 5547 passed, 3 skipped, 2
+  xfailed; frontend 1570 passed; migration check clean.
+- **Commit `0ba527d` on `dev`. Not pushed:** `dev` is one ahead of
+  `origin/dev`. **Not released.** No migration. Nothing in it is unfinished.
+- Not run against the real Track or on production.
+
+### 2. Release 49 (2026-11-20): live; runbook record not written
+
+- **`main` at `3837c62`.** It carried the intake forms build (`b7fc804`),
+  the proof script's fixes (`a99d0cd`), the practice's dates (`5924daf`),
+  and intake made SkyRun's alone (`3837c62`). The full gate passed: backend
+  5530, frontend 1560.
+- **Four migrations:** crm 0061, work 0016, intake 0001, notify 0007,
+  applied by the runbook sequence.
+  - Backup: Bryan's manual dump, `execsnowhq_prod_20261120_162702.sql.gz`
+    (19.3 MB, 16:27:08 UTC).
+  - Push 17:17:16 UTC. The worker waited at 17:18:27 on exactly those four,
+    applied 17:18:45 to 17:18:58. Migrations current 17:19:01, worker
+    running 17:19:07.
+  - Web and mcp came up by themselves by 17:19:37. healthz 200.
+- **`ensure_schedules` ran.** Bryan ran R5b himself (auto mode refused
+  mine). Its output never reached me, but the worker log shows
+  `intake.place_owner_dates` running hourly for both practices. I haven't
+  seen `intake.purge` (daily at 3:00) in a log window.
+- **Intake was switched on for SkyRun by command.** Bryan ran `manage.py
+  intake_forms c4e5ca2a-bee1-4b11-976b-838d63544de1 on`. SkyRun's
+  submissions since prove it's on.
+- **The runbook's record ("Observed at Release 49") is not written yet**
+  in `docs/phase7_cutover_runbook.md`. Write it from this section.
+- **Still open from Release 49:** the hourly owner-dates job still places
+  dates already held for a company that has been switched off.
+
+### 3. Open issue, not yet diagnosed: owner and unit not tied together in Track
+
+- **What Bryan saw:** in a live test, the owner and the unit did not show as
+  tied together in Track. The proof's did (ownership 226).
+- **Working guess:** the link was made with a future start date. The first
+  test's step read "from 2026-12-01", while the proof used that day's date.
+  - The default comes from `apps/intake/derive.py`, `staff_defaults`: the
+    owner's ready date if they gave one, otherwise today. The Contract
+    Effective Date follows it.
+- **Bryan still owes three checks:**
+  1. Which intake it was.
+  2. Whether "Link the owner to the unit" has a check mark, and what date it
+     shows.
+  3. Whether the unit is listed on the owner's record in Track.
+- **Candidates** (from production's web log, read 2026-11-21):
+  - Intake #1 (`bb8765b0`) was sent again at 22:03:45 and 22:05:38 UTC on
+    Friday, after my last read, with two values saved at 22:05.
+  - A second intake (`99c219a9`) was sent at 22:44:34 UTC.
+  - The logs don't show how these runs ended.
+- **If confirmed, the planned fix:** default the start date to the day the
+  intake is sent. Not built.
+
+### 4. Still unproven live
+
+- A block on a bookable but inactive unit (owner dates).
+- The form's own domain on Railway.
+- "Add another property" with the existing-owner path.
+- Whether Track emails a newly created active owner. Intake #1's owner 267
+  was created active.
+
+### 5. Before the first real owner
+
+- Check SkyRun's portal user levels. Anyone left at the default Manager
+  level counts as a manager for intakes and sees "Owner intake".
+- Choose the form's own address (`INTAKE_FORM_HOSTS` and the form's
+  domain).
+- Ask the GM when she makes new units bookable.
+- Delete the Tally export from Downloads.
+- Tally and Make stay on until a few real owners have gone through.
+
+### 6. Test records in SkyRun's Track for Bryan to delete by hand
+
+There's no API delete.
+
+- **ZZ TEST, 2026-11-19:** unit 221 (rooms 1502–1507, codes 534–552),
+  owner 265 and its owner company 301, contacts 10919 and 10920,
+  ownership 225.
+- **ZZ TEST 2, the production proof, 2026-11-19 18:30 MST:** unit 222
+  (rooms 1508–1512, codes 553–554), owner 266 and company 302, contacts
+  10922 and 10923, ownership 226.
+- **Intake #1 (`bb8765b0`), 2026-11-20:**
+  - Seen at Friday's read: contact 10927, owner 267 (active) and company
+    303, contact 10927's link to it, unit 223 (inactive, not bookable),
+    rooms 1513–1519. No codes or ownership then.
+  - Its two later sends may have added codes and the ownership. Their ids
+    are unknown.
+- **Intake `99c219a9`, sent 2026-11-20 22:44 UTC:** whatever it made. Ids
+  unknown.
+- Contact 10921 isn't ours.
+- **To get the unknown ids:** each intake's review screen lists its steps
+  with Track ids. Or Bryan runs a read-only inspection as a `!` line.
+  Friday's script was in the session scratchpad
+  (`inv/inspect_intake.py`): it read only the newest submission, and may be
+  gone after a reboot.
 
 ## 2026-11-20: intake forms are SkyRun's alone
 

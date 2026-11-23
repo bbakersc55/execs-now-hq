@@ -75,10 +75,7 @@ export function IntakeReview({ me }: { me: Me }) {
           {r.status_label}</Pill>
       </div>
       {problem && <Banner kind="warn">{problem}</Banner>}
-      {r.locked && (
-        <Banner>Sent to Track {when(r.sent_at)}. This is now a locked record: later changes are
-          made in Track.</Banner>
-      )}
+      {r.locked && <LockedBanner r={r} />}
       <div className="intake-grid">
         <div className="intake-main">
           {!r.locked && r.status !== "discarded" && <LinkCard r={r} act={act} busy={busy} />}
@@ -345,9 +342,19 @@ function SecretsCard({ r, markNone }: { r: Review;
   );
 }
 
+/** A sent intake: locked, and (owner, 2026-11-23) said plainly when the owner's
+ *  link to the unit starts after today, since some Track screens won't show it. */
+export function LockedBanner({ r }: { r: Review }) {
+  return (
+    <Banner>Sent to Track {when(r.sent_at)}. This is now a locked record: later changes are
+      made in Track.
+      {r.link_note && <p style={{ margin: ".35rem 0 0" }}>{r.link_note}</p>}</Banner>
+  );
+}
+
 // ------------------------------------------------------------ staff choices
 
-function StaffCard({ r, onSaved }: { r: Review; onSaved: (r: Review) => void }) {
+export function StaffCard({ r, onSaved }: { r: Review; onSaved: (r: Review) => void }) {
   const s = r.staff;
   const [error, setError] = useState("");
   const save = async (changes: Partial<Staff>) => {
@@ -383,8 +390,14 @@ function StaffCard({ r, onSaved }: { r: Review; onSaved: (r: Review) => void }) 
           onChange={(e) => void save({ management_agreement: e.target.value })}>
           {agreement.values.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
         </select></label>}
-        <label>Start date <input type="date" value={s.start_date ?? ""}
-          onChange={(e) => void save({ start_date: e.target.value })} /></label>
+        <div className="intake-start">
+          <label>Start date <input type="date" value={s.start_date ?? ""}
+            onChange={(e) => void save({ start_date: e.target.value })} /></label>
+          <span className="muted small">Track shows the owner on the unit from this date.</span>
+          {/* The practice's today; the Contract Effective Date stays as it is. */}
+          <button type="button" className="link small" disabled={s.start_date === r.today}
+            onClick={() => void save({ start_date: r.today })}>Start today</button>
+        </div>
         <label>Contract effective date <input type="date" value={s.contract_effective_date ?? ""}
           onChange={(e) => void save({ contract_effective_date: e.target.value })} /></label>
         <label>Unit type <select value={s.unit_type_id ?? ""}

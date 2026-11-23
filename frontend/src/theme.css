@@ -2529,6 +2529,8 @@ label.sop-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cu
 .intake-link { word-break: break-all; background: var(--hover); padding: .5rem .65rem; border-radius: 8px; }
 .intake-choices { display: grid; gap: .65rem 1rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .intake-choices label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
+.intake-start { display: flex; flex-direction: column; gap: .25rem; }
+.intake-start > button { align-self: flex-start; }
 .intake-inline { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .3rem 0; font-size: .92rem; }
 .intake-derived, .intake-plan, .intake-dates, .intake-events, .intake-secrets { padding-left: 1.1rem; margin: .25rem 0 .75rem; }
 .intake-derived li, .intake-plan li, .intake-dates li, .intake-events li { margin: .3rem 0; }

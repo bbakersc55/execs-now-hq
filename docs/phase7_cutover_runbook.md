@@ -1009,6 +1009,27 @@ The commit's gate ran with `TZ=UTC`: between 17:00 and midnight Mountain
 about ten older tests compare the laptop's date with the app's UTC date and
 fail on any commit; all pass in UTC.
 
+**Observed at Release 49 (2026-11-20 UTC, four migrations, all additive:
+`crm 0061_company_intake_forms`, `work 0016_intake_task_source`,
+`intake 0001_initial` and `notify 0007_intake_notices`; `3837c62`: intake
+forms (P14), the proof script's fixes, the practice's dates, intake made
+SkyRun's alone):** the full gate passed first (backend 5530, frontend 1560).
+R1: the owner ran the backup by hand:
+`execsnowhq_prod_20261120_162702.sql.gz`, 19.3 MB, landed 16:27:08. R2:
+`main` fast-forwarded `239e3a3..3837c62`, pushed 17:17:16. R3: the worker
+waited at 17:18:27 for exactly those four. R4: applied 17:18:45–58. R5:
+`migrations current` 17:19:01, running 17:19:07. R5b: `ensure_schedules`, for
+`intake.place_owner_dates` (hourly) and `intake.purge` (daily at 3:00). The
+owner ran it, because auto mode refused mine. Its output never
+reached me, but the worker's log shows `intake.place_owner_dates` running
+hourly for both practices; `intake.purge` had not yet been seen in a log
+window. R6: web and `mcp` came up by themselves by 17:19:37, `/healthz` 200.
+**Push to serving: about 2 min 21 s.** After the release, the owner switched
+intake forms on for SkyRun Park City in the Railway shell (`python manage.py
+intake_forms c4e5ca2a-bee1-4b11-976b-838d63544de1 on`); SkyRun's submissions
+since show it's on. Still open: the hourly owner-dates job still places dates
+already held for a company that has since been switched off.
+
 ---
 
 ## Part A — the owner's steps, in order

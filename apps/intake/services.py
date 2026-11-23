@@ -5,6 +5,7 @@ afterwards. The views are thin; everything that changes state is here.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from django.db import transaction
 from django.db.models import Max
@@ -262,6 +263,33 @@ def practice_today(submission):
     return board.today_for(submission.tenant)
 
 
+#: Said on the link's send step and on the locked record while the owner-to-unit
+#: link starts after today (owner, 2026-11-23): on Friday 2026-11-20 two links
+#: starting on the owner's ready date read in Track as "not tied" for now.
+LINK_NOTE = ("Owner linked in Track. The link takes effect on {day}. Until then some Track "
+             "screens won't show the owner on the unit.")
+
+
+def link_start(submission, staff=None):
+    """The date the owner-to-unit link starts in Track, once it is made: the one
+    sent, as recorded at the send; for an intake sent before that was recorded
+    (2026-11-23), the reviewer's start date. None while there is no link."""
+    state = submission.track or {}
+    if "ownership" not in (state.get("done") or []):
+        return None
+    return state.get("link_start") or (staff or {}).get("start_date") or None
+
+
+def link_note(start, today) -> str:
+    """LINK_NOTE for a link that starts after `today` (the practice's date); ""
+    for one that has started, or a date that can't be read."""
+    try:
+        day = date.fromisoformat(str(start or "")[:10])
+    except ValueError:
+        return ""
+    return LINK_NOTE.format(day=f"{day:%B %-d, %Y}") if day > today else ""
+
+
 def staff_choices(submission, form_settings, lists, *, today=None) -> dict:
     return derive.staff_with_defaults(submission.staff, submission.answers or {},
                                       form_settings, lists,
@@ -392,6 +420,19 @@ def run_send(run, *, client=None, today=None):
         track_errors=(track.TrackUnavailable,))
     if not ok:
         return _failed(run, submission, failed_key, message)
+    # The date the link was sent with, kept for the locked record: the link is
+    # the last Track step, so it was made by this run's plan.
+    if "ownership" in state["done"] and not state.get("link_start"):
+        ownership = next((s for s in the_plan["steps"] if s["key"] == "ownership"), {})
+        start = (ownership.get("body") or {}).get("startDate")
+        if start:
+            state["link_start"] = str(start)
+            submission.track = state
+            submission.save(update_fields=["track"])
+    note = link_note(state.get("link_start"), today)
+    made = next((s for s in run.steps if s["key"] == "ownership" and s["state"] == "done"), None)
+    if note and made:
+        _step(run, "ownership", "done", f"{made['detail']}. {note}" if made["detail"] else note)
     sent_on = today
     with tenant_context(submission.tenant_id):
         sender = run.started_by

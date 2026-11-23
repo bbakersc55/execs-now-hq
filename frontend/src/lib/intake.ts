@@ -74,6 +74,10 @@ export interface Review extends IntakeRow {
   files: (FileRow & { content_type: string })[];
   events: { kind: string; label: string; detail: string; who: string; at: string }[];
   run: Run | null;
+  /** The practice's date (its time zone), for "Start today". */
+  today: string;
+  /** Once the owner is linked to the unit, what to say while that link hasn't started; else "". */
+  link_note: string;
   owner_dates: OwnerDateRow[];
   may_send: boolean;
   is_practice: boolean;

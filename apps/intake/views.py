@@ -238,6 +238,7 @@ def review_payload(sub, request) -> dict:
                         "ticked": item["id"] not in set(staff.get("untick") or [])})
     custom = derive.custom_values(answers, staff, settings, lists)
     run = sub.runs.order_by("-created_at").first()
+    today = services.practice_today(sub)
     from apps.tenancy.models import Membership
 
     membership = getattr(request, "membership", None)
@@ -297,6 +298,10 @@ def review_payload(sub, request) -> dict:
                     "who": _user_name(e.actor) if e.actor else "Owner",
                     "at": e.created_at.isoformat()} for e in sub.events.all()],
         "run": _run(run),
+        # The practice's date, for "Start today"; and, once the owner is
+        # linked to the unit, what to say while that link hasn't started.
+        "today": today.isoformat(),
+        "link_note": services.link_note(services.link_start(sub, staff), today),
         "owner_dates": services.owner_date_rows(sub),
         "may_send": not the_plan["problems"] and not sub.locked
         and sub.status in (Submission.Status.SUBMITTED, Submission.Status.FAILED,

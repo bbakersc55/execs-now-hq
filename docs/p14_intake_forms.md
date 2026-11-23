@@ -271,6 +271,26 @@ existing owner or reused contacts, the amenities worked out from other answers
 already has it), and the staff custom fields (Trigger/Automation Keywords
 preset from the answers).
 
+**The start date is when Track shows the owner on the unit** (owner,
+2026-11-23). On Friday 2026-11-20, the links for intakes #1 and #2 were made
+with the owners' ready date, 2026-12-01. Track reported 0 active units for both
+owners, and the owner and unit read as not tied. The default stays the ready
+date, made plain:
+
+- Beside the start date, the review screen says "Track shows the owner on the
+  unit from this date." Its "Start today" sets the start date to the practice's
+  today (`today` in the review payload). It leaves the Contract Effective Date
+  alone.
+- The send keeps the date the link was sent with (`track.link_start`). While
+  that date is after the practice's today, the link's send step and the locked
+  record say: "Owner linked in Track. The link takes effect on <date>. Until
+  then some Track screens won't show the owner on the unit."
+  (`services.LINK_NOTE`; the payload's `link_note`).
+- An intake sent before `link_start` was kept reads the reviewer's start date
+  instead.
+- Tests: `tests/test_intake_link_date.py` and
+  `frontend/src/screens/IntakeReview.test.tsx`.
+
 ## After sending
 
 - **Owner dates:** held in ENHQ. Every hour (`intake.place_owner_dates`) and
