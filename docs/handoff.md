@@ -1,12 +1,8 @@
 # Execs NOW HQ — handoff to the next chat
 
-> **2026-11-23: committed on `dev` after a green gate, not pushed.** `dev` is
-> two commits ahead of `origin/dev`: Friday's fix round (`0ba527d`) and the
-> 2026-11-23 commit. Ask Bryan before pushing.
-
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-23**, after the intake read and the link's start date. **The next session starts at
-"2026-11-23: the intake read, start here" just below**; then "2026-11-21:
+2026-11-23**, after Release 50. **The next session starts at
+"2026-11-23: Release 50, and the intake read, start here" just below**; then "2026-11-21:
 stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
@@ -38,9 +34,25 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-23: the intake read, start here
+## 2026-11-23: Release 50, and the intake read, start here
 
-### Committed on `dev` (the commit after `0ba527d`), not pushed
+### Release 50 is live
+
+- **`main` at `e010c77`**, pushed with `dev` at 17:33:07 UTC.
+- **No migration**, no `WAITING`, no new scheduled job.
+- Worker, web and `mcp` were all SUCCESS by 17:34:39. `/healthz` 200, `mcp`
+  `ok`, and the served bundle carries the new review-screen line.
+- Recorded in the runbook ("Observed at Release 50").
+- **It carried:**
+  - Friday's fix round (`0ba527d`): sensitive values save as they're typed,
+    and a send never starts without them.
+  - The commit below.
+- **Not yet seen on production:**
+  - A real intake through the save-as-you-type fields.
+  - The note on intakes #1 and #2's locked records. Each should now say the
+    link takes effect on December 1, 2026.
+
+### Released at 50 (`e010c77`)
 
 One gate over everything that was waiting:
 
@@ -61,13 +73,13 @@ One gate over everything that was waiting:
 
 ### Next, in order
 
-1. Ask Bryan before pushing `dev`: two commits, Friday's fix round
-   (`0ba527d`) and the 2026-11-23 commit.
-2. Release only on "release": the fix round and the start-date note, with no
-   migration. Production still has the Save-button field.
-3. Bryan deletes the test records below in Track, and tidies ENHQ.
-4. Optional: confirm the cause in Track (owner 266 lists unit 222; owner 267
+1. Bryan opens intake #1 on production. Its locked record should say the
+   link takes effect on December 1, 2026.
+2. Bryan deletes the test records below in Track, and tidies ENHQ.
+3. Optional: confirm the cause in Track (owner 266 lists unit 222; owner 267
    lists nothing until December 1).
+4. The Release 50 record (runbook and this handoff) is committed on `dev`
+   after its own gate, and not pushed.
 
 ### The read (2026-11-23, Bryan's `!` line)
 

@@ -1030,6 +1030,24 @@ intake_forms c4e5ca2a-bee1-4b11-976b-838d63544de1 on`); SkyRun's submissions
 since show it's on. Still open: the hourly owner-dates job still places dates
 already held for a company that has since been switched off.
 
+**Observed at Release 50 (2026-11-23 UTC, no migration; `e010c77`: intake
+sensitive values save as they're typed and a send never starts without them
+(`0ba527d`), the link's start date made plain, the read-only intake read,
+Release 49's record):** the full gate passed first on tree `5b7e33d` (backend
+5553, frontend 1573). R1: the owner's run-now:
+`execsnowhq_prod_20261123_172823.sql.gz`, 19.8 MB, landed 17:28:27. R2:
+`main` fast-forwarded `3837c62..e010c77`, pushed with `dev` at 17:33:07; the
+worker, web and `mcp` deployments (`fea19e9e`, `3c2fb252`, `d83f0bba`)
+appeared at 17:33:09. R3/R4: no migration, and no `WAITING` on the new
+worker. R5: `migrations current` 17:34:09, the cluster starting 17:34:16; the
+worker and web both print "real calls to the card processor on". R5b: no new
+scheduled job. R6: web listening 17:34:14; all three SUCCESS by 17:34:39;
+`/healthz` 200 and `mcp` `ok`; the served bundle carries "Track shows the
+owner on the unit from this date." and "Start today". **Push to serving:
+about 1 min 7 s.** A watcher polling `railway deployment list` with `-p`/`-e`
+for the three services, and the new worker's log for `WAITING`, saw the new
+ids on its first read.
+
 ---
 
 ## Part A — the owner's steps, in order
