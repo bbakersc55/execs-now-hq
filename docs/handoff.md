@@ -1,9 +1,11 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-24**, after the owner agreements build. **The next session starts at
-"2026-11-24: owner agreements (P15), merged into `dev`, start here" just
-below**; then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
+2026-11-24**, after the owner agreements' third round and tax numbers. **The
+next session starts at "2026-11-24, later: several owners, Exhibit A from
+Sleeps, and tax numbers, merged into `dev`, start here" just below**; then
+"2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
+the one to use); then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
 stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
@@ -35,7 +37,102 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24: owner agreements (P15), merged into `dev`, start here
+## 2026-11-24, later: several owners, Exhibit A from Sleeps, and tax numbers, merged into `dev`, start here
+
+Bryan's line-by-line read of the agreement (2026-11-24). Branch
+`owner-agreements-2`, cut from `dev` at `685ffb9`: A `62c0ef1` (the
+agreement: up to four owners in order, cancel with a reason and "Start a new
+agreement from this one", the owner's page in two parts, Exhibit A from
+Sleeps), B `0dac669` (tax numbers on the intake form), and `e29c3b2` (the
+owner's page keeps each number on its label's line; the Send plan's line for
+an existing owner while a tax number is held; place settings 1.5 × Sleeps up
+to 10 and 2 × from 11, decided that day). B `0dac669` sits on A; its own
+tests ran green on A too. **Merged into `dev` at `e29c3b2`
+(a fast-forward), after a green gate, and pushed. Not released.** `main` and
+production are untouched; the demo setup script was not run. Specs:
+`docs/p15_owner_agreements.md` (A), `docs/p14_intake_forms.md`, "Tax numbers
+on the form" (B). B on its own, gated green on plain `dev`, is the local
+branch `tax-numbers-alone` (`4b5a445`), kept in case B ever has to go without A.
+
+### Next, in order
+
+1. Bryan reads the two refreshed sample PDFs (made from `e29c3b2`: owners
+   Alex Sample and Taylor Sample, Sleeps 12, so Exhibit A shows the new rule:
+   24 place settings, 120 pieces, 28 teaspoons, 24 of each glass, a set of 12
+   place mats): `~/enhq-walks/owner-agreements/sample_signed_agreement.pdf`
+   and `~/enhq-walks/owner-agreements/sample_owner_copy_awaiting.pdf`.
+2. Bryan checks the demo deployed from `dev`: SUCCESS in
+   `railway deployment list -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production --service execs-now-hq`.
+3. Bryan runs the demo setup script (in "Walking it on the demo", in the
+   section below: unchanged, once).
+4. Bryan walks this round on the demo with his real phone (below).
+5. Before real owners: the one proof on SkyRun's real Track with a made-up
+   SSN-shaped number on a ZZ TEST owner (not run). Exhibit A's place settings
+   rule was decided 2026-11-24 (1.5 × Sleeps up to 10, 2 × from 11) and is in.
+6. Then release: "Releasing it" in the section below, which now lists
+   `agreements 0004` (item 1) and `intake 0003` and `crm 0063` (item 7).
+
+### Walking this round on the demo
+
+After the setup script, signed in as yourself (the practice owner):
+
+1. **Two owners, in order.** Owner agreements → New owner: yourself as the
+   owner, then "+ Add another owner" with a second name and email (the same
+   email is allowed: the screen says "These owners share an email address.
+   Each gets their own link."). Send by email. On your phone, open the first
+   owner's link (or Copy the link): Fill in your details (Sleeps 6), Read the
+   agreement (Exhibit A shows 12 place settings, 60 pieces, 16 teaspoons, a
+   set of 6 place mats), sign, choose Later. The agreement's page now shows the
+   second owner "Their turn"; their email goes to the demo's redirect, or use
+   "Copy <name>'s link". Before that, the second owner's link only says who
+   signs first. Open it: read, sign, a thank-you page, no onboarding. Then
+   SkyRun's signature as before (the signer's private window). The final PDF
+   has two owner blocks, each named; the signing record has "Owner 1 of 2"
+   and "Owner 2 of 2".
+2. **Cancel, and start again.** Another agreement with two owners; the first
+   owner signs and chooses Now (the intake opens: enter a door code). On the
+   agreement: Cancel this agreement, give a reason. The first owner's address
+   gets "Your rental management agreement with … was withdrawn"; the second
+   owner, who hadn't signed, gets nothing. Then "Start a new agreement from
+   this one": a new draft with the same terms, owners and answers. Its intake
+   is the same one, moved: its history says "Carried over to owner agreement
+   #N", the door code is still saved, and Send to Track waits for the new
+   agreement's countersignature.
+3. **The tax number's code.** People and permissions (`/permissions/<company
+   id>`): tick yourself "See full tax numbers", Save. As the owner, on an
+   intake: Tax details → "My Social Security number or ITIN" → a made-up
+   number (for example 123-45-6789), submit. On the review it shows "ending
+   6789"; press Show full number. A code arrives at the demo's redirect address
+   (below); enter it, and the number shows for 60 seconds, then is masked. The
+   intake's history has the viewing, and you get the notice. Acting as
+   someone, both steps are refused. The Send card's tick shows only with test
+   mode off; on the demo, Track always refuses, so a real send there stops
+   before any write and the number stays. Also try "I'd rather give it by
+   phone": the review says the owner asked for a call.
+
+### The demo's email (checked 2026-11-24, read only)
+
+**The redirect is set:** `DEMO_MAIL_REDIRECT` on the demo's web service is an
+`@gmail.com` address. `DEMO_MAIL_FROM` isn't set, so mail leaves from the
+default, `demo@getexecutivesnow.com`. That is half of it: the demo sends only
+through the demo practice's own Gmail connection sending as
+`demo@getexecutivesnow.com`; without that connection it sends nothing, the
+code included (and the code is never stored, so it can't be read back).
+
+- **Check the variable:**
+  `railway variables -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production -s execs-now-hq --kv | grep DEMO_MAIL`
+- **Check the connection:** on the demo, signed in as yourself, Settings →
+  Email: Gmail connected, sending as `demo@getexecutivesnow.com`. If it isn't,
+  "Connecting Gmail on the demo" in `docs/phase7_cutover_runbook.md` (step 5
+  there is the proof: approve one touch in the Sending queue and look for it
+  at the redirect).
+- **Set or change the redirect:** Railway → project `execs-now-hq-demo` →
+  service `execs-now-hq` → Variables → `DEMO_MAIL_REDIRECT` = one address (the
+  demo redeploys), or
+  `railway variables -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production -s execs-now-hq --set "DEMO_MAIL_REDIRECT=<your address>"`.
+  One exact address; the setting refuses to exist anywhere but the demo.
+
+## 2026-11-24: owner agreements (P15), merged into `dev`
 
 Built on Bryan's go of 2026-11-23 (answers, the approved change list, "Go").
 Spec: `docs/p15_owner_agreements.md`. **Merged into `dev` at `d93346d`
