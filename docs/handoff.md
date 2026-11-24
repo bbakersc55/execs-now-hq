@@ -2,7 +2,7 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-24**, after the owner agreements build. **The next session starts at
-"2026-11-24: owner agreements (P15), on `owner-agreements`, start here" just
+"2026-11-24: owner agreements (P15), merged into `dev`, start here" just
 below**; then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
 stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
@@ -35,12 +35,28 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24: owner agreements (P15), on `owner-agreements`, start here
+## 2026-11-24: owner agreements (P15), merged into `dev`, start here
 
 Built on Bryan's go of 2026-11-23 (answers, the approved change list, "Go").
-Spec: `docs/p15_owner_agreements.md`. **On branch `owner-agreements`, cut from
-`dev` at `9dcac4d`; committed after a green gate, not pushed, not merged,
-not released.** Nothing is released without Bryan.
+Spec: `docs/p15_owner_agreements.md`. **Merged into `dev` at `d93346d`
+(a fast-forward of `owner-agreements`, cut from `dev` at `9dcac4d`), after a
+green gate, and pushed. Not released.** `main` and production are untouched;
+the Release 50 record (`9dcac4d`) went up with it. Nothing is released without
+Bryan.
+
+### Next, in order
+
+1. Bryan reads the two sample PDFs in detail:
+   `~/enhq-walks/owner-agreements/sample_signed_agreement.pdf` and
+   `~/enhq-walks/owner-agreements/sample_owner_copy_awaiting.pdf` (the test
+   company is "Mountain Stays", so the brand name reads that way there).
+2. Bryan checks the demo deployed from `dev`: SUCCESS in
+   `railway deployment list -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production --service execs-now-hq`.
+3. Bryan runs the demo setup script ("Walking it on the demo" below).
+4. Bryan walks it on the demo with his real phone (the drawing pad is not
+   proven on a real phone yet).
+5. Then release ("Releasing it" below: migrations `agreements` 0001–0003 and
+   the others listed there, by the runbook).
 
 ### What it is
 
@@ -72,15 +88,18 @@ accounts (Bryan has two: FF and SkyRun FCC).
    `agreements 0001` (8 new tables), `agreements 0002` (data: ticks intake for
    everyone the old rule let in; adds rows only; on SkyRun that is Jackie,
    Kendra, Michael, Bryan's FCC account), `intake 0002` (one column with a
-   default), `crm 0062` and `notify 0008` (no SQL). Then `ensure_schedules`
-   (new hourly `agreements.tick`).
+   default), `agreements 0003` (two columns with a default: the signed text,
+   the authorization's recorder's name), `crm 0062` and `notify 0008` (no SQL).
+   Then `ensure_schedules` (new hourly `agreements.tick`).
 2. From the release, **intake's Send to Track is in test mode** (missing
-   setting = on) until someone turns it off in Form settings.
+   setting = on) until the practice owner or the Client owner turns it off in
+   Form settings (nobody else can, and not while acting as someone).
 3. `python manage.py owner_agreements c4e5ca2a-bee1-4b11-976b-838d63544de1 on`.
 4. Bryan: Owner agreements → Settings → "Who signs for the company" = Michael;
    People and permissions: a for Sandra, Jackie, Kendra, Michael, Bryan; b for
    Jackie (c is already there from the migration).
-5. Michael records his authorization (Jackie and Bryan).
+5. Michael, signed in as himself, records his authorization (Jackie and
+   Bryan). Acting as him is refused.
 6. Later, apart from the release: Postmark sign-up and its DNS, then
    `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
    chosen (p14 "Adding a domain", p15 "The form's address").
@@ -110,7 +129,7 @@ accounts (Bryan has two: FF and SkyRun FCC).
   read a unit back after the first real send), the two new fields.
 - Postmark end to end. A real phone's drawing pad.
 
-### Walking it on the demo (after `dev` is pushed; not run)
+### Walking it on the demo (`dev` is pushed; not run yet)
 
 The demo deploys from `dev` and applies its own migrations at start; its Track
 client always refuses, so no Track is involved. Wait for SUCCESS:
