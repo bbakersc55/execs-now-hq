@@ -20,7 +20,10 @@ read: the "Owner agreements: plan and Track read" doc (2026-11-23).
   company, practice or the demo.
 - **Owners see nothing of Execs NOW HQ, Executives Now or Noble Rose**, except
   while the owner-email sender is "ENHQ's own sender (testing)".
-- **No Social Security numbers, no bank details, no text messages.**
+- **No Social Security numbers, no bank details, no text messages.** The
+  agreement still asks for none. Since 2026-11-24 the owner's intake form takes
+  the tax number for the rental permit, an SSN or ITIN included (p14, "Tax
+  numbers on the form"); bank details stay off it.
 - **No new writes to Track.** Square footage, the emergency contact and the
   two new fields ride in bodies Track already receives.
 - **No real email from a laptop.** The two new Outbox producers never send for

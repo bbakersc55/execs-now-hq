@@ -1,4 +1,4 @@
-"""The sensitive values: the tax id, every access code, the Wi-Fi password.
+"""The sensitive values: the tax number, every access code, the Wi-Fi password.
 
 Encrypted at rest with the environment's key (`crm.services.secrets`). On
 screen: the tax id shows its last four; a code or the Wi-Fi password shows no
@@ -25,19 +25,14 @@ class Refused(ValueError):
     """A value this form won't keep, said for the person typing it."""
 
 
-_SSN_SHAPE = re.compile(r"^\d{3}-\d{2}-\d{4}$")
+def normalise(kind: str, value: str, tax_kind: str = "tax_id") -> str:
+    """`tax_kind`: which tax number it is, "tax_id" (EIN) or "ssn" (a Social
+    Security number or ITIN): owner, 2026-11-24 (`taxnumbers.check`)."""
+    from . import taxnumbers
 
-
-def normalise(kind: str, value: str) -> str:
     value = (value or "").strip()
     if kind == Kind.TAX_ID:
-        if _SSN_SHAPE.match(value):
-            raise Refused("That looks like a Social Security number. Please don't enter it "
-                          "here: you'll add it yourself in your owner portal.")
-        digits = re.sub(r"\D", "", value)
-        if len(digits) != 9:
-            raise Refused("A business Tax ID (EIN) has 9 digits, like 12-3456789.")
-        return f"{digits[:2]}-{digits[2:]}"
+        return taxnumbers.check(tax_kind, value)
     if not value:
         raise Refused("Enter a value, or leave it out.")
     if kind == Kind.CODE and len(value) > 40:
@@ -50,7 +45,9 @@ def normalise(kind: str, value: str) -> str:
 def put(submission: Submission, kind: str, slot: str, value: str) -> SubmissionSecret:
     if kind not in Kind.values:
         raise Refused("Unknown kind of value.")
-    value = normalise(kind, value)
+    from . import taxnumbers
+
+    value = normalise(kind, value, taxnumbers.number_kind(submission.answers))
     row, _ = SubmissionSecret.all_objects.update_or_create(
         submission=submission, kind=kind, slot=slot or "",
         defaults={"tenant_id": submission.tenant_id, "ciphertext": cipher.encrypt(value),
@@ -102,7 +99,7 @@ def value(submission, name):
 def describe(name: str) -> str:
     kind, _, slot = name.partition(":")
     if kind == Kind.TAX_ID:
-        return "the Tax ID"
+        return "the tax number"
     if kind == Kind.WIFI_PASSWORD:
         return "the Wi-Fi password"
     return f"the {slot.replace('_', ' ').replace('-', ' ')} code"

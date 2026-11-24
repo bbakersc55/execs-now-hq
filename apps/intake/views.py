@@ -10,7 +10,10 @@ GET   /api/intake/companies/<id>/submissions         the list; POST {first_name,
 GET   /api/intake/submissions/<id>                   the review screen's whole payload
 PATCH /api/intake/submissions/<id>/answers           {section, value}
 POST  /api/intake/submissions/<id>/secret            {kind, slot, value}; DELETE {kind, slot}
-POST  /api/intake/submissions/<id>/reveal            {name}: one value, recorded
+POST  /api/intake/submissions/<id>/reveal            {name}: one value, recorded (never
+                                                    the tax number)
+POST  /api/intake/submissions/<id>/tax-code          a one-time code to my own email
+POST  /api/intake/submissions/<id>/tax-show          {code}: the full tax number, once
 PATCH /api/intake/submissions/<id>/staff             the reviewer's choices
 POST  /api/intake/submissions/<id>/check             look in Track for duplicates
 POST  /api/intake/submissions/<id>/link              {action: link|message|email, reminder}
@@ -314,6 +317,7 @@ def review_payload(sub, request) -> dict:
                  "domain": sub.form.domain, "company": sub.company.name,
                  "company_id": str(sub.company_id)},
         "answers": answers, "secrets": vault.masked(sub),
+        "tax": _tax_card(sub, answers, settings, membership_of(request)),
         "schema": {"sections": [{"key": k, "title": t} for k, t in schema.SECTIONS],
                    "options": {k: [{"value": a, "label": b} for a, b in v]
                                for k, v in schema.OPTIONS.items()},
@@ -450,7 +454,12 @@ class SecretView(Base):
 class RevealView(Base):
     def post(self, request, submission_id):
         sub = _submission(request, submission_id)
-        value = vault.reveal(sub, str(request.data.get("name", "")), request.user)
+        name = str(request.data.get("name", ""))
+        if name.partition(":")[0] == "tax_id":
+            # Owner, 2026-11-24: only with a one-time code (TaxShowView).
+            return Response({"detail": "The full tax number is shown only with a one-time "
+                                       "code: press Show full number."}, status=403)
+        value = vault.reveal(sub, name, request.user)
         if value is None:
             return Response({"detail": "That value isn't held any more."}, status=404)
         response = Response({"value": value})
@@ -521,8 +530,75 @@ class SendView(Base):
     def post(self, request, submission_id):
         services.not_while_acting()
         sub = _submission(request, submission_id)
-        run = services.start_send(sub, request.user)
+        run = services.start_send(sub, request.user,
+                                  tax_ack=request.data.get("tax_ack") is True)
         return Response({"run": _run(run)}, status=202)
+
+
+class TaxCodeView(Base):
+    """"Show full number", first half: a one-time code to my own sign-in
+    address (owner, 2026-11-24)."""
+
+    def post(self, request, submission_id):
+        from . import taxnumbers
+
+        try:
+            taxnumbers._not_while_acting()
+        except taxnumbers.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        sub = _submission(request, submission_id)
+        if not taxnumbers.may_see(membership_of(request), sub.company):
+            return Response({"detail": "You aren't ticked to see full tax numbers. The practice "
+                                       "owner or the Client owner can tick it on People and "
+                                       "permissions."}, status=403)
+        try:
+            sent_to = taxnumbers.request_code(sub, request.user)
+        except taxnumbers.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"sent_to": sent_to})
+
+
+class TaxShowView(Base):
+    """The second half: the code, then the number, once, for 60 seconds."""
+
+    def post(self, request, submission_id):
+        from . import taxnumbers
+
+        try:
+            taxnumbers._not_while_acting()
+        except taxnumbers.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        sub = _submission(request, submission_id)
+        if not taxnumbers.may_see(membership_of(request), sub.company):
+            return Response({"detail": "You aren't ticked to see full tax numbers."},
+                            status=403)
+        try:
+            value = taxnumbers.show(sub, request.user, str(request.data.get("code", "")))
+        except taxnumbers.Refused as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        response = Response({"value": value, "seconds": taxnumbers.SHOWN_SECONDS})
+        response["Cache-Control"] = "no-store"
+        return response
+
+
+def membership_of(request):
+    return getattr(request, "membership", None)
+
+
+def _tax_card(sub, answers, settings, membership) -> dict:
+    """The tax number on the review: what is held (last four), whether this
+    person may see it in full, whether Send needs the tick, and why it went."""
+    from . import taxnumbers
+
+    held = vault.masked(sub).get("tax_id")
+    kind = taxnumbers.kind_of(answers)
+    given = taxnumbers.number_kind(answers)
+    return {"kind": kind, "label": taxnumbers.LABEL.get(given, ""),
+            "held": bool(held), "last4": (held or {}).get("last4", ""),
+            "by_phone": kind == "phone",
+            "may_show": bool(held) and taxnumbers.may_see(membership, sub.company),
+            "ack_needed": bool(held) and not sub.locked and not services.test_mode(settings),
+            "removed": taxnumbers.removed_note(sub)}
 
 
 class RunView(Base):

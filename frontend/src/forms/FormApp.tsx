@@ -186,7 +186,7 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
         <ol className="ix-next">
           <li>Our team reviews your answers and sets your home up.</li>
           <li>You'll get an invitation to your owner portal. That's where you add your bank
-            details and, if you chose it, your Social Security number.</li>
+            details.</li>
           <li>We'll be in touch about photos, a walkthrough and your listing going live.</li>
         </ol>
         <div className="ix-another">
@@ -249,8 +249,8 @@ export function FormApp({ brand, token }: { brand: Brand; token: string | null }
             </ul>
             <Note>Your answers save as you go. You can stop at any time and come back with the
               same link.</Note>
-            <Note tone="safe">This form never asks for your Social Security number or your bank
-              details. You'll add those yourself, in your owner portal, later.</Note>
+            <Note tone="safe">This form never asks for your bank details: you'll add those
+              yourself, in your owner portal, later.</Note>
           </>
         )}
         {INTROS[step.key] && <p className="ix-lead">{INTROS[step.key]}</p>}

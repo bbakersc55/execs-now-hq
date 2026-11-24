@@ -26,6 +26,8 @@ export interface OwnerForm {
   lodging_types: { id: number; name: string }[];
   code_types: { id: number; name: string }[];
   trash_days: Option[];
+  /** Why the tax number is asked and how it is protected (owner, 2026-11-24). */
+  tax_wording?: { why: string; how: string };
   custom_fields: {
     reference: string; label: string; help: string; type: string; section: string;
     options: Option[];
@@ -75,7 +77,7 @@ export interface Access {
 
 export interface Answers {
   about?: About;
-  tax?: { kind?: string };
+  tax?: { kind?: string; phone_kind?: string };
   property?: Property;
   bedrooms?: Bedroom[];
   other_sleeping?: { has?: string; places?: Place[] };

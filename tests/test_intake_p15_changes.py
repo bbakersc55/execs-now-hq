@@ -97,7 +97,8 @@ def test_an_existing_owner_gets_a_task_for_the_emergency_contact(world):
     assert "Jamie" not in item["title"]                       # titles never carry a name
     refreshed = defaults.refreshed({**SETTINGS, "checklist": [{"key": "portal"}],
                                     "checklist_offered": []}, LISTS)
-    assert [i["key"] for i in refreshed["checklist"]] == ["portal", "emergency_contact"]
+    assert [i["key"] for i in refreshed["checklist"]] == ["portal", "emergency_contact",
+                                                          "tax_by_phone"]
     again = defaults.refreshed({**refreshed, "checklist": [{"key": "portal"}]}, LISTS)
     assert [i["key"] for i in again["checklist"]] == ["portal"]   # removed stays removed
 

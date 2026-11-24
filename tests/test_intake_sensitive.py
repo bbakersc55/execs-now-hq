@@ -99,7 +99,8 @@ def test_a_value_removed_after_send_was_pressed_stops_before_any_write(world, fa
     from .test_intake_flow import ready
 
     sub = ready(world)
-    r = as_(world["fcc"]).post(f"/api/intake/submissions/{sub.pk}/send")
+    r = as_(world["fcc"]).post(f"/api/intake/submissions/{sub.pk}/send", {"tax_ack": True},
+                               content_type="application/json")
     assert r.status_code == 202
     vault.clear(sub, "code", "alarm")              # gone before the worker started
     run = SendRun.all_objects.get(pk=r.json()["run"]["id"])

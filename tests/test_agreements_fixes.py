@@ -266,7 +266,8 @@ def test_the_permissions_screen_with_intake_on_and_agreements_off(world):
     url = f"/api/agreements/companies/{co}/access"
     page = as_(world["ff"]).get(url)
     assert page.status_code == 200
-    assert page.json()["columns"] == {"agreements": False, "signed_pdfs": False, "intake": True}
+    assert page.json()["columns"] == {"agreements": False, "signed_pdfs": False, "intake": True,
+                                      "tax_numbers": True}
     member = next(r for r in page.json()["rows"] if r["user_id"] == str(world["member"].user_id))
     assert "agreements" not in member and member["intake"] is False
     r = j(as_(world["fcc"]), "put", url, {"rows": [{**member, "intake": True,
@@ -285,7 +286,7 @@ def test_the_permissions_screen_with_intake_on_and_agreements_off(world):
 def test_the_permissions_screen_with_both_on_and_with_both_off(aw):
     url = f"/api/agreements/companies/{aw['company'].pk}/access"
     assert as_(aw["michael"]).get(url).json()["columns"] == {
-        "agreements": True, "signed_pdfs": True, "intake": True}
+        "agreements": True, "signed_pdfs": True, "intake": True, "tax_numbers": True}
     other = ClientCompanyFactory(tenant=aw["practice"], name="Other Client")
     assert as_(aw["ff"]).get(f"/api/agreements/companies/{other.pk}/access").status_code == 404
 
@@ -364,7 +365,7 @@ def test_no_trace_when_off_settings_documents_and_the_notification_choice(aw):
             .json()["documents"] == []
     # With agreements off, the permissions screen shows intake only.
     assert as_(aw["ff"]).get(f"/api/agreements/companies/{co}/access").json()["columns"] == {
-        "agreements": False, "signed_pdfs": False, "intake": True}
+        "agreements": False, "signed_pdfs": False, "intake": True, "tax_numbers": True}
     # Another practice and another company: nothing at all.
     other = ClientCompanyFactory(tenant=aw["practice"], name="Other Client")
     for url in (f"/api/agreements/companies/{other.pk}/settings",

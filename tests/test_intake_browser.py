@@ -134,6 +134,9 @@ def review_and_send(browser, world, live_server, sub):
     page.goto(f"{live_server.url}/intake/{sub.pk}")
     page.get_by_label("Area (Track's node)").select_option("24")
     send = page.get_by_role("button", name="Send to Track")
+    # A tax number is held: the send waits for the tick (owner, 2026-11-24).
+    expect(send).to_be_disabled()
+    page.get_by_label("I have what I need from the full tax number", exact=False).check()
     expect(send).to_be_enabled()
     send.click()
     expect(page.get_by_role("heading", name="Sent to Track")).to_be_visible(timeout=20000)
@@ -145,7 +148,7 @@ def test_codes_typed_and_nothing_else_pressed_reach_track(world, fake, browser, 
                                           "alarm": "code", "extra_codes": []})
     page = browser.new_page()
     page.goto(url + "#tax")
-    type_in(page, "Business Tax ID (EIN)", "12-3456789")
+    type_in(page, "Business tax ID (EIN)", "12-3456789")
     for step in ("property", "bedrooms", "other_sleeping", "bathrooms", "amenities", "home"):
         go_on(page, step)
     type_in(page, "Wi-Fi password", "powder-day")
@@ -182,7 +185,7 @@ def test_a_closet_that_opens_with_a_key_asks_for_no_code(world, fake, browser, l
     sub, url = start(world, live_server, {"door": "keypad", "extra_codes": []})
     page = browser.new_page()
     page.goto(url + "#tax")
-    type_in(page, "Business Tax ID (EIN)", "12-3456789")
+    type_in(page, "Business tax ID (EIN)", "12-3456789")
     for step in ("property", "bedrooms", "other_sleeping", "bathrooms", "amenities", "home"):
         go_on(page, step)
     type_in(page, "Wi-Fi password", "powder-day")

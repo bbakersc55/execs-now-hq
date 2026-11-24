@@ -108,6 +108,17 @@ accounts (Bryan has two: FF and SkyRun FCC).
 6. Later, apart from the release: Postmark sign-up and its DNS, then
    `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
    chosen (p14 "Adding a domain", p15 "The form's address").
+7. **Tax numbers on the intake form** (2026-11-24, its own commit; p14 "Tax
+   numbers on the form"): migrations `intake 0003` (two new tables, the "See
+   full tax numbers" tick and the one-time codes; the history's two new kinds
+   need no SQL) and `crm 0063` (a new Outbox producer, no SQL). Nobody is
+   ticked to see full numbers until the practice owner or the Client owner
+   ticks someone. **Before real owners use it:** one proof on SkyRun's real
+   Track with a made-up number shaped like a Social Security number, on a ZZ
+   TEST owner, to see what Track stores and shows (not run). And check
+   SkyRun's Form settings: an invite or reminder message someone edited may
+   still say the form never asks for a Social Security number (unedited
+   defaults are updated by the code).
 
 ### Fixes before merging (Bryan, 2026-11-24), same branch
 

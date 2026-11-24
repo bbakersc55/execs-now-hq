@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Review } from "../lib/intake";
-import { mockApi } from "../test/render";
-import { LockedBanner, StaffCard } from "./IntakeReview";
+import type { Me } from "../lib/api";
+import { mockApi, renderRoute } from "../test/render";
+import { LockedBanner, SendCard, StaffCard, TaxShow } from "./IntakeReview";
 
 // The owner-to-unit link's start date, made plain (owner, 2026-11-23).
 const NOTE = "Owner linked in Track. The link takes effect on December 1, 2026. Until then "
@@ -27,6 +28,10 @@ function aReview(over: Partial<Review> = {}): Review {
                derived_amenities: [], amenities: [], custom: {}, keyword_presets: [],
                codes: [], unit_type_suggested: null },
     people: [],
+    tax: { kind: "ssn", label: "Social Security number or ITIN", held: true, last4: "6789",
+           by_phone: false, may_show: true, ack_needed: false, removed: "" },
+    plan: { mode: "new", summary: [], problems: [], warnings: [], steps: [], secrets: [] },
+    run: null, may_send: true, test_mode: false, agreement: null,
     ...over,
   } as unknown as Review;
 }
@@ -66,5 +71,53 @@ describe("IntakeReview: the link's start date", () => {
 
     rerender(<LockedBanner r={aReview({ locked: true, sent_at: "2026-11-20T22:44:41Z" })} />);
     expect(screen.queryByText(/takes effect/)).not.toBeInTheDocument();
+  });
+});
+
+describe("IntakeReview: the full tax number (owner, 2026-11-24)", () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it("asks for a code by email, then shows the number for 60 seconds", async () => {
+    const api = mockApi({
+      "POST /api/intake/submissions/sub-1/tax-code": { sent_to: "jackie@mountainstays.net" },
+      "POST /api/intake/submissions/sub-1/tax-show": { value: "123-45-6789", seconds: 60 },
+    });
+    vi.stubGlobal("fetch", api);
+    render(<TaxShow id="sub-1" last4="6789" />);
+    fireEvent.click(screen.getByRole("button", { name: "Show full number" }));
+    const box = await screen.findByLabelText(/Code sent to jackie@mountainstays.net/);
+    fireEvent.change(box, { target: { value: "482913" } });
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Show" }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      await vi.waitFor(() => expect(screen.getByLabelText("The full tax number"))
+        .toHaveTextContent("123-45-6789"));
+      expect(api.calls.find((c) => c.url.endsWith("/tax-show"))?.body)
+        .toEqual({ code: "482913" });
+      await act(async () => { vi.advanceTimersByTime(59_000); });
+      expect(screen.getByLabelText("The full tax number")).toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(2_000); });
+      expect(screen.queryByText("123-45-6789")).toBeNull();
+      expect(screen.getByRole("button", { name: "Show full number" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a real send while a number is held waits for the tick, and sends it", async () => {
+    const api = mockApi({ "POST /api/intake/submissions/sub-1/send": { run: {
+      id: "r1", state: "queued", steps: [], error: "", test: false,
+      created_at: "2026-11-24T17:00:00Z", finished_at: null } } });
+    vi.stubGlobal("fetch", api);
+    const r = aReview({ tax: { ...aReview().tax, ack_needed: true } });
+    renderRoute(<SendCard r={r} me={{} as Me} onDone={vi.fn()} />);
+    const send = screen.getByRole("button", { name: "Send to Track" });
+    expect(send).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/I have what I need from the full tax number/));
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    await waitFor(() => expect(api.calls.find((c) => c.url.endsWith("/send"))?.body)
+      .toEqual({ tax_ack: true }));
   });
 });

@@ -86,6 +86,50 @@ BED_LABELS = {
     "Double Sleeper Sofa": "Double (Full) Sleeper Sofa",
 }
 
+#: Owner, 2026-11-24: the Social Security number can now be given on the form.
+OWNER_PORTAL_TITLE = "Owner adds bank details in the owner portal (follow up)"
+#: Words the defaults used to have, which promised the form never asks for a
+#: Social Security number. A form that kept them unchanged gets today's.
+OLD_DEFAULTS = {
+    "owner_portal_details": ("Owner adds bank details and Social Security number in the owner "
+                             "portal (follow up)"),
+    "message_invite": {
+        "subject": "Welcome to {brand}: tell us about your home",
+        "body": ("Hi {first_name},\n\n"
+                 "Welcome to {brand}! We're excited to get started. This link takes you to a "
+                 "short form about you and your home:\n\n{link}\n\n"
+                 "It saves as you go, so you can stop and come back with the same link. It "
+                 "never asks for your Social Security number or bank details; you'll add those "
+                 "yourself in your owner portal later.\n\n"
+                 "Thank you,\n{signature}"),
+    },
+    "message_reminder": {
+        "subject": "A quick reminder from {brand}",
+        "body": ("Hi {first_name},\n\n"
+                 "Just a friendly reminder about the form for your home. Everything you've "
+                 "entered is saved, and the same link picks up where you left off:\n\n"
+                 "{link}\n\n"
+                 "It never asks for your Social Security number or bank details.\n\n"
+                 "Thank you,\n{signature}"),
+    },
+}
+
+
+def modernised(settings: dict) -> dict:
+    """A form's settings with any of the old default words above, kept
+    unchanged, replaced by today's: nothing a manager wrote is touched."""
+    out = dict(settings or {})
+    for key, today in (("message_invite", MESSAGE_INVITE), ("message_reminder", MESSAGE_REMINDER)):
+        if (out.get(key) or {}).get("body") == OLD_DEFAULTS[key]["body"]:
+            out[key] = {**out[key], "body": today["body"]}
+    if out.get("checklist"):
+        out["checklist"] = [
+            {**item, "title": OWNER_PORTAL_TITLE}
+            if item.get("key") == "owner_portal_details"
+            and item.get("title") == OLD_DEFAULTS["owner_portal_details"] else item
+            for item in out["checklist"]]
+    return out
+
 #: The onboarding checklist (owner, 2026-11-19). `when` decides whether a
 #: submission gets the task; due dates count from the owner's ready date, or
 #: the day it was sent when that is blank or past. Titles never carry a name.
@@ -117,8 +161,11 @@ CHECKLIST = [
     {"key": "photography", "offset_days": 6, "when": "always",
      "title": "Place the Property Onboarding - Photography hold" + HOLD_NOTE},
     {"key": "owner_portal_details", "offset_days": 7, "when": "always",
-     "title": "Owner adds bank details and Social Security number in the owner portal "
-              "(follow up)"},
+     "title": OWNER_PORTAL_TITLE},
+    # Owner, 2026-11-24: the owner asked to give the tax number by phone, and it
+    # didn't go to Track with the send.
+    {"key": "tax_by_phone", "offset_days": 0, "when": "tax_by_phone",
+     "title": "Call the owner for their tax number: they asked to give it by phone"},
     {"key": "listing", "offset_days": 14, "when": "always",
      "title": "Finish the listing and make it live"},
     {"key": "place_dates", "offset_days": 14, "when": "has_owner_dates",
@@ -127,10 +174,11 @@ CHECKLIST = [
      "title": "Confirm the owner's dates were placed"},
 ]
 CHECKLIST_WHEN = ("always", "no_permit", "has_insurance", "no_insurance", "has_bookings",
-                  "existing_owner_new_people", "existing_owner_emergency", "has_owner_dates")
+                  "existing_owner_new_people", "existing_owner_emergency", "has_owner_dates",
+                  "tax_by_phone")
 #: Checklist items added after forms were made: offered once to a form's
 #: checklist (a manager may then remove them).
-ADDED_ITEMS = ("emergency_contact",)
+ADDED_ITEMS = ("emergency_contact", "tax_by_phone")
 
 #: The message staff copy or open in their own email (owner, 2026-11-19: ENHQ
 #: never emails owners). {first_name}, {link}, {signature}, {brand}.
@@ -140,8 +188,8 @@ MESSAGE_INVITE = {
              "Welcome to {brand}! We're excited to get started. This link takes you to a "
              "short form about you and your home:\n\n{link}\n\n"
              "It saves as you go, so you can stop and come back with the same link. It never "
-             "asks for your Social Security number or bank details; you'll add those yourself "
-             "in your owner portal later.\n\n"
+             "asks for your bank details; you'll add those yourself in your owner portal "
+             "later.\n\n"
              "Thank you,\n{signature}"),
 }
 MESSAGE_REMINDER = {
@@ -149,7 +197,7 @@ MESSAGE_REMINDER = {
     "body": ("Hi {first_name},\n\n"
              "Just a friendly reminder about the form for your home. Everything you've entered "
              "is saved, and the same link picks up where you left off:\n\n{link}\n\n"
-             "It never asks for your Social Security number or bank details.\n\n"
+             "It never asks for your bank details.\n\n"
              "Thank you,\n{signature}"),
 }
 

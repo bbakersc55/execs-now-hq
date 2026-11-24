@@ -181,6 +181,9 @@ class Command(BaseCommand):
         n = OutboxMessage.all_objects.count()
         OutboxMessage.all_objects.all().delete()
         rows.append(("outbox_message", n, "deleted"))
+        # Owner, 2026-11-24: production's intake secrets (tax numbers, codes,
+        # Wi-Fi passwords) and tax-number codes never stay on a laptop copy.
+        rows.extend(delete_intake_secrets())
         n = OrmQ.objects.count()
         OrmQ.objects.all().delete()
         rows.append(("django_q_ormq", n, "queued tasks flushed"))
@@ -196,3 +199,16 @@ class Command(BaseCommand):
         n = Tenant.objects.filter(hold_all_digests=False).update(hold_all_digests=True)
         rows.append(("tenant.hold_all_digests", n, "turned back ON"))
         return rows
+
+
+def delete_intake_secrets() -> list:
+    """Every intake secret and tax-number code: (table, count, what)."""
+    from apps.intake.models import SubmissionSecret, TaxCode
+
+    out = []
+    for model, table in ((SubmissionSecret, "intake_submission_secret"),
+                         (TaxCode, "intake_tax_code")):
+        n = model.all_objects.count()
+        model.all_objects.all().delete()
+        out.append((table, n, "deleted"))
+    return out

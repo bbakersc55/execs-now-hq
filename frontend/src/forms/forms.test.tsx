@@ -25,8 +25,14 @@ const FORM: OwnerForm = {
                    { value: "no", label: "No" }],
     alarm: [{ value: "code", label: "Yes, it's set with a code" },
             { value: "no_code", label: "Yes, but it has no code" }, { value: "no", label: "No" }],
-    tax_kind: [{ value: "tax_id", label: "A business Tax ID (EIN)" }],
+    tax_kind: [{ value: "tax_id", label: "My business tax ID (EIN)" },
+               { value: "ssn", label: "My Social Security number or ITIN" },
+               { value: "phone", label: "I'd rather give it by phone" }],
+    tax_phone_kind: [{ value: "tax_id", label: "Their business tax ID (EIN)" },
+                     { value: "ssn", label: "Their Social Security number or ITIN" }],
   }, builtin: {},
+  tax_wording: { why: "Mountain Stays needs this number once, to file your property's rental "
+    + "permit.", how: "It's encrypted as soon as you save it." },
   bed_types: [{ id: 1, label: "King", sleeps: 2, other_places: false },
               { id: 3, label: "Queen", sleeps: 2, other_places: false },
               { id: 5, label: "Twin", sleeps: 1, other_places: false },
@@ -190,18 +196,40 @@ describe("a sensitive value saves like every other answer", () => {
   });
 
   it("stops them, and says why beside the field, when it can't be saved", async () => {
-    const api = fakeApi("A business Tax ID (EIN) has 9 digits, like 12-3456789.");
+    const api = fakeApi("A business tax ID (EIN) has 9 digits, like 12-3456789.");
     const pending = new Pending();
     render(<Harness Section={TaxSection} initial={{ tax: { kind: "tax_id" } }} api={api}
       pending={pending} />);
-    fireEvent.change(screen.getByLabelText("Business Tax ID (EIN)"),
+    fireEvent.change(screen.getByLabelText("Business tax ID (EIN)"),
                      { target: { value: "12-34" } });
     let ok = true;
     await act(async () => { ok = await pending.flush(); });
     expect(ok).toBe(false);
     expect(screen.getByRole("alert")).toHaveTextContent("has 9 digits");
-    expect(screen.getByLabelText("Business Tax ID (EIN)")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Business tax ID (EIN)")).toHaveAttribute("aria-invalid", "true");
     expect(pending.dirty()).toBe(true);
+  });
+
+  it("asks which number goes on the rental permit, and says why and how (2026-11-24)", () => {
+    render(<Harness Section={TaxSection} initial={{ tax: { kind: "ssn" } }} />);
+    expect(screen.getByText("Which number should go on your rental permit?")).toBeInTheDocument();
+    expect(screen.getByText(/needs this number once, to file your property's rental permit/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/encrypted as soon as you save it/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Social Security number or ITIN")).toBeInTheDocument();
+    expect(screen.queryByText(/you'll add it yourself in your owner portal/i)).toBeNull();
+  });
+
+  it("by phone: nothing for the owner to enter; staff say which and type it in", () => {
+    const { unmount } = render(<Harness Section={TaxSection}
+      initial={{ tax: { kind: "phone" } }} />);
+    expect(screen.getByText(/We'll call you for it/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Social Security number or ITIN")).toBeNull();
+    unmount();
+    render(<Harness Section={TaxSection} mode="staff"
+      initial={{ tax: { kind: "phone", phone_kind: "ssn" } }} />);
+    expect(screen.getByText(/The owner asked to give it by phone/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Social Security number or ITIN")).toBeInTheDocument();
   });
 
   it("Continue on the owner's form waits for a code typed and nothing else pressed", async () => {

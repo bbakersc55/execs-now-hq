@@ -283,7 +283,8 @@ function SecretsCard({ r, markNone }: { r: Review;
   const rows: { name: string; label: string; section?: string; state: SecretState | "extra" }[]
     = [...needed, ...held.filter((n) => !asked.has(n)).map((n) => ({
       name: n, state: "extra" as const,
-      label: n === "tax_id" ? "Business Tax ID" : n === "wifi_password" ? "Wi-Fi password"
+      label: n === "tax_id" ? (r.tax.label || "Tax number") : n === "wifi_password"
+        ? "Wi-Fi password"
         : `Code (${n.slice(5).replace(/[_-]/g, " ")})` }))];
   if (!rows.length) return null;
   const enter = (name: string, section?: string) => {
@@ -305,7 +306,11 @@ function SecretsCard({ r, markNone }: { r: Review;
     <Card title="Sensitive values">
       <p className="muted small" style={{ marginTop: 0 }}>What the send needs. Encrypted, and
         deleted from ENHQ the moment Track confirms it has them. Each reveal is recorded with
-        who and when.</p>
+        who and when. The tax number shows its last four only; someone ticked "See full tax
+        numbers" sees it in full for 60 seconds, after a code sent to their own email.</p>
+      {r.tax.by_phone && <Banner kind="info">The owner asked to give their tax number by phone.
+        Call them, choose which number they gave under Tax details, then type it there.</Banner>}
+      {r.tax.removed && <Banner kind="warn">{r.tax.removed}</Banner>}
       <ul className="intake-secrets">
         {rows.map((n) => (
           <li key={n.name} className={`secret-${n.state}`}>
@@ -318,7 +323,9 @@ function SecretsCard({ r, markNone }: { r: Review;
                 missing: "not in ENHQ: needed before Send",
                 extra: "saved, but the answers don't ask for it now: not sent",
               }[n.state]}</span></span>
-            {(n.state === "held" || n.state === "extra") && (shown[n.name]
+            {n.name === "tax_id" && (n.state === "held" || n.state === "extra")
+              ? (r.tax.may_show ? <TaxShow id={r.id} last4={r.tax.last4} /> : null)
+              : (n.state === "held" || n.state === "extra") && (shown[n.name]
               ? <code>{shown[n.name]}</code> : (
                 <button type="button" className="ghost small" onClick={() => void act(async () => {
                   const out = await intake.reveal(r.id, n.name);
@@ -559,11 +566,12 @@ function CheckCard({ r, act, busy, onSaved }: { r: Review; busy: string;
 const STEP_MARK: Record<string, string> = { would: "→", done: "✓", skipped: "✓", failed: "✕",
                                             running: "…", waiting: "·" };
 
-function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
+export function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
   const unsaved = useContext(PendingContext);
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [taxAck, setTaxAck] = useState(false);
   const live = r.run && (r.run.state === "queued" || r.run.state === "running");
   const { data: polled } = useQuery({
     queryKey: ["intake-run", r.id], queryFn: () => intake.run(r.id),
@@ -589,7 +597,8 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
       return;
     }
     setSending(true);
-    try { await intake.send(r.id); } catch (e) { setError((e as Error).message); setSending(false); }
+    try { await intake.send(r.id, r.tax.ack_needed ? { tax_ack: taxAck } : undefined); }
+    catch (e) { setError((e as Error).message); setSending(false); }
   };
   return (
     <Card title={r.locked ? "Sent to Track" : "What will be sent"} tone="current">
@@ -620,14 +629,85 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
         done is kept in Track and here; "Try the rest again" continues without making
         duplicates.</Banner>}
       {error && <Banner kind="warn">{error}</Banner>}
+      {!r.locked && r.tax.ack_needed && (
+        <label className="sig-consent">
+          <input type="checkbox" checked={taxAck} onChange={(e) => setTaxAck(e.target.checked)} />
+          <span>I have what I need from the full tax number. It will be removed from ENHQ after
+            this send.</span>
+        </label>
+      )}
       {!r.locked && (
         <button type="button" className="primary"
-          disabled={!r.may_send || sending || saving || !!live} onClick={() => void send()}>
+          disabled={!r.may_send || sending || saving || !!live || (r.tax.ack_needed && !taxAck)}
+          onClick={() => void send()}>
           {saving ? "Saving…" : sending || live ? "Sending…" : run?.state === "failed"
             && !run.test ? "Try the rest again" : r.test_mode ? "Test send (writes nothing)"
             : "Send to Track"}</button>
       )}
     </Card>
+  );
+}
+
+/** "Show full number" (owner, 2026-11-24): a one-time code to the person's own
+ *  sign-in address, then the number for 60 seconds, masked again after, or
+ *  when the page is left. Only for someone ticked "See full tax numbers". */
+export function TaxShow({ id, last4 }: { id: string; last4: string }) {
+  const [phase, setPhase] = useState<"idle" | "code" | "shown">("idle");
+  const [sentTo, setSentTo] = useState("");
+  const [code, setCode] = useState("");
+  const [value, setValue] = useState("");
+  const [left, setLeft] = useState(0);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (phase !== "shown") return undefined;
+    const timer = window.setInterval(() => setLeft((n) => {
+      if (n <= 1) {
+        setValue("");
+        setPhase("idle");
+        return 0;
+      }
+      return n - 1;
+    }), 1000);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+  useEffect(() => () => setValue(""), []);
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <span className="tax-show">
+      {phase === "shown" ? (
+        <><code aria-label="The full tax number">{value}</code>
+          <span className="muted small"> Hidden again in {left} s.</span></>
+      ) : phase === "code" ? (
+        <span className="row" style={{ gap: ".4rem" }}>
+          <label className="small">Code sent to {sentTo}
+            <input inputMode="numeric" autoComplete="one-time-code" value={code} size={8}
+              onChange={(e) => setCode(e.target.value)} /></label>
+          <button type="button" className="ghost small" disabled={busy || !code.trim()}
+            onClick={() => void run(async () => {
+              const out = await intake.taxShow(id, code);
+              setCode("");
+              setValue(out.value);
+              setLeft(out.seconds);
+              setPhase("shown");
+            })}>Show</button>
+        </span>
+      ) : (
+        <button type="button" className="ghost small" disabled={busy}
+          onClick={() => void run(async () => {
+            const out = await intake.taxCode(id);
+            setSentTo(out.sent_to);
+            setPhase("code");
+          })}>Show full number</button>
+      )}
+      {error && <span className="small" role="alert" style={{ color: "var(--bad, #b00)" }}>
+        {" "}{error}</span>}
+      <span className="sr-only">ending {last4}</span>
+    </span>
   );
 }
 

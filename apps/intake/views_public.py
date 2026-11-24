@@ -26,7 +26,7 @@ from django.views.decorators.http import require_http_methods
 from apps.accounts.ratelimit import RateLimit, client_ip, too_many_shared
 from apps.tenancy.context import tenant_context
 
-from . import derive, hosts, links, schema, services, tracklists, vault
+from . import taxnumbers, derive, hosts, links, schema, services, tracklists, vault
 
 PER_TOKEN = RateLimit(limit=2400, window_seconds=3600, prefix="intake-token")
 PER_ADDRESS = RateLimit(limit=3000, window_seconds=3600, prefix="intake-ip")
@@ -132,11 +132,13 @@ def owner_form(submission) -> dict:
         "trash_days": [{"value": v["handle"], "label": v["name"]}
                        for v in trash_days.get("values") or []],
         "custom_fields": owner_fields,
+        # Why the tax number is asked and how it is protected (owner, 2026-11-24).
+        "tax_wording": taxnumbers.wording(submission.form.brand_name),
     }
 
 
 def owner_secrets(submission) -> dict:
-    """On the owner's link: the tax id's last four; a code or the Wi-Fi password
+    """On the owner's link: the tax number's last four; a code or the Wi-Fi password
     only as "saved", never a character of it."""
     return vault.masked(submission)
 

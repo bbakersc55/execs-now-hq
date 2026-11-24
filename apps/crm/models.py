@@ -1375,6 +1375,7 @@ class OutboxMessage(TenantScopedModel):
         # is filled in on delivery and never stored.
         OWNER_AGREEMENT = "owner_agreement", "Owner agreement email"
         OWNER_AGREEMENT_NOTICE = "owner_agreement_notice", "Owner agreement notice"
+        TAX_NUMBER_CODE = "tax_number_code", "Tax number code"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -1406,11 +1407,15 @@ class OutboxMessage(TenantScopedModel):
         Producer.INTAKE_NOTICE,
         # Owner agreements: fixed wording, sent when the owner or staff act.
         Producer.OWNER_AGREEMENT, Producer.OWNER_AGREEMENT_NOTICE,
+        # A one-time code to see a tax number, to the person's own sign-in
+        # address; the code is put in at delivery and never stored.
+        Producer.TAX_NUMBER_CODE,
     }
 
     #: Never real mail from a laptop, whatever the allow-list says (owner,
     #: 2026-11-23): owner agreement mail always goes to the dev outbox there.
-    NEVER_REAL_FROM_LAPTOP = {Producer.OWNER_AGREEMENT, Producer.OWNER_AGREEMENT_NOTICE}
+    NEVER_REAL_FROM_LAPTOP = {Producer.OWNER_AGREEMENT, Producer.OWNER_AGREEMENT_NOTICE,
+                              Producer.TAX_NUMBER_CODE}
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)
     producer = models.CharField(max_length=24, choices=Producer.choices, db_index=True)

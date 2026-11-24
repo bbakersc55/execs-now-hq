@@ -10,11 +10,13 @@ import { Banner, Card } from "../components/ui";
 import type { Me } from "../lib/api";
 import { agreements, type AccessRow } from "../lib/agreements";
 
-type Flag = "agreements" | "signed_pdfs" | "intake";
+type Flag = "agreements" | "signed_pdfs" | "intake" | "tax_numbers";
 const COLUMNS: { flag: Flag; label: string; hint: string }[] = [
   { flag: "agreements", label: "Owner agreements", hint: "create, send, see" },
   { flag: "signed_pdfs", label: "Receives signed PDFs", hint: "and the signed text" },
   { flag: "intake", label: "Owner intake", hint: "review, send to Track, notices" },
+  // Owner, 2026-11-24: nobody to start, the practice owner included.
+  { flag: "tax_numbers", label: "See full tax numbers", hint: "with a code to their email" },
 ];
 
 export function PeoplePermissions({ me: _me }: { me: Me }) {
@@ -55,7 +57,8 @@ export function PeoplePermissions({ me: _me }: { me: Me }) {
                   {shown.map((c) => (
                     <td key={c.flag}><input type="checkbox" aria-label={`${r.name}: ${c.label}`}
                       checked={!!r[c.flag]}
-                      disabled={r.practice_owner && c.flag !== "signed_pdfs"}
+                      disabled={r.practice_owner && c.flag !== "signed_pdfs"
+                        && c.flag !== "tax_numbers"}
                       onChange={(e) => tick(i, c.flag, e.target.checked)} /></td>
                   ))}
                 </tr>

@@ -220,31 +220,51 @@ export function AboutSection({ ctx }: { ctx: Ctx }) {
 
 // ------------------------------------------------------------ tax
 
+/** The tax number for the rental permit (owner, 2026-11-24): the owner's EIN,
+ *  or their Social Security number or ITIN, or a call instead. Why we ask and
+ *  how it is protected come from the server, word for word. */
 export function TaxSection({ ctx }: { ctx: Ctx }) {
-  const kind = ctx.answers.tax?.kind;
+  const tax = ctx.answers.tax ?? {};
+  const kind = tax.kind;
   const you = ctx.mode === "owner";
+  const given = kind === "phone" ? tax.phone_kind : kind;
+  const label = given === "tax_id" ? "Business tax ID (EIN)"
+    : given === "ssn" ? "Social Security number or ITIN" : "";
+  const wording = ctx.form.tax_wording;
   return (
     <>
-      <Choice label={you ? "For tax reporting, will you use a business Tax ID or your Social "
-        + "Security number?" : "Tax ID or Social Security number"}
+      <Choice label={you ? "Which number should go on your rental permit?"
+        : "The tax number for the rental permit"}
         options={opts(ctx.form, "tax_kind")} value={kind}
         onChange={(v) => ctx.update("tax", { kind: v })} />
-      {kind === "tax_id" && (
+      {wording && (
+        <div className="ix-note ix-note-safe">
+          <p style={{ margin: "0 0 6px" }}><strong>Why we ask:</strong> {wording.why}</p>
+          <p style={{ margin: 0 }}><strong>How it's protected:</strong> {wording.how}</p>
+        </div>
+      )}
+      {kind === "phone" && (you ? (
+        <Note>We'll call you for it. There's nothing to enter here.</Note>
+      ) : (
         <>
-          <SecretField label="Business Tax ID (EIN)" inputMode="numeric" name="tax_id"
-            hint="9 digits, like 12-3456789. Please don't enter a Social Security number here."
+          <Note>The owner asked to give it by phone. Call them, choose which number they gave
+            you, then type it here.</Note>
+          <Choice label="Which number did they give?" options={opts(ctx.form, "tax_phone_kind")}
+            value={tax.phone_kind} onChange={(v) => ctx.update("tax", { ...tax, phone_kind: v })} />
+        </>
+      ))}
+      {label && (
+        <>
+          <SecretField label={label} inputMode="numeric" name="tax_id"
+            hint={given === "tax_id" ? "9 digits, like 12-3456789." : "9 digits, like 123-45-6789."}
             saved={!!ctx.secrets.tax_id} last4={ctx.secrets.tax_id?.last4}
             onSave={async (v) => ctx.setSecrets(await ctx.api.putSecret("tax_id", "", v))}
             onClear={async () => ctx.setSecrets(await ctx.api.clearSecret("tax_id", ""))} />
-          <Needed ctx={ctx} name="tax_id" label="Business Tax ID" />
+          <Needed ctx={ctx} name="tax_id" label={label} />
         </>
       )}
-      {kind === "ssn" && (
-        <Note tone="safe">You'll add your Social Security number yourself, in your owner portal,
-          later. This form never asks for it.</Note>
-      )}
-      <Note tone="safe">Bank details for your payouts are added the same way, by you, in your
-        owner portal. This form never asks for them.</Note>
+      <Note tone="safe">Bank details for your payouts are added by you, in your owner portal.
+        This form never asks for them.</Note>
     </>
   );
 }
@@ -818,10 +838,12 @@ export function summarize(ctx: Ctx, key: string): string[] {
     }
     case "tax": {
       const kind = a.tax?.kind;
-      if (kind === "tax_id")
-        return [ctx.secrets.tax_id ? `Business Tax ID ending ${ctx.secrets.tax_id.last4}`
-          : "Business Tax ID (not entered yet)"];
-      return kind === "ssn" ? ["Social Security number: you'll add it in the owner portal"] : [];
+      if (kind === "phone") return ["Tax number: you'd rather give it by phone"];
+      const label = kind === "tax_id" ? "Business tax ID (EIN)"
+        : kind === "ssn" ? "Social Security number or ITIN" : "";
+      if (!label) return [];
+      return [ctx.secrets.tax_id ? `${label} ending ${ctx.secrets.tax_id.last4}`
+        : `${label} (not entered yet)`];
     }
     case "property": {
       const p = a.property ?? {};

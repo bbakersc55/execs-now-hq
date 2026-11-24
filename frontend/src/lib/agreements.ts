@@ -76,12 +76,13 @@ export interface AgreementDetail extends AgreementRow {
 }
 export interface AccessRow {
   user_id: string; name: string; role: string; practice_owner: boolean;
-  agreements?: boolean; signed_pdfs?: boolean; intake?: boolean;
+  agreements?: boolean; signed_pdfs?: boolean; intake?: boolean; tax_numbers?: boolean;
 }
 export interface AccessPage {
   company: { id: string; name: string };
   /** Which ticks are shown: what is switched on for the company. */
-  columns: { agreements: boolean; signed_pdfs: boolean; intake: boolean };
+  columns: { agreements: boolean; signed_pdfs: boolean; intake: boolean;
+             tax_numbers?: boolean };
   rows: AccessRow[];
 }
 export interface AuthorityPage {

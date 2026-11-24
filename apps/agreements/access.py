@@ -200,7 +200,9 @@ def columns_on(company) -> dict:
     while owner agreements are on, intake while intake forms are on."""
     agreements_on = is_on(company)
     return {"agreements": agreements_on, "signed_pdfs": agreements_on,
-            "intake": bool(company.intake_forms_enabled)}
+            "intake": bool(company.intake_forms_enabled),
+            # Owner, 2026-11-24: "See full tax numbers", with intake forms.
+            "tax_numbers": bool(company.intake_forms_enabled)}
 
 
 def permissions_company_or_404(request, company_id):

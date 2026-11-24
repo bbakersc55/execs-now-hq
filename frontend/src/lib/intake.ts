@@ -48,8 +48,14 @@ export interface Staff {
 }
 export interface Named { id: number; name: string; [k: string]: unknown }
 
+/** The tax number on the review (owner, 2026-11-24): never more than its last four. */
+export interface TaxCard {
+  kind: "" | "tax_id" | "ssn" | "phone"; label: string; held: boolean; last4: string;
+  by_phone: boolean; may_show: boolean; ack_needed: boolean; removed: string;
+}
 export interface Review extends IntakeRow {
   locked: boolean; owner_may_edit: boolean;
+  tax: TaxCard;
   invite: { first_name: string; last_name: string; email: string };
   link: string;
   form: { title: string; brand_name: string; domain: string; company: string;
@@ -145,7 +151,14 @@ export const intake = {
                expired: boolean }>(`/api/intake/submissions/${id}/link`, { action, reminder }),
   reopen: (id: string) => api.post<Review>(`/api/intake/submissions/${id}/reopen`),
   discard: (id: string) => api.post<Review>(`/api/intake/submissions/${id}/discard`),
-  send: (id: string) => api.post<{ run: Run }>(`/api/intake/submissions/${id}/send`),
+  send: (id: string, body?: { tax_ack: boolean }) =>
+    api.post<{ run: Run }>(`/api/intake/submissions/${id}/send`, body),
+  /** "Show full number" (owner, 2026-11-24): a code to my own email, then the number. */
+  taxCode: (id: string) =>
+    api.post<{ sent_to: string }>(`/api/intake/submissions/${id}/tax-code`),
+  taxShow: (id: string, code: string) =>
+    api.post<{ value: string; seconds: number }>(`/api/intake/submissions/${id}/tax-show`,
+                                                 { code }),
   run: (id: string) =>
     api.get<{ run: Run | null; status: string; locked: boolean }>(
       `/api/intake/submissions/${id}/run`),

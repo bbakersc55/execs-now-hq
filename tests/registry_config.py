@@ -505,6 +505,12 @@ register(SendRun, factories.IntakeSendRunFactory, api_exposed=True)
 register(OwnerDate, factories.IntakeOwnerDateFactory, api_exposed=True)
 register(TrackListSnapshot, factories.IntakeTrackListFactory, api_exposed=False)
 
+from apps.intake.models import TaxCode, TaxNumberAccess  # noqa: E402
+
+# Tax numbers (owner, 2026-11-24): the tick, and the one-time codes (hashes only).
+register(TaxNumberAccess, factories.IntakeTaxNumberAccessFactory, api_exposed=True)
+register(TaxCode, factories.IntakeTaxCodeFactory, api_exposed=False)
+
 from apps.agreements.models import (  # noqa: E402
     AgreementEvent, AgreementSignature, AgreementVersion, CountersignAuthority, OwnerAgreement,
     OwnerEmail, Program, StaffAccess,

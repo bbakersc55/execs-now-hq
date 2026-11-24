@@ -111,14 +111,22 @@ def clean_none_marks(value) -> list[str]:
 def needed(answers, staff, settings, lists) -> list[dict]:
     """Every sensitive value the answers call for, in the order the form asks:
     [{name, label, noun, section}] ("noun" for a sentence: "door code"). The
-    Tax ID only for a new owner who chose one; the Wi-Fi password only when
-    there is Wi-Fi and its field is sent."""
+    tax number for a new owner (owner, 2026-11-24: an EIN, a Social Security
+    number or ITIN, or one the owner gives by phone); the Wi-Fi password only
+    when there is Wi-Fi and its field is sent."""
+    from . import taxnumbers
+
     staff = staff or {}
     out = []
-    if staff.get("owner_mode") != "existing" and \
-            (answers.get("tax") or {}).get("kind") == "tax_id":
-        out.append({"name": "tax_id", "label": "Business Tax ID", "noun": "business Tax ID",
-                    "section": "tax"})
+    kind = taxnumbers.kind_of(answers)
+    if staff.get("owner_mode") != "existing" and kind:
+        given = taxnumbers.number_kind(answers)
+        if kind == "phone":
+            label = "Tax number (the owner asked to give it by phone)"
+            noun = "tax number the owner asked to give by phone"
+        else:
+            label, noun = taxnumbers.LABEL[given], taxnumbers.NOUN[given]
+        out.append({"name": "tax_id", "label": label, "noun": noun, "section": "tax"})
     if WIFI_FIELD in derive.custom_values(answers, staff, settings, lists):
         out.append({"name": "wifi_password", "label": "Wi-Fi password",
                     "noun": "Wi-Fi password", "section": "home"})
@@ -369,10 +377,12 @@ def build(*, answers, staff, settings, lists, brand, held, today: date, sent=fro
         summary.append(f"A new owner, {'active' if owner_active else 'inactive'}: "
                        f"{account_name(answers)}, with contacts {names} (the first is primary).")
         if state_of.get("tax_id") == "held":
-            summary.append("The owner's business Tax ID goes with it.")
-        elif tax_kind == "ssn":
-            summary.append("No tax id is sent: the owner chose Social Security and adds it "
-                           "in the owner portal.")
+            from . import taxnumbers
+
+            summary.append(f"The owner's {taxnumbers.NOUN.get(taxnumbers.number_kind(answers), 'tax number')} "
+                           "goes with it, as the owner's tax ID in Track.")
+        elif tax_kind == "phone" and state_of.get("tax_id") != "none":
+            summary.append("The owner asked to give their tax number by phone.")
         if reuse:
             summary.append(f"{len(reuse)} existing Track contact(s) are used instead of new ones.")
     else:
@@ -396,7 +406,7 @@ def build(*, answers, staff, settings, lists, brand, held, today: date, sent=fro
     if contract:
         summary.append(f"The owner linked to the unit on {contract['name']} from "
                        f"{staff.get('start_date')} (standard, pmc).")
-    summary.append("Never sent: Social Security numbers and bank details (not collected). "
+    summary.append("Never sent: bank details (not collected). "
                    "Owner dates, current bookings and documents stay in ENHQ.")
     return {"mode": mode, "steps": steps, "summary": summary, "problems": problems,
             "warnings": warnings, "secrets": secrets}

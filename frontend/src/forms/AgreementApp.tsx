@@ -211,7 +211,7 @@ function Welcome({ page }: { page: AgreementPage }) {
       <Note>Your details save as you go. You can stop at any time and come back with the same
         link.</Note>
       <Note tone="safe">This agreement never asks for your Social Security number or your bank
-        details. You'll add those yourself, in your owner portal, later.</Note>
+        details.</Note>
     </>
   );
 }

@@ -32,8 +32,13 @@ OPTIONS = {
     "heard": [("referral", "Someone referred me"), ("search", "Online search"),
               ("social", "Social media"), ("owner", "Another owner"),
               ("sign", "A sign or a vehicle"), ("other", "Something else")],
-    "tax_kind": [("tax_id", "A business Tax ID (EIN)"),
-                 ("ssn", "My Social Security number")],
+    # Owner, 2026-11-24: which number goes on the rental permit, or a call.
+    "tax_kind": [("tax_id", "My business tax ID (EIN)"),
+                 ("ssn", "My Social Security number or ITIN"),
+                 ("phone", "I'd rather give it by phone")],
+    # The phone choice: which number staff were given on the call.
+    "tax_phone_kind": [("tax_id", "Their business tax ID (EIN)"),
+                       ("ssn", "Their Social Security number or ITIN")],
     "ready": [("now", "It's ready now"), ("date", "On a date"), ("unsure", "Not sure yet")],
     "yes_no": [("yes", "Yes"), ("no", "No")],
     "yes_no_unsure": [("yes", "Yes"), ("no", "No"), ("unsure", "Not sure")],
@@ -211,7 +216,8 @@ def _emergency(value) -> dict:
 
 def clean_tax(data) -> dict:
     data = data if isinstance(data, dict) else {}
-    return {"kind": _choice(data.get("kind"), "tax_kind")}
+    return {"kind": _choice(data.get("kind"), "tax_kind"),
+            "phone_kind": _choice(data.get("phone_kind"), "tax_phone_kind")}
 
 
 def clean_property(data) -> dict:

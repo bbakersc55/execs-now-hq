@@ -73,7 +73,8 @@ def test_the_review_defaults_and_the_plan_use_the_practice_date(world, evening):
 def test_a_send_in_the_evening_starts_everything_on_the_practice_date(world, fake, evening):
     sub = submitted(world)
     c = review(world, sub)
-    r = c.post(f"/api/intake/submissions/{sub.pk}/send")
+    r = c.post(f"/api/intake/submissions/{sub.pk}/send", {"tax_ack": True},
+               content_type="application/json")
     assert r.status_code == 202, r.content
     run = SendRun.all_objects.get(pk=r.json()["run"]["id"])
     services.run_send(run, client=fake_client(fake))  # no `today`: the worker's way

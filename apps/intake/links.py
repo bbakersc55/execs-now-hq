@@ -66,9 +66,10 @@ def signature(user, membership, form) -> str:
 def message(submission, *, reminder: bool, user, membership) -> dict:
     """{subject, body, mailto} for the invite or a reminder."""
     form = submission.form
-    template = (form.settings or {}).get("message_reminder" if reminder else "message_invite") \
-        or {}
-    from .defaults import MESSAGE_INVITE, MESSAGE_REMINDER
+    from .defaults import MESSAGE_INVITE, MESSAGE_REMINDER, modernised
+
+    template = modernised(form.settings or {}).get("message_reminder" if reminder
+                                                   else "message_invite") or {}
 
     fallback = MESSAGE_REMINDER if reminder else MESSAGE_INVITE
     values = {"first_name": submission.invite_first_name or "there", "link": url_for(submission),

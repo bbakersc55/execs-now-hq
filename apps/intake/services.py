@@ -17,6 +17,7 @@ from apps.tenancy.context import tenant_context
 from . import defaults, derive, links, plan, schema, tracklists, vault
 from .models import (
     IntakeForm, OwnerDate, SendRun, Submission, SubmissionEvent, SubmissionFile,
+    SubmissionSecret,
 )
 
 S = Submission.Status
@@ -60,7 +61,7 @@ def form_for(company, *, create=True):
 
 def settings_of(form, lists) -> dict:
     """The form's settings, completed from Track's lists where never built."""
-    current = dict(form.settings or {})
+    current = defaults.modernised(form.settings or {})
     if not current.get("sleeps") and lists.get("bed_types"):
         current = {**defaults.build(lists), **{k: v for k, v in current.items() if v}}
     return defaults.refreshed(current, lists) if lists.get("bed_types") else current
@@ -116,8 +117,13 @@ def save_section(submission, section, value, *, by_owner: bool):
         raise Refused("This form was already submitted. Thank you!", 409)
     if section not in schema.CLEANERS and section != "custom":
         raise Refused("Unknown section.")
+    from . import taxnumbers
+
+    before = taxnumbers.number_kind(submission.answers)
     answers = schema.merge(submission.answers, section, value,
                            custom_allowed=custom_allowed(submission.form))
+    if section == "tax" and taxnumbers.number_kind(answers) != before:
+        vault.clear(submission, vault.Kind.TAX_ID)
     now = timezone.now()
     submission.answers = answers
     submission.last_changed_at = now
@@ -148,6 +154,15 @@ def missing_for_submit(submission) -> list[str]:
         out.append("an email or a mobile number")
     if not prop.get("street") or not prop.get("city"):
         out.append("the property's address")
+    # Owner, 2026-11-24: the number is required unless the owner asks for a call.
+    from . import taxnumbers
+
+    kind = taxnumbers.kind_of(a)
+    if not kind:
+        out.append("which number goes on your rental permit")
+    elif kind != "phone" and not SubmissionSecret.all_objects.filter(
+            submission=submission, kind=SubmissionSecret.Kind.TAX_ID).exists():
+        out.append("your tax number")
     return out
 
 
@@ -170,8 +185,10 @@ def submit(submission):
 
 
 def add_another(submission):
-    """"Add another property": a new submission with the owner's details (and
-    tax id) carried over. One property per submission."""
+    """"Add another property": a new submission with the owner's details and
+    their tax choice carried over; the number itself is not copied (owner,
+    2026-11-24: kept as short as possible), it is asked again if needed. One
+    property per submission."""
     if submission.status in (S.DRAFT, S.IN_PROGRESS):
         raise Refused("Submit this property first, then add another.", 409)
     carried = {"about": (submission.answers or {}).get("about") or {},
@@ -181,9 +198,6 @@ def add_another(submission):
                 submission.invite_first_name, last_name=about.get("last_name", ""),
                 email=about.get("email") or submission.invite_email, answers=carried,
                 carried_from=submission)
-    tax = vault.value(submission, "tax_id")
-    if tax:
-        vault.put(new, vault.Kind.TAX_ID, "", tax)
     return new
 
 
@@ -364,8 +378,14 @@ def not_while_acting():
         raise Refused(message, 403)
 
 
-def start_send(submission, actor):
-    """Queue a send (or "Try the rest again"). The worker does the writing."""
+TAX_ACK = ("Tick \u201cI have what I need from the full tax number.\u201d first: it will be "
+           "removed from ENHQ after this send.")
+
+
+def start_send(submission, actor, *, tax_ack=False):
+    """Queue a send (or "Try the rest again"). The worker does the writing.
+    A real send while a tax number is held needs `tax_ack` (owner,
+    2026-11-24); a test send doesn't, and removes nothing."""
     not_while_acting()
     if submission.locked:
         raise Refused("This intake was already sent to Track.", 409)
@@ -382,6 +402,9 @@ def start_send(submission, actor):
         raise Refused("Not ready to send: " + " ".join(the_plan["problems"]))
     if test_mode(form_settings):
         return test_send(submission, actor, the_plan)
+    if tax_ack is not True and SubmissionSecret.all_objects.filter(
+            submission=submission, kind=SubmissionSecret.Kind.TAX_ID).exists():
+        raise Refused(TAX_ACK)
     run = SendRun.all_objects.create(
         tenant_id=submission.tenant_id, submission=submission, started_by=actor,
         steps=[{"key": s["key"], "label": s["label"], "state": "waiting", "detail": ""}
@@ -482,10 +505,16 @@ def run_send(run, *, client=None, today=None):
         if contact_id and the_plan["mode"] == "new":
             state["ids"].setdefault(f"contact:{index}", contact_id)
 
+    # Anything Track says back is cleaned of the tax number before it is
+    # kept or shown (owner, 2026-11-24).
+    from . import taxnumbers
+
+    held_number = vault.value(submission, "tax_id")
+
     def save(current, key, status, detail):
         submission.track = current
         submission.save(update_fields=["track"])
-        _step(run, key, status, detail)
+        _step(run, key, status, taxnumbers.scrub(detail, held_number))
 
     def secret(name):
         return vault.value(submission, name) if name else None
@@ -508,7 +537,7 @@ def run_send(run, *, client=None, today=None):
         the_plan, client, state, secret=secret, save=save, confirm=confirm,
         track_errors=(track.TrackUnavailable,))
     if not ok:
-        return _failed(run, submission, failed_key, message)
+        return _failed(run, submission, failed_key, taxnumbers.scrub(message, held_number))
     # The date the link was sent with, kept for the locked record: the link is
     # the last Track step, so it was made by this run's plan.
     if "ownership" in state["done"] and not state.get("link_start"):
@@ -650,6 +679,9 @@ def hourly(tenant_id):
 
 
 def daily(tenant_id):
+    from . import taxnumbers
+
+    taxnumbers.purge(tenant_id)
     vault.purge_stale(tenant_id)
 
 

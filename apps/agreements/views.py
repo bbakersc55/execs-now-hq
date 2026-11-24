@@ -393,11 +393,14 @@ class AccessView(Base):
         columns = access.columns_on(company)
         allowed = {str(m.user_id): (m, owner) for m, owner in access.company_users(company)}
         changed = []
+        tax_wanted = {}
         for row in request.data.get("rows") or []:
             user_id = str(row.get("user_id"))
             if user_id not in allowed:
                 continue
             m, is_owner = allowed[user_id]
+            if columns.get("tax_numbers") and "tax_numbers" in row:
+                tax_wanted[user_id] = row.get("tax_numbers") is True
             obj, _ = StaffAccess.all_objects.get_or_create(
                 tenant_id=company.tenant_id, company=company, user_id=m.user_id)
             values = {f: row.get(f) is True for f in access.FLAGS if columns[f]}
@@ -410,6 +413,12 @@ class AccessView(Base):
                 obj.updated_by = request.user
                 obj.save()
                 changed.append({"user": _name(m.user), "from": before, "to": values})
+        if tax_wanted:
+            from apps.intake import taxnumbers
+
+            for c in taxnumbers.set_ticks(company, tax_wanted, request.user):
+                changed.append({"user": _name(allowed[c["user_id"]][0].user),
+                                "to": {"tax_numbers": c["tax_numbers"]}})
         if changed:
             services._audit(company, request.user, "agreements.access_changed",
                             {"changed": changed})
@@ -419,6 +428,10 @@ class AccessView(Base):
 def _access_payload(company) -> dict:
     columns = access.columns_on(company)
     ticks = {str(s.user_id): s for s in StaffAccess.all_objects.filter(company=company)}
+    if columns.get("tax_numbers"):
+        from apps.intake import taxnumbers
+
+        sees = taxnumbers.ticked(company)
     rows = []
     for m, is_owner in access.company_users(company):
         t = ticks.get(str(m.user_id))
@@ -431,6 +444,8 @@ def _access_payload(company) -> dict:
             row["signed_pdfs"] = bool(t and t.signed_pdfs)
         if columns["intake"]:
             row["intake"] = True if is_owner else bool(t and t.intake)
+        if columns.get("tax_numbers"):
+            row["tax_numbers"] = str(m.user_id) in sees
         rows.append(row)
     return {"company": {"id": str(company.pk), "name": company.name},
             "columns": columns, "rows": rows}

@@ -474,6 +474,13 @@ if IS_DEMO and GCS_BUCKET_MEDIA == "execs-now-hq-media":
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 MEDIA_URL = "/media/"
 
+# --- The owner's form promises this (owner, 2026-11-24): how long the
+# encrypted backups can keep a tax number after ENHQ deletes it. 30 days of
+# nightly dumps (scripts/backup_db_railway.sh prunes after 30) plus the backup
+# bucket's 7-day soft delete (retentionDurationSeconds=604800); Railway's
+# Postgres keeps no backups of its own (both checked by Bryan, 2026-11-24).
+INTAKE_TAX_BACKUP_DAYS = 37
+
 # --- Errors: production only (assumption A5) ---
 SENTRY_DSN = env("SENTRY_DSN", default="")
 

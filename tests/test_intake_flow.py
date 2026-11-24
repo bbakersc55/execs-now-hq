@@ -118,9 +118,13 @@ def owner_fills(token, a=None):
         r = o.patch(f"/api/f/{token}/answers", json.dumps({"section": section, "value": value}),
                     content_type="application/json")
         assert r.status_code == 200, (section, r.content)
-    for kind, slot, value in (("tax_id", "", "12-3456789"), ("wifi_password", "", "powder-day"),
-                              ("code", "door", "4821"), ("code", "owner_closet", "7730"),
-                              ("code", "alarm", "1199"), ("code", "extra-0", "5501")):
+    # The tax number the owner's choice calls for (owner, 2026-11-24): none
+    # when they would rather give it by phone.
+    tax = {"tax_id": "12-3456789", "ssn": "123-45-6789"}.get((a.get("tax") or {}).get("kind"))
+    for kind, slot, value in ((("tax_id", "", tax),) if tax else ()) + (
+            ("wifi_password", "", "powder-day"),
+            ("code", "door", "4821"), ("code", "owner_closet", "7730"),
+            ("code", "alarm", "1199"), ("code", "extra-0", "5501")):
         r = o.post(f"/api/f/{token}/secret", json.dumps({"kind": kind, "slot": slot,
                                                          "value": value}),
                    content_type="application/json")
@@ -139,7 +143,9 @@ def review(world, sub, by="fcc", **changes):
 
 def send(world, sub, by="fcc"):
     c = as_(world[by])
-    r = c.post(f"/api/intake/submissions/{sub.pk}/send")
+    # A real send while a tax number is held needs the tick (owner, 2026-11-24).
+    r = c.post(f"/api/intake/submissions/{sub.pk}/send", {"tax_ack": True},
+               content_type="application/json")
     assert r.status_code == 202, r.content
     run = SendRun.all_objects.get(pk=r.json()["run"]["id"])
     services.run_send(run, client=fake_client(world["_fake"]) if "_fake" in world else None,
@@ -168,11 +174,16 @@ def test_owner_link_saves_as_it_goes_and_masks_secrets(world):
 
 
 def test_a_social_security_shaped_tax_id_is_refused(world):
+    """Under the EIN choice (owner, 2026-11-24: the Social Security number or
+    ITIN is its own choice now, tests/test_tax_numbers.py)."""
     sub, token = start(world)
+    Client().patch(f"/api/f/{token}/answers", json.dumps({"section": "tax",
+                                                          "value": {"kind": "tax_id"}}),
+                   content_type="application/json")
     r = Client().post(f"/api/f/{token}/secret", json.dumps({"kind": "tax_id", "value":
                                                             "123-45-6789"}),
                       content_type="application/json")
-    assert r.status_code == 400 and "Social Security" in r.json()["detail"]
+    assert r.status_code == 400 and "looks like a Social Security number" in r.json()["detail"]
 
 
 def test_submit_tells_managers_and_the_practice_owner_by_app_and_email(world):
@@ -214,7 +225,8 @@ def test_add_another_property_carries_the_owner_over(world):
     assert new.carried_from_id == sub.pk and new.number == sub.number + 1
     assert new.answers["about"]["account_name"] == "Sample Homes LLC"
     assert new.answers["property"]["street"] == ""
-    assert vault.masked(new)["tax_id"] == {"last4": "6789"}
+    # Owner, 2026-11-24: the choice comes along, the number doesn't.
+    assert new.answers["tax"]["kind"] == "tax_id" and vault.masked(new)["tax_id"] is None
 
 
 def test_links_expire_after_30_days_and_a_manager_can_reopen(world):
@@ -237,7 +249,8 @@ def test_copy_link_message_and_mailto_are_logged_and_signed_by_the_company(world
                content_type="application/json").json()
     assert r["mailto"].startswith("mailto:alex%40samplehomes.net?subject=")
     assert "Pat" not in r["body"] and r["body"].rstrip().endswith("Mountain Stays")
-    assert "Social Security number or bank details" in r["body"]
+    assert "never asks for your bank details" in r["body"]
+    assert "Social Security" not in r["body"]                 # owner, 2026-11-24
     staff = as_(world["fcc"]).post(f"/api/intake/submissions/{sub.pk}/link",
                                    json.dumps({"action": "message", "reminder": True}),
                                    content_type="application/json").json()

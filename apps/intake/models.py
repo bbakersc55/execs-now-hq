@@ -7,10 +7,14 @@ managers review it, and ENHQ writes it to the company's Track account.
 What is kept where:
 
 - Answers that are not sensitive live on the submission as JSON.
-- The tax id, every access code and the Wi-Fi password live only in
+- The tax number (an EIN, or a Social Security number or ITIN: owner,
+  2026-11-24), every access code and the Wi-Fi password live only in
   `SubmissionSecret`, encrypted, until Track confirms it has them; then the
   row is deleted, last four and all. A submission never sent loses them 90
-  days after its last change, or at once when a manager discards it.
+  days after its last change, or at once when a manager discards it; the tax
+  number goes sooner (`taxnumbers`).
+- `TaxNumberAccess` is the "See full tax numbers" tick; `TaxCode` the one-time
+  codes for it, kept only as hashes.
 - Every reveal of a secret, and every copy of a link, is a `SubmissionEvent`,
   which is never changed after it is written.
 """
@@ -219,6 +223,8 @@ class SubmissionEvent(TenantScopedModel):
         DISCARDED = "discarded", "Discarded"
         SECRETS_DELETED = "secrets_deleted", "Sensitive values deleted"
         DATES = "dates", "Owner dates"
+        TAX_CODE_SENT = "tax_code_sent", "Code sent to see the tax number"
+        TAX_SHOWN = "tax_shown", "Full tax number shown"
 
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="events")
     kind = models.CharField(max_length=16, choices=Kind.choices)
@@ -309,3 +315,36 @@ class TrackListSnapshot(TenantScopedModel):
         constraints = [
             models.UniqueConstraint(fields=["company", "kind"], name="intake_track_list_one"),
         ]
+
+
+class TaxNumberAccess(TenantScopedModel):
+    """"See full tax numbers" (owner, 2026-11-24): ticked per person and company
+    on People and permissions, by the people who may change ticks. Nobody to
+    start. Kept apart from the other ticks so it stands alone."""
+
+    company = models.ForeignKey("crm.Company", on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    granted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "intake_tax_number_access"
+        constraints = [models.UniqueConstraint(fields=["company", "user"],
+                                               name="intake_tax_number_access_one")]
+
+
+class TaxCode(TenantScopedModel):
+    """A one-time code to see one intake's full tax number, emailed to the
+    person's own sign-in address. Only its hash is kept."""
+
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    tries = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "intake_tax_code"

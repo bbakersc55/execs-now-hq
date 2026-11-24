@@ -13,6 +13,8 @@ urlpatterns = [
     path("intake/submissions/<str:submission_id>/answers", views.AnswersView.as_view()),
     path("intake/submissions/<str:submission_id>/secret", views.SecretView.as_view()),
     path("intake/submissions/<str:submission_id>/reveal", views.RevealView.as_view()),
+    path("intake/submissions/<str:submission_id>/tax-code", views.TaxCodeView.as_view()),
+    path("intake/submissions/<str:submission_id>/tax-show", views.TaxShowView.as_view()),
     path("intake/submissions/<str:submission_id>/staff", views.StaffView.as_view()),
     path("intake/submissions/<str:submission_id>/check", views.CheckView.as_view()),
     path("intake/submissions/<str:submission_id>/link", views.LinkView.as_view()),

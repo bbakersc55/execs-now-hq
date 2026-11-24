@@ -2489,6 +2489,27 @@ class AgreementStaffAccessFactory(TenantScopedFactory):
     agreements = True
 
 
+class IntakeTaxNumberAccessFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.TaxNumberAccess"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    user = factory.SubFactory(UserFactory)
+
+
+class IntakeTaxCodeFactory(TenantScopedFactory):
+    class Meta:
+        model = "intake.TaxCode"
+
+    tenant = factory.SubFactory(TenantFactory)
+    submission = factory.SubFactory(IntakeSubmissionFactory,
+                                    tenant=factory.SelfAttribute("..tenant"))
+    user = factory.SubFactory(UserFactory)
+    code_hash = "0" * 64
+    expires_at = factory.LazyFunction(timezone.now)
+
+
 class OwnerAgreementFactory(TenantScopedFactory):
     class Meta:
         model = "agreements.OwnerAgreement"

@@ -260,7 +260,7 @@ def test_plan_problems_block_a_send():
     text = " ".join(p["problems"])
     assert "test domain" in text and "Pick the area" in text
     # A missing Tax ID stops a send now; it is no longer a note beside it.
-    assert "The business Tax ID isn't in ENHQ: enter it beside its question, or mark that " \
+    assert "The business tax ID (EIN) isn't in ENHQ: enter it beside its question, or mark that " \
         "there is none." in p["problems"]
     assert not any("Tax ID" in w for w in p["warnings"])
 
@@ -335,7 +335,7 @@ def test_marked_as_none_it_is_left_out_and_stops_nothing():
     assert "pms_units_wifi_network_name" in by["details"]["body"]["custom"]
     text = " ".join(p["summary"])
     assert "No door code is sent: marked as having none." in text
-    assert "No business Tax ID is sent: marked as having none." in text
+    assert "No business tax ID (EIN) is sent: marked as having none." in text
     assert "No Wi-Fi password is sent: marked as having none." in text
     # Entered after all, it is sent: the mark no longer matters.
     p = build(held=HELD, no_value=["code:door"])

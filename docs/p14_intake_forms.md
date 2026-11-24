@@ -67,7 +67,8 @@ Sections, one per screen: Welcome · About you · Tax details · The property ·
 Bedrooms · Other places people sleep · Bathrooms · Amenities · Home details ·
 Getting in · Your own stays · Documents · Review and submit · Thank you (with
 "Add another property", which starts a new submission with the owner's
-details, and tax id, carried over; one property per submission).
+details and tax choice carried over, never the number itself (2026-11-24);
+one property per submission).
 
 The fewest questions: a follow-up appears only when the answer before calls for
 it; bedrooms, bathrooms, other owners, codes and date ranges are add-another
@@ -75,10 +76,11 @@ blocks. Running summaries on each room ("Bedroom 2: Queen x1, Twin x2, sleeps
 4"). A bathroom's type is worked out from its fixtures: any tub makes it full,
 a shower without a tub three-quarter, neither half.
 
-**Tax:** the owner chooses a business Tax ID or a Social Security number. Tax
-ID: collected (refused if it looks like an SSN), shown afterwards as its last
-four. SSN and bank details: never collected; the form says they're added in
-the owner portal later.
+**Tax** (changed 2026-11-24, see "Tax numbers on the form" below): the owner
+chooses which number goes on the rental permit (EIN, or Social Security number
+or ITIN) and enters it, or asks to give it by phone. Shown afterwards as its
+last four. Bank details: never collected; the form says they're added in the
+owner portal later.
 
 ### Look (white label, owner 2026-11-19)
 
@@ -156,9 +158,9 @@ not-found page. The page's policy allows nothing from any other origin.
 | 147 | How you heard | About you → how you heard (+ who) | owner notes |
 | 134, 148–154 | Additional owners ×3 | About you → other owners (name, email, mobile, portal access) | contacts linked to the owner; shares by the reviewer |
 | 135, 136 | "Portal Access?" | each other owner's "own login to the owner portal" | none; the portal-invite task |
-| 12 | Tax ID or SSN | Tax details → the choice | decides whether taxId is sent |
-| 13 | Tax ID number | Tax details → Tax ID | owner taxId |
-| 14 | SSN | not asked | never sent |
+| 12 | Tax ID or SSN | Tax details → the choice (EIN, SSN or ITIN, by phone) | which number |
+| 13 | Tax ID number | Tax details → the number | owner taxId |
+| 14 | SSN | Tax details → the number (2026-11-24) | owner taxId |
 | 15–19 | Bank fields | not asked | never sent; checklist task |
 | 23–26 | Property address | The property → address | unit address; unit name and short name |
 | 27 | Property type | The property → type | unit lodgingTypeId |
@@ -309,7 +311,7 @@ date, made plain:
 
 ## Sensitive values
 
-The tax id, every code and the Wi-Fi password are Fernet-encrypted in
+The tax number, every code and the Wi-Fi password are Fernet-encrypted in
 `intake_submission_secret`. On screen the tax id shows its last four; a code or
 the password shows nothing unless a reviewer reveals it, and each reveal is a
 `SubmissionEvent` with who and when (written once, never changed). The owner's
@@ -366,6 +368,77 @@ code step anyway). In detail:
   to the end and submits; the reviewer sends; the fake Track holds every
   value as typed. A second walk does the same with a closet that opens with
   a key. With the old Save-button field, the first walk fails.
+
+## Tax numbers on the form (owner, 2026-11-24)
+
+This replaced the rule "no Social Security number on the form". SkyRun needs
+the full number once, to file the rental permit; taking it by phone and
+writing it down was worse. Bank details stay off the form, and nothing of
+this is on the agreement. Code: `apps/intake/taxnumbers.py`.
+
+- **The choice:** "Which number should go on your rental permit?": My business
+  tax ID (EIN) · My Social Security number or ITIN · I'd rather give it by
+  phone. The number is required to submit unless the owner picks the phone
+  choice. EIN: 9 digits, not all zeros, not starting 00. SSN or ITIN: 9 digits;
+  not starting 000 or 666, no 00 in the middle, no 0000 at the end; numbers
+  starting with 9 are accepted (ITINs). Each choice refuses a number shaped
+  like the other. Changing the choice removes the number entered.
+- **By phone:** nothing is entered on the form. The review says the owner asked
+  for a call; staff choose which number they were given and type it straight
+  into the review. The onboarding checklist gets "Call the owner for their tax
+  number: they asked to give it by phone" when the number didn't go to Track
+  with the send (marked as having none).
+- **The words on the form** (as approved, from the server: `taxnumbers.wording`):
+  why we ask, and how it is protected. The backup sentence's number is one
+  setting, `INTAKE_TAX_BACKUP_DAYS` (37: the 30 days the backup script keeps
+  dumps, and the backup bucket's 7-day soft delete; Railway's Postgres keeps no
+  backups of its own; both checked by Bryan on 2026-11-24).
+- **Kept:** Fernet-encrypted in `intake_submission_secret`, like the Tax ID
+  always was. Everyone sees the last four only, everywhere. The old Reveal on
+  the review no longer shows a tax number to anyone (before this, anyone with
+  intake access could reveal the Tax ID in full).
+- **"See full tax numbers"** on People and permissions (`intake_tax_number_access`),
+  shown when intake forms are on. Only the people who may change ticks give
+  it; nobody has it to start, the practice owner included.
+- **Show full number** on the review, for someone ticked: ENHQ emails a
+  6-digit code to their own sign-in address (Outbox producer
+  `tax_number_code`; the code is put in at delivery and never stored, only its
+  hash in `intake_tax_code`; never real mail from a laptop). Good for 10
+  minutes, once; 5 wrong tries end it; at most 5 codes an hour per person. The
+  number then shows for 60 seconds and is masked again (or when the page is
+  left). Refused while acting as someone. Each viewing: an audit event
+  (`intake.tax_number_shown`: who, when, which intake, never the number), a
+  line in the intake's history, and a notice (in the app and by email) to the
+  practice owner(s) and the company's Client owner(s).
+- **Kept as short as possible:** removed when Track confirms it has it (Track's
+  answer carries `taxIdMasked`), when the intake is sent, 30 days after the
+  owner submitted if it hasn't been sent (the intake says so), and 30 days
+  after it was entered on a form never submitted. A number staff type in later
+  gets 30 days from then. A test send removes nothing. Before a real send (or
+  "Try the rest again") while a number is held, staff tick "I have what I need
+  from the full tax number. It will be removed from ENHQ after this send.";
+  the server refuses the send without it. "Add another property" carries the
+  choice, not the number.
+- **To Track:** `taxId` on "create the owner" (`POST /pms/owners`), as the EIN
+  always was, only for a new owner; EIN as 12-3456789, SSN or ITIN as
+  123-45-6789. Track's reference describes `taxId` as a string, "1099 Tax Id
+  (Restricted)", with no format and no field for its type (`taxType` on a
+  read is the 1099 income classification, not EIN vs SSN). Proven live: an
+  EIN-shaped made-up number (2026-11-19). **Not proven:** an SSN-shaped one;
+  see the release list.
+- **Nowhere else:** not in any email (stored or delivered), PDF, copy of the
+  form, export, log, error message, search, MCP tool or AI request. Anything
+  Track says back is cleaned of the number before it is kept or shown
+  ("[tax number]"). The laptop's `scrub_dev_data` deletes every intake secret
+  and code, so a refresh from production never copies one.
+- **Where a copy can still be:** production's nightly dumps (still encrypted
+  inside; the key is a Railway variable, not in the dump) for up to 37 days;
+  Postgres's own files until the space is reused (encrypted); Track, for good;
+  the owner's browser while typing (the field doesn't offer to save it); the
+  reviewer's screen for 60 seconds, and wherever they copy it.
+- Tests: `tests/test_tax_numbers.py`, `tests/test_tax_numbers_sweep.py`.
+- Migrations: `intake 0003` (the two tables; history kinds, no SQL), `crm
+  0063` (the producer; no SQL).
 
 ## Settings (managers and above, and the practice owner)
 

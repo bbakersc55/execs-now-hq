@@ -66,6 +66,10 @@ def signed(aw):
     assert countersign(aw, a, "michael", method="typed", typed="Michael").status_code == 200
     a.refresh_from_db()
     intake_token = intake_links.token_of(a.submission)
+    # The tax number is asked since 2026-11-24: this owner gives it by phone.
+    Client().patch(f"/api/f/{intake_token}/answers",
+                   json.dumps({"section": "tax", "value": {"kind": "phone"}}),
+                   content_type="application/json")
     r = Client().post(f"/api/f/{intake_token}/submit")
     assert r.status_code == 200, r.content
     return {**aw, "agreement": a, "tokens": (t, intake_token)}

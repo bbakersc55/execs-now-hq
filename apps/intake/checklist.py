@@ -52,6 +52,10 @@ def conditions(submission, *, mode: str) -> set:
     emergency = (a.get("about") or {}).get("emergency") or {}
     if mode == "existing" and (emergency.get("name") or emergency.get("phone")):
         out.add("existing_owner_emergency")
+    # Owner, 2026-11-24: a call is still owed when the number didn't go to Track.
+    if (a.get("tax") or {}).get("kind") == "phone" and \
+            "tax_id" not in ((submission.track or {}).get("sent") or []):
+        out.add("tax_by_phone")
     return out
 
 
@@ -60,7 +64,9 @@ def create(submission, *, sender, mode: str, sent_on: date) -> list:
     from apps.work import services as work
     from apps.work.models import Project, TaskUpdate
 
-    template = (submission.form.settings or {}).get("checklist") or CHECKLIST
+    from .defaults import modernised
+
+    template = modernised(submission.form.settings or {}).get("checklist") or CHECKLIST
     wanted = conditions(submission, mode=mode)
     start = base_day(submission.answers or {}, sent_on)
     membership = Membership.all_objects.filter(tenant_id=submission.tenant_id, user=sender,
