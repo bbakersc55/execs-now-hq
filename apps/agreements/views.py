@@ -12,7 +12,7 @@ GET   /api/agreements/companies/<id>/authority          the signer's authorizati
                                                         POST record; DELETE withdraw
 GET   /api/agreements/companies/<id>/documents          final agreements (Documents)
 GET   /api/agreements/<id>                              one agreement; PATCH to correct
-POST  /api/agreements/<id>/send | link | cancel | countersign
+POST  /api/agreements/<id>/send | link | cancel {reason} | restart | countersign
 GET   /api/agreements/<id>/pdf?which=owner|final|preview
 """
 
@@ -101,6 +101,7 @@ def _row(a) -> dict:
             "owner_email": a.owner_email, "owner_phone": a.owner_phone,
             "property": render.one_line(services.terms_for(a).get("property_address")),
             "status": services.status_line(a),
+            "turn": services.turn_text(a),
             "cancelled": a.voided_at is not None,
             "manager_percent": (version.terms or {}).get("manager_percent") if version else None,
             "signed_name": " ".join(x for x in (d.get("first_name"), d.get("last_name")) if x)}
@@ -128,12 +129,17 @@ def _detail(a, membership, user) -> dict:
     company = a.company
     version = services.current(a)
     terms = services.terms_for(a)
-    sigs = {s.role: s for s in AgreementSignature.all_objects.filter(agreement=a)}
+    sigs = {(s.role, s.position): s for s in AgreementSignature.all_objects.filter(agreement=a)}
     may_cs, authority = access.may_countersign(user, company)
     contract = services.contract_for(a) if version else {}
-    owner = sigs.get("owner")
-    manager = sigs.get("manager")
+    owner = sigs.get(("owner", 1))
+    manager = sigs.get(("manager", 1))
     sub = a.submission
+    everyone = services.owners(a)
+    position = services.turn(a)
+    problem = services.words_problem(a) if a.all_signed_at and not manager else ""
+    successor = OwnerAgreement.all_objects.filter(started_from=a).first()
+    may_work = access.may_agreements(membership, company)
     return {
         **_row(a),
         "company_id": str(company.pk), "company_name": company.name,
@@ -146,8 +152,27 @@ def _detail(a, membership, user) -> dict:
         "staff_address": render.one_line((version.terms or {}).get("property_address")),
         "owner_address": render.one_line((a.details or {}).get("property_address")),
         "editable": a.owner_signed_at is None and a.voided_at is None,
-        "may_work": access.may_agreements(membership, company),
-        "may_countersign": bool(may_cs and owner and not manager and a.voided_at is None),
+        "may_work": may_work,
+        # Owner, 2026-11-24: owners sign in order; SkyRun after the last.
+        "owners": [{"position": o["position"], "name": o["name"], "title": o["title"],
+                    "email": o["email"],
+                    "signed_at": o["signed_at"].isoformat() if o["signed_at"] else None,
+                    "turn": o["position"] == position}
+                   for o in everyone],
+        "co_owners": [{"name": c.name, "email": c.email, "title": c.title}
+                      for c in services.co_owners(a)],
+        "shared_email": services.shared_email(everyone),
+        "turn_position": position,
+        "words_problem": problem,
+        "may_countersign": bool(may_cs and a.all_signed_at and not manager
+                                and a.voided_at is None and not problem),
+        "may_cancel": bool(may_work and a.voided_at is None and a.countersigned_at is None),
+        "may_restart": bool(may_work and a.voided_at is not None and successor is None),
+        "cancel_reason": a.cancel_reason,
+        "started_from": ({"id": str(a.started_from_id), "number": a.started_from.number}
+                         if a.started_from_id else None),
+        "successor": ({"id": str(successor.pk), "number": successor.number}
+                      if successor else None),
         "countersign_as": ("signer" if access.is_signer(user, company) else
                            "authorized" if may_cs else ""),
         "authority": _authority_payload(authority, company) if authority else None,
@@ -162,6 +187,10 @@ def _detail(a, membership, user) -> dict:
         "owner_signature": ({"name": owner.printed_name, "at": owner.signed_at.isoformat(),
                              "ip": owner.ip_address, "method": owner.method}
                             if owner else None),
+        "owner_signatures": [{"position": s.position, "name": s.printed_name,
+                              "at": s.signed_at.isoformat(), "ip": s.ip_address}
+                             for (role, _), s in sorted(sigs.items(), key=lambda x: x[0][1])
+                             if role == "owner"],
         "manager_signature": ({"name": manager.printed_name,
                                "applied_by": manager.applied_by_name,
                                "under_authority": manager.authority_id is not None,
@@ -182,7 +211,8 @@ def _detail(a, membership, user) -> dict:
                    for m in OwnerEmail.all_objects.filter(agreement=a).order_by("created_at")],
         "sender": services.program_for(company).sender,
         "blocks": render.document(a.template_key, terms, a.details or {},
-                                  agreement_date=a.agreement_date),
+                                  agreement_date=a.agreement_date,
+                                  owners=services.signing_owners(a)),
     }
 
 
@@ -232,7 +262,7 @@ class CreateView(Base):
         d = request.data
         a = services.create(company, name=d.get("name"), email=d.get("email", ""),
                             phone=d.get("phone", ""), terms=d.get("terms") or {},
-                            actor=request.user)
+                            co_owners=d.get("co_owners") or [], actor=request.user)
         return Response(_detail(a, membership, request.user), status=201)
 
 
@@ -241,7 +271,13 @@ class PreviewView(Base):
         company, membership = _company(request, company_id)
         _may_work(membership, company)
         terms = services.clean_terms(request.data.get("terms") or {})
-        return Response({"blocks": render.document(texts.DEFAULT, terms, {}),
+        d = request.data
+        names = None
+        if d.get("name"):
+            names = [{"name": " ".join(str(d.get("name")).split())[:200], "title": ""}] + [
+                {"name": r["name"], "title": r["title"]}
+                for r in services.clean_co_owners(d.get("co_owners") or [])]
+        return Response({"blocks": render.document(texts.DEFAULT, terms, {}, owners=names),
                          "terms": terms})
 
 
@@ -261,7 +297,7 @@ class AgreementView(Base):
         _may_work(membership, a.company)
         d = request.data
         services.update(a, name=d.get("name"), email=d.get("email"), phone=d.get("phone"),
-                        terms=d.get("terms"), actor=request.user)
+                        terms=d.get("terms"), co_owners=d.get("co_owners"), actor=request.user)
         a.refresh_from_db()
         return Response(_detail(a, membership, request.user))
 
@@ -285,7 +321,10 @@ class ActionView(Base):
         elif action == "link":
             out["link"] = services.copy_link(a, request.user)
         elif action == "cancel":
-            services.cancel(a, request.user)
+            services.cancel(a, request.user, reason=request.data.get("reason", ""))
+        elif action == "restart":
+            new = services.restart(a, request.user)
+            return Response(_detail(new, membership, request.user), status=201)
         else:
             raise Http404
         a.refresh_from_db()
@@ -301,7 +340,8 @@ class SignedTextView(Base):
         a, membership = _agreement(request, agreement_id)
         if not access.ticked_or_owner(membership, a.company, "signed_pdfs"):
             raise Http404
-        sig = AgreementSignature.all_objects.filter(agreement=a, role="owner").first()
+        sig = AgreementSignature.all_objects.filter(agreement=a, role="owner",
+                                                    position=1).first()
         if sig is None or not sig.signed_text:
             raise Http404
         response = HttpResponse(sig.signed_text.encode("utf-8"),

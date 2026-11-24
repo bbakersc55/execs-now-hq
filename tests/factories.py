@@ -2500,6 +2500,17 @@ class OwnerAgreementFactory(TenantScopedFactory):
     owner_name = "Alex Sample"
 
 
+class CoOwnerFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.CoOwner"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agreement = factory.SubFactory(OwnerAgreementFactory, tenant=factory.SelfAttribute("..tenant"))
+    position = 2
+    name = "Pat Sample"
+    email = "pat@samplehomes.net"
+
+
 class AgreementVersionFactory(TenantScopedFactory):
     class Meta:
         model = "agreements.AgreementVersion"

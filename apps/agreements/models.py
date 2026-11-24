@@ -10,8 +10,10 @@ What is kept where:
 - `Program`: one per company with the feature; its sender and its signer.
 - `StaffAccess`: who may do what for the company (agreements, signed PDFs,
   intake). It replaced intake's "Manager or above" rule (owner, 2026-11-23).
-- `OwnerAgreement`: one per owner and property. Its link always opens the
-  current version.
+- `OwnerAgreement`: one per property and its first owner. Its link always
+  opens the current version.
+- `CoOwner`: owners 2 to 4, who sign after the first, in order, each on
+  their own link (owner, 2026-11-24).
 - `AgreementVersion`: the terms staff set, frozen once the owner signs.
 - `AgreementSignature`: the owner's and the countersignature, with who
   applied it and under which authorization.
@@ -101,11 +103,19 @@ class OwnerAgreement(TenantScopedModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateTimeField(null=True, blank=True)
     last_activity_at = models.DateTimeField(null=True, blank=True)
+    #: The first owner signed: their page is fixed from then on.
     owner_signed_at = models.DateTimeField(null=True, blank=True)
+    #: Every owner signed (owner, 2026-11-24): SkyRun's signature may follow.
+    all_signed_at = models.DateTimeField(null=True, blank=True)
     countersigned_at = models.DateTimeField(null=True, blank=True)
     #: The agreement's date: the day it was countersigned, in the practice's time.
     agreement_date = models.DateField(null=True, blank=True)
     voided_at = models.DateTimeField(null=True, blank=True)
+    #: Why it was cancelled (owner, 2026-11-24: required).
+    cancel_reason = models.CharField(max_length=300, blank=True, default="", db_default="")
+    #: "Start a new agreement from this one": the cancelled one it came from.
+    started_from = models.OneToOneField("self", null=True, blank=True,
+                                        on_delete=models.SET_NULL, related_name="successor")
     #: "now" or "later", the owner's answer after signing.
     onboarding_choice = models.CharField(max_length=5, blank=True, default="")
     submission = models.OneToOneField("intake.Submission", null=True, blank=True,
@@ -125,6 +135,39 @@ class OwnerAgreement(TenantScopedModel):
             models.UniqueConstraint(fields=["company", "number"], name="owner_agreement_number"),
             models.UniqueConstraint(fields=["link_hash"], condition=~models.Q(link_hash=""),
                                     name="owner_agreement_one_link"),
+        ]
+
+
+class CoOwner(TenantScopedModel):
+    """Owners 2 to 4 (owner, 2026-11-24). They sign in order, after the first
+    owner, each on their own link, issued when their turn comes. They fill
+    nothing in. The list is fixed once the first owner has signed."""
+
+    agreement = models.ForeignKey(OwnerAgreement, on_delete=models.CASCADE,
+                                  related_name="co_owners")
+    #: 2, 3 or 4: the order they sign in.
+    position = models.PositiveSmallIntegerField()
+    name = models.CharField(max_length=200)
+    #: Couples often share one address: allowed, each still gets their own link.
+    email = models.EmailField()
+    title = models.CharField(max_length=80, blank=True, default="")
+    link_hash = models.CharField(max_length=64, blank=True, default="")
+    link_issued_at = models.DateTimeField(null=True, blank=True)
+    #: When the owner before them signed; reminders count from here.
+    turn_started_at = models.DateTimeField(null=True, blank=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
+    #: Reminder days already sent, counted from `turn_started_at`.
+    reminders = models.JSONField(default=list, blank=True)
+
+    class Meta(TenantScopedModel.Meta):
+        db_table = "owner_agreement_co_owner"
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["agreement", "position"],
+                                    name="owner_agreement_co_owner_position"),
+            models.UniqueConstraint(fields=["link_hash"], condition=~models.Q(link_hash=""),
+                                    name="owner_agreement_co_owner_one_link"),
         ]
 
 
@@ -205,6 +248,8 @@ class AgreementSignature(TenantScopedModel):
                                   related_name="signatures")
     version = models.ForeignKey(AgreementVersion, on_delete=models.PROTECT, related_name="+")
     role = models.CharField(max_length=8, choices=Role.choices)
+    #: Which owner (1 to 4, the order they sign in); 1 for SkyRun's.
+    position = models.PositiveSmallIntegerField(default=1, db_default=1)
     printed_name = models.CharField(max_length=200)
     printed_title = models.CharField(max_length=120, blank=True, default="")
     method = models.CharField(max_length=6, choices=CountersignAuthority.Method.choices)
@@ -221,6 +266,9 @@ class AgreementSignature(TenantScopedModel):
     #: The owner's: those words, exactly, as one text (owner, 2026-11-24). Kept
     #: unchanged; its SHA-256 is `text_sha256` and the record's "Words signed".
     signed_text = models.TextField(blank=True, default="", db_default="")
+    #: Exhibit A's quantities in those words, from Sleeps (owner, 2026-11-24): so
+    #: a later change to the table can be named when it blocks countersigning.
+    exhibit_a = models.JSONField(default=dict, blank=True, db_default={})
     applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     applied_by_name = models.CharField(max_length=200, blank=True, default="")
@@ -229,8 +277,9 @@ class AgreementSignature(TenantScopedModel):
 
     class Meta(TenantScopedModel.Meta):
         db_table = "owner_agreement_signature"
-        constraints = [models.UniqueConstraint(fields=["agreement", "role"],
-                                               name="owner_agreement_signature_one_per_role")]
+        constraints = [models.UniqueConstraint(
+            fields=["agreement", "role", "position"],
+            name="owner_agreement_signature_one_per_signer")]
 
 
 class AgreementEvent(TenantScopedModel):
@@ -265,6 +314,8 @@ class OwnerEmail(TenantScopedModel):
     agreement = models.ForeignKey(OwnerAgreement, null=True, blank=True,
                                   on_delete=models.CASCADE, related_name="emails")
     kind = models.CharField(max_length=24)
+    #: Which owner it was for (1 to 4): their own link, their own name.
+    position = models.PositiveSmallIntegerField(default=1, db_default=1)
     to_address = models.EmailField()
     subject = models.CharField(max_length=300)
     sender = models.CharField(max_length=8, choices=Program.Sender.choices)

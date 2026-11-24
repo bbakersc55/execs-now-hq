@@ -17,7 +17,9 @@ const BASE = `/api/fa/${TOKEN}`;
 
 function page(over: Partial<AgreementPage> = {}): AgreementPage {
   return {
-    state: "open", number: 4, title: "Rental Management Agreement",
+    state: "open", role: "first", position: 1,
+    owners: [{ position: 1, name: "Alex Sample", signed: false }], waiting_for: "",
+    all_signed: false, number: 4, title: "Rental Management Agreement",
     brand_name: "Mountain Stays", first_name: "Alex",
     blocks: [
       { type: "title", text: "SKYRUN PARK CITY" },
@@ -55,7 +57,8 @@ describe("the owner's agreement", () => {
     expect(screen.getByText(/trusting your property to the care of the Mountain Stays team/))
       .toBeInTheDocument();
     expect(screen.getByText(/congratulations on your decision to rent it/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Read the agreement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fill in your details" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read the agreement" }));
     const terms = await screen.findByRole("region", { name: "Your terms" });
     expect(terms).toHaveTextContent("You receive 72.5% of rental revenue");
     expect(terms).toHaveTextContent("Mountain Stays receives 27.5%");
@@ -67,14 +70,16 @@ describe("the owner's agreement", () => {
       [`GET ${BASE}`]: page(),
       [`PATCH ${BASE}/details`]: { details: page().details, missing: [], blocks: page().blocks },
       [`POST ${BASE}/sign`]: page({ state: "signed", signed_at: "2026-11-24T17:00:00Z",
-                                    has_pdf: true }),
+                                    has_pdf: true, all_signed: true,
+                                    owners: [{ position: 1, name: "Alex Sample",
+                                               signed: true }] }),
       [`POST ${BASE}/onboarding`]: { link: "https://forms.example/xyz", choice: "later" },
     });
     vi.stubGlobal("fetch", api);
     render(<AgreementApp brand={BRAND} token={TOKEN} />);
     await screen.findByText("Welcome, Alex!");
-    fireEvent.click(screen.getByRole("button", { name: "Read the agreement" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Fill in your details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fill in your details" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read the agreement" }));
     fireEvent.click(await screen.findByRole("button", { name: "Continue to sign" }));
     const sign = await screen.findByRole("button", { name: "Sign the agreement" });
     expect(sign).toBeDisabled();
@@ -97,11 +102,70 @@ describe("the owner's agreement", () => {
     vi.stubGlobal("fetch", mockApi({ [`GET ${BASE}`]: page({ missing: ["a phone number"] }) }));
     render(<AgreementApp brand={BRAND} token={TOKEN} />);
     await screen.findByText("Welcome, Alex!");
-    fireEvent.click(screen.getByRole("button", { name: "Read the agreement" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Fill in your details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fill in your details" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read the agreement" }));
     fireEvent.click(await screen.findByRole("button", { name: "Continue to sign" }));
     expect(await screen.findByText("a phone number")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign the agreement" })).toBeDisabled();
+  });
+
+  it("asks the owner's page in two parts, with Sleeps, before the reading", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`GET ${BASE}`]: page() }));
+    render(<AgreementApp brand={BRAND} token={TOKEN} />);
+    await screen.findByText("Welcome, Alex!");
+    fireEvent.click(screen.getByRole("button", { name: "Fill in your details" }));
+    expect(await screen.findByText("Unit information")).toBeInTheDocument();
+    expect(screen.getByText("Owner information")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Sleeps/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Alternate phone \(optional\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Their mailing address \(optional\)/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Business phone/)).toBeNull();
+  });
+
+  it("tells the first owner who signs next, and still offers onboarding", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`GET ${BASE}`]: page({
+      state: "signed", owners: [{ position: 1, name: "Alex Sample", signed: true },
+                                { position: 2, name: "Pat Sample", signed: false }],
+      waiting_for: "Pat Sample" }) }));
+    render(<AgreementApp brand={BRAND} token={TOKEN} />);
+    expect(await screen.findByText(/Pat Sample signs next/)).toBeInTheDocument();
+    expect(screen.getByText(/We'll email you a copy once every owner has signed/))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Complete onboarding now" })).toBeInTheDocument();
+  });
+
+  it("a later owner reads and signs, fills nothing in, and gets a thank-you", async () => {
+    const co = page({ role: "co_owner", position: 2, first_name: "Pat", details: {},
+      owners: [{ position: 1, name: "Alex Sample", signed: true },
+               { position: 2, name: "Pat Sample", signed: false }],
+      prefill: { name: "Pat Sample", email: "pat@samplehomes.net", phone: "" } });
+    vi.stubGlobal("fetch", mockApi({
+      [`GET ${BASE}`]: co,
+      [`POST ${BASE}/sign`]: { ...co, state: "signed", all_signed: true,
+        owners: co.owners.map((o) => ({ ...o, signed: true })) },
+    }));
+    render(<AgreementApp brand={BRAND} token={TOKEN} />);
+    expect(await screen.findByText(/Alex Sample signed the rental management agreement/))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Fill in your details" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Read the agreement" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue to sign" }));
+    fireEvent.change(await screen.findByLabelText("Your name, as your signature"),
+                     { target: { value: "Pat Sample" } });
+    fireEvent.click(screen.getByLabelText("I agree to sign electronically"));
+    fireEvent.click(screen.getByRole("button", { name: "Sign the agreement" }));
+    expect(await screen.findByText("Thank you for signing!")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Complete onboarding now" })).toBeNull();
+  });
+
+  it("a later owner's link before their turn says who signs first", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`GET ${BASE}`]: page({ state: "waiting",
+      role: "co_owner", position: 3, first_name: "Lee", waiting_for: "Pat Sample",
+      blocks: [] }) }));
+    render(<AgreementApp brand={BRAND} token={TOKEN} />);
+    expect(await screen.findByText(/Pat Sample signs this agreement first/))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read the agreement" })).toBeNull();
   });
 
   it("an unknown link says so, with nothing else", async () => {

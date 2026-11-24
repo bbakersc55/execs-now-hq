@@ -25,6 +25,8 @@ export interface AgreementCard {
   countersigned: boolean; agreement_date: string | null; cancelled: boolean;
   may_open: boolean; contract: { contract_id: number | null; name: string; flag: string };
   waiting: string;
+  /** Sleeps, as the owner answered it on the agreement (owner, 2026-11-24). */
+  sleeps?: number | null;
 }
 export interface OwnerDateRow {
   id: string; start: string; end: string; state: string; state_label: string; message: string;

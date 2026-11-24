@@ -76,8 +76,14 @@ def _date(day) -> str:
     return f"{day:%B} {day.day}, {day.year}" if day else ""
 
 
-def _sig(agreement, role):
-    return AgreementSignature.all_objects.filter(agreement=agreement, role=role).first()
+def _sig(agreement, role, position=1):
+    return AgreementSignature.all_objects.filter(agreement=agreement, role=role,
+                                                 position=position).first()
+
+
+def _owner_sigs(agreement) -> dict:
+    return {s.position: s for s in
+            AgreementSignature.all_objects.filter(agreement=agreement, role="owner")}
 
 
 def _write(html: str) -> bytes:
@@ -93,16 +99,8 @@ def _signature_block(agreement, sig, *, owner: bool) -> dict:
            "date": _date(sig.signed_at.astimezone(ZoneInfo(
                getattr(agreement.company.tenant, "timezone", "") or "UTC")).date()
                if owner else agreement.agreement_date)}
-    if not owner:
-        from .services import authority_by
-
-        tz = ZoneInfo(getattr(agreement.company.tenant, "timezone", "") or "UTC")
-        # Owner, 2026-11-24: the account that did it, by its own name.
-        out["applied"] = (
-            f"Applied by {sig.applied_by_name} under the authorization "
-            f"{authority_by(sig.authority)} recorded on "
-            f"{_date(sig.authority.recorded_at.astimezone(tz).date())}"
-            if sig.authority_id else f"Signed personally by {sig.applied_by_name}")
+    # Who applied SkyRun's signature, and under what, is on the signing record
+    # only (owner, 2026-11-24), never under the signature.
     return out
 
 
@@ -116,8 +114,12 @@ def pages(agreement, *, final: bool, preview_terms=None, preview_details=None) -
     else:
         terms, details = services.terms_for(agreement), agreement.details or {}
         day = agreement.agreement_date if final else None
-    blocks = render.document(tpl.key, terms, details, agreement_date=day)
-    owner_sig = _sig(agreement, "owner") if preview_terms is None else None
+    names = services.signing_owners(agreement) if agreement else None
+    blocks = render.document(tpl.key, terms, details, agreement_date=day, owners=names)
+    sigs = _owner_sigs(agreement) if preview_terms is None else {}
+    owner_blocks = [{**_signature_block(agreement, sigs.get(i + 1), owner=True),
+                     "name": render.owner_name_line(o)}
+                    for i, o in enumerate(names or render.UNNAMED)]
     manager_sig = _sig(agreement, "manager") if (final and preview_terms is None) else None
     banner = ("Preview: not for signing" if preview_terms is not None else
               "" if final else "Awaiting SkyRun Park City’s signature")
@@ -125,7 +127,7 @@ def pages(agreement, *, final: bool, preview_terms=None, preview_details=None) -
         "blocks": blocks, "tpl": tpl, "banner": banner, "script_font": SCRIPT_FONT.as_uri(),
         # The terms are highlighted in the staff's preview only, never in a signed copy.
         "highlight": preview_terms is not None,
-        "owner": _signature_block(agreement, owner_sig, owner=True),
+        "owners": owner_blocks, "compact": len(owner_blocks) > 2,
         "manager": _signature_block(agreement, manager_sig, owner=False),
     })
     return _write(html)
@@ -134,7 +136,8 @@ def pages(agreement, *, final: bool, preview_terms=None, preview_details=None) -
 def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
     company = agreement.company
     tpl = texts.get(agreement.template_key)
-    owner_sig = _sig(agreement, "owner")
+    sigs = _owner_sigs(agreement)
+    owner_sig = sigs.get(1)
     manager_sig = _sig(agreement, "manager") if final else None
     rows = [("Agreement", f"{tpl.title}, #{agreement.number}, for "
                           f"{render.one_line(_terms(agreement).get('property_address'))}"),
@@ -142,20 +145,30 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
             ("Sent", _when(agreement.sent_at, company)),
             ("Opened", _when(agreement.opened_at, company))]
     from .services import _brand, authority_by
+    from .services import owners as owners_of
+
     signers = []
-    if owner_sig:
+    everyone = owners_of(agreement)
+    for o in everyone:
+        sig = sigs.get(o["position"])
+        if sig is None:
+            continue
         signers.append({
-            "role": "Owner", "png": _png(owner_sig), "typed": owner_sig.typed_text,
-            "rows": [("Name", owner_sig.printed_name + (f", {owner_sig.printed_title}"
-                                                       if owner_sig.printed_title else "")),
-                     ("Email", (agreement.details or {}).get("email", "")),
-                     ("Signed", _when(owner_sig.signed_at, company)),
-                     ("IP address", owner_sig.ip_address or "not recorded"),
-                     ("Device", owner_sig.user_agent or "not recorded"),
-                     ("Signature", "Typed" if owner_sig.method == "typed" else "Drawn")],
-            "consent": owner_sig.consent_text,
+            "role": "Owner" if len(everyone) == 1 else f"Owner {o['position']} of {len(everyone)}",
+            "png": _png(sig), "typed": sig.typed_text,
+            "rows": [("Name", sig.printed_name + (f", {sig.printed_title}"
+                                                 if sig.printed_title else "")),
+                     ("Email", o["email"]),
+                     ("Signed", _when(sig.signed_at, company)),
+                     ("IP address", sig.ip_address or "not recorded"),
+                     ("Device", sig.user_agent or "not recorded"),
+                     ("Signature", "Typed" if sig.method == "typed" else "Drawn")]
+            + ([("Words signed", "the same as the first owner's (SHA-256 below)"
+                 if sig.text_sha256 == owner_sig.text_sha256 else
+                 f"DIFFERENT: SHA-256 {sig.text_sha256}")] if o["position"] > 1 else []),
+            "consent": sig.consent_text,
             "consent_label": f"Consent to sign electronically (version "
-                             f"{owner_sig.consent_version}), ticked before signing"})
+                             f"{sig.consent_version}), ticked before signing"})
     if manager_sig:
         authority = manager_sig.authority
         block = (f"{manager_sig.printed_name}, {manager_sig.printed_title} "

@@ -86,8 +86,14 @@ def test_the_owner_page_asks_nothing_it_must_not():
                  "ADDITIONAL COPIES OF THIS PAGE"):
         assert gone not in words, gone
     assert "HOME PHONE" not in words and "PHONE: [PHONE]" in words
-    assert "(ALL OWNERS OF CONDO MUST SIGN)" in words
+    assert "(ALL OWNERS OF UNIT MUST SIGN)" in words and "OWNERS OF CONDO" not in words
     assert "NAME: MICHAEL LECLERC, PRESIDENT" in words
+    assert "UNIT INFORMATION PROPERTY ADDRESS: [PROPERTY ADDRESS]" in words
+    assert "SLEEPS: [SLEEPS] OWNER INFORMATION OWNER OF RECORD" in words
+    assert "ALTERNATE PHONE (OPTIONAL): [ALTERNATE PHONE]" in words
+    assert "BUSINESS PHONE" not in words and "TELEPHONE:" not in words
+    assert "NAME: [EMERGENCY CONTACT NAME] MAILING ADDRESS: [EMERGENCY CONTACT ADDRESS] PHONE:" \
+        in words
 
 
 def _section_30(terms):
@@ -152,3 +158,63 @@ def test_the_signed_hash_leaves_the_date_out_and_holds_everything_else():
                                                               "manager_percent": 29}, details)
     assert one != render.signed_sha256("rental_management", terms, {**details, "phone": "555-0101"})
     assert render.UNDATED in render.signed_text("rental_management", terms, details)
+
+
+# ------------------------------------------------------------ Exhibit A from Sleeps
+
+def _exhibit(details):
+    blocks = render.document("rental_management", {}, details)
+    start = next(i for i, b in enumerate(blocks) if b.get("text") == "EXHIBIT A")
+    return " ".join(render._words_of(b, False) for b in blocks[start:])
+
+
+@pytest.mark.parametrize("sleeps, p, m", [(1, 8, 4), (2, 8, 4), (5, 8, 6), (6, 12, 6),
+                                          (8, 12, 8), (10, 16, 10), (11, 20, 12),
+                                          (16, 24, 16)])
+def test_the_quantities_follow_sleeps(sleeps, p, m):
+    from apps.agreements import exhibit_a
+
+    found = exhibit_a.numbers(sleeps)
+    assert (found["place_settings"], found["place_mats"]) == (p, m)
+    assert found["dinnerware_pieces"] == 5 * p and found["teaspoons"] == p + 4
+    words = _exhibit({"sleeps": str(sleeps)})
+    assert f"Dinnerware {p} place settings ({5 * p} pieces) Dinner Plate" in words
+    assert f"Flatware {p} place settings Dinner Knife" in words
+    assert f"Teaspoons ({p + 4}) Serving Spoons" in words
+    for glass in ("Juice", "Wine", "Highball", "Old Fashioned"):
+        assert f"{glass} ({p})" in words
+    assert f"Place mats (set of {m})" in words
+    # Every other line stays as written.
+    assert "Humidifier (1 per bedroom)" in words
+    assert "Vanity Wastebasket (1 per bathroom)" in words
+    assert "Twin White Duvet Insert (1 per bed)" in words
+    assert "Studios" not in words and "bedrooms)" not in words
+
+
+def test_before_sleeps_is_answered_the_numbers_are_a_plain_placeholder():
+    words = _exhibit({})
+    assert "Dinnerware [from Sleeps] place settings ([from Sleeps] pieces)" in words
+    assert "Teaspoons ([from Sleeps])" in words and "Place mats (set of [from Sleeps])" in words
+
+
+def test_other_features_reads_as_written():
+    assert _exhibit({}).endswith(
+        "Other Features: After signing, you will be able to list your Unit's amenities and "
+        "unique features on the onboarding form, and send any photos you would like us to use "
+        "in addition to the ones we take.")
+
+
+def test_the_rules_are_one_small_table():
+    from apps.agreements import exhibit_a
+
+    assert exhibit_a.RULES == {"place_settings": (1.5, 4, 8), "place_mats": (1, 2, 4)}
+
+
+def test_one_signature_block_per_owner_each_named():
+    owners = [{"name": "Alex Sample"}, {"name": "Pat Sample", "title": "Trustee"},
+              {"name": "Lee Sample"}]
+    words = render.signed_text("rental_management", {}, {}, owners)
+    assert words.count("OWNER BY: [Owner signature] Signature DATE: [Owner date]") == 3
+    assert ("NAME: Alex Sample OWNER BY: [Owner signature] Signature DATE: [Owner date] "
+            "NAME: Pat Sample, Trustee OWNER BY") in words
+    assert "NAME: Lee Sample (ALL owners of Unit must sign)" in words

@@ -396,6 +396,8 @@ def _agreement_card(sub, membership) -> dict | None:
             "may_open": bool(membership and agreement_access.companies_for(membership)
                              .filter(pk=sub.company_id).exists()),
             "contract": agreements.contract_for(agreement),
+            # The owner's answer on the agreement (owner, 2026-11-24).
+            "sleeps": (agreement.details or {}).get("sleeps") or None,
             "waiting": services.agreement_waiting(sub)}
 
 

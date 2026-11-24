@@ -1,5 +1,6 @@
 """The approved change list for the Rental Management Agreement, V.2
-(approved by Bryan on 2026-11-23), as data for apps/agreements/textcheck.py.
+(approved by Bryan on 2026-11-23; A8, A9 and A12 to A16 as changed on
+2026-11-24), as data for apps/agreements/textcheck.py.
 
 Every difference between the 2014 PDF and the template is one of these. The
 words in brackets are where the agreement's variables go; the comparison
@@ -8,22 +9,32 @@ renders the template with the same brackets (`render.compare_text`).
 
 from ..textcheck import Change
 
-# A8: the owner's page, as in the brief (owner, 2026-11-23).
+# A8: the owner's page, as in the brief (owner, 2026-11-23), in two headed parts
+# (owner, 2026-11-24): the property address comes from the opening, Sleeps is
+# asked, ADDRESS reads MAILING ADDRESS, BUSINESS PHONE reads ALTERNATE PHONE
+# (optional), and the emergency contact's ADDRESS and TELEPHONE read MAILING
+# ADDRESS and PHONE.
 OWNER_SECTION = (
+    "Unit Information "
+    "PROPERTY ADDRESS: [property address] "
     "# Bedrooms: [bedrooms] # Bathrooms: [bathrooms] Sq Footage: [square footage] "
+    "Sleeps: [sleeps] "
+    "Owner Information "
     "OWNER OF RECORD: [owner of record] "
     "SIGNER’S NAME AND TITLE (if the Owner is a company or trust): [signer name and title] "
     "PHONE: [phone] EMAIL ADDRESS: [email] "
-    "ADDRESS: [mailing address] "
+    "MAILING ADDRESS: [mailing address] "
     "CITY: [city] STATE: [state] ZIP: [zip] "
-    "BUSINESS PHONE: [business phone] "
+    "ALTERNATE PHONE (optional): [alternate phone] "
     "If only one owner, please list another person we could contact in case of an emergency. "
     "NAME: [emergency contact name] "
-    "ADDRESS: [emergency contact address] "
-    "TELEPHONE: [emergency contact phone]"
+    "MAILING ADDRESS: [emergency contact address] "
+    "PHONE: [emergency contact phone]"
 )
 
-# A9: the signatures.
+# A9: the signatures. The owner's block is repeated for each owner, up to four
+# (owner, 2026-11-24), each with the owner's printed name under it; "condo"
+# reads "Unit".
 SIGNATURES = (
     "THE PARTIES HERETO HAVE EXECUTED THIS AGREEMENT. "
     "MANAGER SKYRUN PARK CITY "
@@ -31,8 +42,15 @@ SIGNATURES = (
     "NAME: Michael LeClerc, President "
     "By signing below, you are indicating that you own all or part of the unit. You are also "
     "indicating that ANY AND ALL additional owners have signed below. "
-    "OWNER BY: [Owner signature] Signature DATE: [Owner date] "
-    "(ALL owners of condo must sign)"
+    "OWNER BY: [Owner signature] Signature DATE: [Owner date] NAME: [owner name] "
+    "(ALL owners of Unit must sign)"
+)
+
+# A16: Exhibit A's other features (owner, 2026-11-24, as written).
+OTHER_FEATURES = (
+    "Other Features: After signing, you will be able to list your Unit's amenities and unique "
+    "features on the onboarding form, and send any photos you would like us to use in "
+    "addition to the ones we take."
 )
 
 CHANGES = [
@@ -66,6 +84,38 @@ CHANGES = [
            until="ALL owners of condo must sign)", to=SIGNATURES),
     # A10 (the footer) and A11 (the signing record) are outside the agreement's
     # words: tests/test_agreement_text.py checks them on the PDF itself.
+
+    # Exhibit A's quantities follow Sleeps (owner, 2026-11-24): the rules are in
+    # apps/agreements/exhibit_a.py. They replace C38 and C41, whose lines are gone.
+    Change("A12", "Exhibit A, dinnerware",
+           find="8 place settings (40 pieces for Studios, 1 and 2 bedrooms)",
+           until="12 place settings (60 pieces for 3 and 4 bedrooms)",
+           to="[place settings] place settings ([dinnerware pieces] pieces)"),
+    Change("A13", "Exhibit A, flatware",
+           find="8 place settings (for Studios, 1 and 2 bedrooms, 12 place settings for 3 and "
+                "4 bedrooms)",
+           to="[place settings] place settings"),
+    Change("A14", "Exhibit A, teaspoons",
+           find="Teaspoons (12 for Studios, 1 and 2 bedrooms) (16 for 3 and 4 bedrooms",
+           to="Teaspoons ([teaspoons])"),
+    Change("A15", "Exhibit A, glassware",
+           find="Juice (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)",
+           to="Juice ([place settings])"),
+    Change("A15", "Exhibit A, glassware",
+           find="Wine (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)",
+           to="Wine ([place settings])"),
+    Change("A15", "Exhibit A, glassware",
+           find="Highball (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)",
+           to="Highball ([place settings])"),
+    Change("A15", "Exhibit A, glassware",
+           find="Old Fashioned (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)",
+           to="Old Fashioned ([place settings])"),
+    Change("A15", "Exhibit A, place mats",
+           find="Place mats (set of 8 for Studios, 1 and 2 bedrooms, set of 12 for 3 and 4 "
+                "bedrooms)",
+           to="Place mats (set of [place mats])"),
+    Change("A16", "Exhibit A, other features", find="Other Features (optional):",
+           until="in addition to the ones we take.", to=OTHER_FEATURES),
 
     # C. Typo corrections
     Change("C1", "Section 1", find="without Managers’ staff involvement",
@@ -120,7 +170,6 @@ CHANGES = [
     Change("C36", "Section 28", find="in writing to contrary", to="in writing to the contrary"),
     Change("C37", "Section 29", find="softener salt replenishing ect.",
            to="softener salt replenishing, etc."),
-    Change("C38", "Exhibit A", find="(16 for 3 and 4 bedrooms", to="(16 for 3 and 4 bedrooms)"),
     Change("C39", "Exhibit A, bedding",
            find="“Triple Sheet Method for sanitary and professionally made beds.provides other "
                 "linens and towels)",
@@ -128,8 +177,6 @@ CHANGES = [
               "other linens and towels.)"),
     Change("C40", "Exhibit A", find="Hi Definition Cable Ready TV's",
            to="High-Definition Cable-Ready TVs"),
-    Change("C41", "Exhibit A, other features", find="(ie slope view, laundry in room, etc)",
-           to="(e.g., slope view, laundry in room, etc.)"),
 ]
 
 # B. The fee clause, word for word (owner, 2026-11-23).

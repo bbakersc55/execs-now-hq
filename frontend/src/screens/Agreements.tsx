@@ -7,7 +7,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Banner, Card, Empty, Pill, when } from "../components/ui";
 import type { Me } from "../lib/api";
 import {
-  agreements, PERIODS, stage, type AgreementRow, type Block, type Terms,
+  agreements, PERIODS, SHARED_EMAIL, sharesEmail, stage, type AgreementRow, type Block,
+  type CoOwnerInput, type Terms,
 } from "../lib/agreements";
 
 export function AgreementsScreen({ me: _me }: { me: Me }) {
@@ -75,12 +76,46 @@ export function AgreementsScreen({ me: _me }: { me: Me }) {
 export function StatusLine({ row }: { row: AgreementRow }) {
   if (row.cancelled) return <Pill kind="bad">Cancelled</Pill>;
   return (
-    <ol className="status-line" aria-label={`Status: ${stage(row)}`}>
-      {row.status.map((s) => (
-        <li key={s.key} className={s.at ? "done" : ""} title={s.at ? when(s.at) : "Not yet"}>
-          <span aria-hidden="true">{s.at ? "✓" : "·"}</span> {s.label}</li>
+    <>
+      <ol className="status-line" aria-label={`Status: ${stage(row)}`}>
+        {row.status.map((s) => (
+          <li key={s.key} className={s.at ? "done" : ""} title={s.at ? when(s.at) : "Not yet"}>
+            <span aria-hidden="true">{s.at ? "✓" : "·"}</span> {s.label}</li>
+        ))}
+      </ol>
+      {row.turn && <span className="muted small status-turn">{row.turn}</span>}
+    </>
+  );
+}
+
+/** Owners 2 to 4 (owner, 2026-11-24): a name and an email each, a title if
+ *  wanted. They sign in this order, after the first owner. */
+export function CoOwnersEditor({ rows, onChange }: { rows: CoOwnerInput[];
+  onChange: (rows: CoOwnerInput[]) => void }) {
+  const set = (i: number, patch: Partial<CoOwnerInput>) =>
+    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="co-owners">
+      {rows.map((r, i) => (
+        <fieldset key={i} className="co-owner">
+          <legend>Owner {i + 2}</legend>
+          <Labeled label={`Owner ${i + 2}: name`}><input value={r.name} autoComplete="off"
+            onChange={(e) => set(i, { name: e.target.value })} /></Labeled>
+          <Labeled label={`Owner ${i + 2}: email`}><input type="email" inputMode="email"
+            value={r.email} onChange={(e) => set(i, { email: e.target.value })} /></Labeled>
+          <Labeled label={`Owner ${i + 2}: title (optional)`}><input value={r.title}
+            placeholder="For example: Trustee"
+            onChange={(e) => set(i, { title: e.target.value })} /></Labeled>
+          <button type="button" className="small ghost" onClick={() =>
+            onChange(rows.filter((_, j) => j !== i))}>Remove owner {i + 2}</button>
+        </fieldset>
       ))}
-    </ol>
+      {rows.length < 3 && <button type="button" className="small ghost" onClick={() =>
+        onChange([...rows, { name: "", email: "", title: "" }])}>+ Add another owner</button>}
+      {rows.length > 0 && <p className="muted small">They sign in this order, each on their own
+        link, emailed when the owner before them has signed. Only the first owner fills in the
+        owner's page.</p>}
+    </div>
   );
 }
 
@@ -179,13 +214,15 @@ export function AgreementNew({ me: _me }: { me: Me }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [others, setOthers] = useState<CoOwnerInput[]>([]);
   const [terms, setTerms] = useState<Terms | null>(null);
   const [preview, setPreview] = useState<Block[] | null>(null);
   const [error, setError] = useState("");
   const current = terms ?? data?.defaults ?? null;
   const create = useMutation({
     mutationFn: async (then: "email" | "link" | "save") => {
-      const made = await agreements.create(company, { name, email, phone, terms: current! });
+      const made = await agreements.create(company, { name, email, phone, terms: current!,
+                                                     co_owners: others });
       if (then === "email") await agreements.action(made.id, "send");
       if (then === "link") {
         const out = await agreements.action(made.id, "link");
@@ -201,7 +238,9 @@ export function AgreementNew({ me: _me }: { me: Me }) {
     onError: (e) => setError((e as Error).message),
   });
   if (!current) return <div className="page"><p className="muted">Loading…</p></div>;
-  const ok = name.trim() && (email.trim() || phone.trim());
+  const ok = name.trim() && (email.trim() || phone.trim())
+    && others.every((o) => o.name.trim() && o.email.trim());
+  const shared = sharesEmail([email, ...others.map((o) => o.email)]);
   return (
     <div className="page agreements">
       <p className="muted small" style={{ margin: 0 }}>
@@ -216,6 +255,8 @@ export function AgreementNew({ me: _me }: { me: Me }) {
           onChange={(e) => setPhone(e.target.value)} /></Labeled>
         <p className="muted small">An email, a phone, or both. With a phone only, copy the link
           and send it yourself: the app never sends text messages.</p>
+        <CoOwnersEditor rows={others} onChange={(r) => { setOthers(r); setPreview(null); }} />
+        {shared && <Banner kind="info">{SHARED_EMAIL}</Banner>}
       </Card>
       <Card title="The terms">
         <TermsEditor terms={current} onChange={(t) => { setTerms(t); setPreview(null); }} />
@@ -224,7 +265,10 @@ export function AgreementNew({ me: _me }: { me: Me }) {
       <div className="agreement-actions">
         <button type="button" className="ghost" onClick={async () => {
           setError("");
-          try { setPreview((await agreements.preview(company, current)).blocks); }
+          try {
+            setPreview((await agreements.preview(company, current, name.trim()
+              ? { name, co_owners: others } : undefined)).blocks);
+          }
           catch (e) { setError((e as Error).message); }
         }}>Preview the agreement</button>
         <button type="button" className="primary" disabled={!ok || !email.trim()
@@ -261,13 +305,16 @@ export function AgreementBlocks({ blocks }: { blocks: Block[] }) {
           case "section_30": return <div key={i}>{b.paras.map((p, j) =>
             <p key={j}><mark>{p}</mark></p>)}</div>;
           case "owner_section": return (
-            <div key={i} className="doc-owner">{b.lines.map((line, j) => "note" in line
-              ? <p key={j}>{line.note}</p>
+            <div key={i} className="doc-owner">{b.lines.map((line, j) => "heading" in line
+              ? <h4 key={j}>{line.heading}</h4>
+              : "note" in line ? <p key={j}>{line.note}</p>
               : <p key={j}>{line.fields.map((f) => <span key={f.key} className="doc-field">
                   {f.label} <strong>{f.value || "—"}</strong></span>)}</p>)}</div>);
           case "signatures": return (
             <p key={i} className="muted">Signatures: {b.signer_name}, {b.signer_title}, for
-              SkyRun Park City; and the owner.</p>);
+              SkyRun Park City; then {(b.owners ?? []).length > 1 ? "the owners, in order: "
+                : "the owner"}{(b.owners ?? []).length > 1
+                ? (b.owners ?? []).map((o) => o.name).join("; ") : ""}.</p>);
           case "page_break": return <hr key={i} />;
         }
         return null;

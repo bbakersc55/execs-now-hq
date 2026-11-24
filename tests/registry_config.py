@@ -519,3 +519,8 @@ register(CountersignAuthority, factories.CountersignAuthorityFactory, api_expose
 register(AgreementSignature, factories.AgreementSignatureFactory, api_exposed=True)
 register(AgreementEvent, factories.AgreementEventFactory, api_exposed=True)
 register(OwnerEmail, factories.OwnerEmailFactory, api_exposed=False)
+
+from apps.agreements.models import CoOwner  # noqa: E402
+
+# Owners 2 to 4 (owner, 2026-11-24): shown on the agreement's own screen.
+register(CoOwner, factories.CoOwnerFactory, api_exposed=True)

@@ -17,6 +17,14 @@ export interface AgreementRow {
   id: string; number: number; owner_name: string; owner_email: string; owner_phone: string;
   property: string; status: StatusStep[]; cancelled: boolean; manager_percent: string | null;
   signed_name: string;
+  /** Whose turn it is: "Waiting for Pat Sample (owner 2 of 3) to sign". */
+  turn: string;
+}
+/** Owners 2 to 4, as staff enter them (owner, 2026-11-24). */
+export interface CoOwnerInput { name: string; email: string; title: string }
+export interface OwnerRow {
+  position: number; name: string; title: string; email: string; signed_at: string | null;
+  turn: boolean;
 }
 export interface Program {
   sender: "testing" | "domain"; sender_label: string; sender_domain: string;
@@ -36,6 +44,14 @@ export interface Authority {
   wording: string;
 }
 export interface AgreementDetail extends AgreementRow {
+  owners: OwnerRow[]; co_owners: CoOwnerInput[]; shared_email: boolean;
+  turn_position: number | null;
+  /** Why SkyRun can't sign: the words changed after an owner signed. */
+  words_problem: string;
+  may_cancel: boolean; may_restart: boolean; cancel_reason: string;
+  started_from: { id: string; number: number } | null;
+  successor: { id: string; number: number } | null;
+  owner_signatures: { position: number; name: string; at: string; ip: string | null }[];
   company_id: string; company_name: string; template: string; version: number | null;
   terms: Terms; terms_shown: Terms; details: Record<string, unknown>;
   address_changed: boolean; staff_address: string; owner_address: string;
@@ -84,15 +100,22 @@ const base = "/api/agreements";
 export const agreements = {
   companies: () => api.get<{ companies: { id: string; name: string }[] }>(`${base}/companies`),
   company: (id: string) => api.get<CompanyPage>(`${base}/companies/${id}`),
-  create: (id: string, body: { name: string; email: string; phone: string; terms: Terms }) =>
+  create: (id: string, body: { name: string; email: string; phone: string; terms: Terms;
+    co_owners: CoOwnerInput[] }) =>
     api.post<AgreementDetail>(`${base}/companies/${id}/agreements`, body),
-  preview: (id: string, terms: Terms) =>
-    api.post<{ blocks: Block[]; terms: Terms }>(`${base}/companies/${id}/preview`, { terms }),
+  preview: (id: string, terms: Terms, owners?: { name: string; co_owners: CoOwnerInput[] }) =>
+    api.post<{ blocks: Block[]; terms: Terms }>(`${base}/companies/${id}/preview`,
+                                                { terms, ...owners }),
   get: (id: string) => api.get<AgreementDetail>(`${base}/${id}`),
   update: (id: string, body: Partial<{ name: string; email: string; phone: string;
-    terms: Terms }>) => api.patch<AgreementDetail>(`${base}/${id}`, body),
-  action: (id: string, action: "send" | "link" | "cancel") =>
+    terms: Terms; co_owners: CoOwnerInput[] }>) => api.patch<AgreementDetail>(`${base}/${id}`, body),
+  action: (id: string, action: "send" | "link") =>
     api.post<AgreementDetail>(`${base}/${id}/${action}`),
+  /** Owner, 2026-11-24: any time until SkyRun signs, with a reason. */
+  cancel: (id: string, reason: string) =>
+    api.post<AgreementDetail>(`${base}/${id}/cancel`, { reason }),
+  /** "Start a new agreement from this one", on a cancelled agreement. */
+  restart: (id: string) => api.post<AgreementDetail>(`${base}/${id}/restart`),
   countersign: (id: string, body: { agreed: boolean; method?: string; typed?: string;
     drawn?: string }) => api.post<AgreementDetail>(`${base}/${id}/countersign`, body),
   pdfUrl: (id: string, which: "owner" | "final" | "preview") => `${base}/${id}/pdf?which=${which}`,
@@ -118,6 +141,13 @@ export const PERIODS: { key: "winter" | "summer" | "fall"; label: string }[] = [
   { key: "summer", label: "April 1 – July 31" },
   { key: "fall", label: "August 1 – November 30" },
 ];
+
+/** Owners sharing one email address (couples often do). */
+export function sharesEmail(emails: string[]): boolean {
+  const seen = emails.map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return new Set(seen).size !== seen.length;
+}
+export const SHARED_EMAIL = "These owners share an email address. Each gets their own link.";
 
 /** The furthest step reached, for the one status line per owner. */
 export function stage(row: AgreementRow): string {

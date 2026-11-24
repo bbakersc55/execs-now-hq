@@ -32,14 +32,18 @@ read: the "Owner agreements: plan and Track read" doc (2026-11-23).
 ## The flow
 
 1. Staff (ticked "Owner agreements") press **New owner**: a name, an email
-   and/or a phone, then the variables: the property address, the split
+   and/or a phone, up to three more owners (name and email each, title
+   optional; a shared email is allowed and warned about), then the variables: the property address, the split
    (owner % + manager % = 100, up to two decimals, default 70/30), the minimum
    revenue management fee (three periods, threshold + fee, default $0), and
    additional items. **Preview** shows the exact agreement. **Send by email**
    (the program's sender) or **Copy the link** (for a phone-only owner).
 2. The owner opens one link, phone first, the intake form's look:
-   welcome → the agreement in full ("Your terms" card, terms highlighted) →
-   their section (page 8) → consent → sign (type or draw).
+   welcome → their section (page 8) → the agreement in full, with their
+   answers in it ("Your terms" card, terms highlighted; Exhibit A shows the
+   numbers worked out from Sleeps) → consent → sign (type or draw). The
+   details come first since 2026-11-24, so the owner reads the numbers they
+   sign.
 3. Then **Complete onboarding now** (the intake opens at once) or **Later**
    (the link by email). Either way the intake already exists, prefilled.
 4. On signing: the owner is emailed a PDF marked "Awaiting SkyRun Park City's
@@ -56,17 +60,75 @@ read: the "Owner agreements: plan and Track read" doc (2026-11-23).
    agreement is countersigned.** Intakes started without an agreement are not
    held back.
 
-A correction before the owner signs is a new version; the same link opens it.
-A signed agreement can't be edited. An unsigned one can be cancelled (its link
-stops working).
+A correction before the first owner signs is a new version (the owners
+included); the same link opens it. Once the first owner has signed nothing can
+be corrected. See "Cancelling and starting again" for the rest.
 
-**Status line per owner:** sent · opened · signed by owner · countersigned ·
-form started · form submitted · sent to Track.
+**Status line per owner:** sent · opened · signed by owner (with several:
+"signed by owners (2 of 3)") · countersigned · form started · form submitted ·
+sent to Track, and under it whose turn it is ("Waiting for Pat Sample (owner 2
+of 3) to sign", "Waiting for SkyRun's signature").
 
-**Reminders** (hourly job `agreements.tick`): an unsigned agreement on days 3
-and 7 after sending, from 9:00 practice time; an unfinished form on days 3
-and 7 after it was made, from 9:00; countersigners 24 and 72 hours after the
-owner signed, between 8:00 and 18:00.
+**Reminders** (hourly job `agreements.tick`): to whoever's turn it is, on days
+3 and 7 counted from when their turn began (the first owner's from sending),
+from 9:00 practice time; an unfinished form on days 3 and 7 after it was made,
+from 9:00; countersigners 24 and 72 hours after the last owner signed, between
+8:00 and 18:00.
+
+## More than one owner (owner, 2026-11-24, later)
+
+- Up to four owners (`owner_agreement_co_owner` holds 2 to 4). They sign in
+  the order listed. Each later owner has their own link, issued and emailed
+  when the owner before them signs; before that, the link says who signs
+  first and shows nothing else. Staff "Email again" and "Copy the link" act on
+  whoever's turn it is. Two owners may share an email; each still gets their
+  own link, in turn, and the screen says "These owners share an email
+  address. Each gets their own link."
+- Only the first owner fills in the owner's page. Later owners read the whole
+  agreement with those answers and sign; they can't change anything (the
+  page's PATCH and the onboarding choice answer 403 for them).
+- **The same words for everyone.** Every owner's signature stores the words
+  and their SHA-256; a later owner can sign only if the words still hash to
+  the first owner's, and countersigning checks every owner's. The signing
+  record shows one "Words signed" and, for each later owner, that theirs is
+  the same.
+- One signature block per owner on the signature page, each with "NAME:" and
+  the owner's name (and title); the record has a section per owner.
+- The list of owners is fixed once the first owner signs.
+- SkyRun's signature unlocks after the last owner signs; Send to Track waits
+  for it as before.
+- The first owner still gets **Complete onboarding now / Later** as soon as
+  they sign; the intake is made then. Later owners get a thank-you page.
+- Copies: nothing to the owners until the last one signs; then each address
+  gets the "awaiting SkyRun's signature" copy, and later the final copy, once
+  per address, greeting everyone who shares it. The team gets an email (no
+  PDF) as each owner but the last signs, and today's email (with the copy for
+  the signed-PDF people) and the countersign request when all have. With one
+  owner nothing changed.
+
+## Cancelling and starting again (owner, 2026-11-24, later)
+
+- **Cancel** any time until SkyRun has signed, including after every owner
+  has signed. A reason is required; it is recorded on the agreement, in its
+  history and in the audit log. Every owner who already signed is emailed,
+  once per address: subject "Your rental management agreement with {brand}
+  was withdrawn", saying the agreement they signed for the property was
+  withdrawn, won't take effect, nothing is needed from them, and {brand} will
+  be in touch. Nobody else is emailed. After SkyRun has signed nothing can be
+  cancelled or corrected.
+- **Start a new agreement from this one**, on a cancelled agreement, once:
+  a new draft (next number) with the same terms (the owner's corrected
+  address included), the same owners and the first owner's answers, marked
+  "Started from cancelled #N". The owner's intake **moves** to it: the same
+  intake row, so its encrypted values (codes, the Wi-Fi password, a tax
+  number) stay where they are, never copied, decrypted or re-encrypted. The
+  intake's history says so, and Send to Track waits for the new agreement's
+  countersignature. Every owner signs the new one.
+- **When the words change after owners signed** (a change to Exhibit A's
+  table, say), SkyRun can't sign. The agreement's screen says why in plain
+  words: for Exhibit A, what the owners signed and what the table gives now,
+  and to cancel (reason "Exhibit A changed"), start a new agreement from it
+  and send it. Countersigning refuses with the same words.
 
 ## While acting as someone (owner, 2026-11-24)
 
@@ -102,14 +164,30 @@ replaces `request.user`. The message comes from one place,
   entry the PDF doesn't have is listed and not applied. Matching ignores quote
   style, spacing and line breaks (owner); the page furniture (DocuSign line,
   footer), list bullets and dashed rules are dropped from the PDF's text.
-  **Result (2026-11-24): all 53 finds applied, none missing, no other
+  **Result (2026-11-24, later): all 60 finds applied, none missing, no other
   difference.** Set `AGREEMENT_TEXT_OUT` to keep the table.
+- **The owner's page** (A8, 2026-11-24, later), in two headed parts on one
+  page: "Unit Information" (the property address from the opening, never
+  typed again; # Bedrooms, # Bathrooms, Sq Footage, Sleeps) and "Owner
+  Information" (as before; MAILING ADDRESS, ALTERNATE PHONE (optional)); the
+  emergency block's sentence stays, with MAILING ADDRESS and PHONE. The
+  emergency contact is required only with one owner.
+- **Exhibit A from Sleeps** (A12 to A15): place settings P = 1.5 × Sleeps,
+  rounded up to a multiple of 4, at least 8; dinnerware "P place settings (5 ×
+  P pieces)"; flatware "P place settings"; teaspoons P + 4; the four glasses P
+  each; place mats a set of M, Sleeps rounded up to even, at least 4. The rules
+  are placeholders until SkyRun's GM confirms them, one line each in
+  `apps/agreements/exhibit_a.py`. Before Sleeps is answered each number reads
+  "[from Sleeps]". They replace C38 and C41. A16 is the new "Other Features"
+  paragraph. Each owner signature keeps the numbers it was signed with.
 - **The fee clause** (change B), in section 30 before the additional items,
   word for word, one line per period with a fee above $0; a fee above $0 with
   a $0 threshold is refused (it is never due). "None." when section 30 is empty.
 - **Before countersigning** the date line reads "on the date of Manager's
   signature below"; the hash of the words the owner signed leaves it out.
-- **One owner signs** for now ("ALL owners of condo must sign" stays).
+- **Up to four owners sign** ("(ALL owners of Unit must sign)", 2026-11-24).
+  The "Applied by … under …'s authorization" and "Signed personally by" lines
+  are on the signing record only, no longer under SkyRun's signature.
 
 ## Countersigning (truthful record)
 
@@ -250,6 +328,11 @@ host with CNAME flattening or ALIAS (Cloudflare, DNS only).
 
 ## Intake changes in this build
 
+- **From the agreement** (2026-11-24, later): bedrooms, bathrooms and square
+  footage as before, and now Sleeps, as the staff's "Total sleeps" (what goes
+  to Track as the unit's occupancy); the review shows "On the agreement: N"
+  beside what the beds add up to. The other owners prefill the intake's
+  additional owners (name and email).
 - **Bed types:** King Sofa Sleeper (Track id 20) sleeps 2, Roll Away Bed (21)
   sleeps 1, both offered in "Other places people sleep". A new bed type whose
   name the rules know arrives confirmed; unknown names start at 2, flagged.
@@ -283,7 +366,13 @@ host with CNAME flattening or ALIAS (Cloudflare, DNS only).
 and 0002 (intake ticks from the old rule; data, adds rows only); `intake` 0002
 (`send_run.test`); `crm` 0062 and `notify` 0008 (choices only, no SQL);
 `agreements` 0003 (2026-11-24: `owner_agreement_signature.signed_text` and
-`owner_agreement_authority.recorded_by_name`, both text with a default '').
+`owner_agreement_authority.recorded_by_name`, both text with a default '');
+`agreements` 0004 (2026-11-24, later: the table `owner_agreement_co_owner`;
+`owner_agreement.all_signed_at`, `cancel_reason`, `started_from_id`;
+`owner_agreement_signature.position` and `exhibit_a`, and its one-per-role
+constraint becomes one per role and position; `owner_agreement_email.position`;
+a data step setting `all_signed_at` from `owner_signed_at` for agreements
+already signed by their one owner).
 Schedule `agreements.tick` (hourly) needs `ensure_schedules` at release.
 Templates: `templates/agreements/agreement_pdf.html`, `record_pdf.html`.
 
@@ -292,7 +381,11 @@ Templates: `templates/agreements/agreement_pdf.html`, `record_pdf.html`.
 - Tests: `tests/test_agreement_text.py` (the words), `tests/test_agreements.py`
   (the whole way, permissions, the switch, senders, reminders, white label, no
   Track writes), `tests/test_intake_p15_changes.py`, `tests/test_agreements_browser.py`
-  (Chrome), `frontend/src/forms/agreement.test.tsx`,
+  (Chrome), `tests/test_agreements_owners.py` (several owners in order,
+  the same words, reminders by turn, corrections, cancelling with a reason
+  and who is told, starting again with the intake carried over, an Exhibit A
+  change named, both pages on one page, what the intake is given),
+  `frontend/src/forms/agreement.test.tsx`,
   `frontend/src/screens/Agreements.test.tsx`.
 - Added 2026-11-24: `tests/test_agreements_fixes.py` (acting as someone, names
   from the account, the fingerprints and the signed text, the permissions

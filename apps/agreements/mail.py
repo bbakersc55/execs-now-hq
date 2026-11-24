@@ -34,7 +34,9 @@ from .models import OwnerEmail, Program
 log = logging.getLogger(__name__)
 
 OWNER_KINDS = ("invite", "reminder", "owner_copy", "final_copy", "intake_link",
-               "intake_reminder")
+               "intake_reminder", "withdrawn")
+#: Sent once to each address, however many owners share it (owner, 2026-11-24).
+COPY_KINDS = ("owner_copy", "final_copy", "withdrawn")
 
 
 def real_sending() -> bool:
@@ -48,13 +50,28 @@ def _form(company):
     return form_for(company)
 
 
-def _owner_address(agreement) -> str:
+def _owner_address(agreement, position=1) -> str:
+    if position != 1:
+        from .models import CoOwner
+
+        co = CoOwner.all_objects.filter(agreement=agreement, position=position).first()
+        return co.email if co else ""
     return ((agreement.details or {}).get("email") or agreement.owner_email or "").strip()
 
 
-def _first(agreement) -> str:
+def _first(agreement, position=1) -> str:
+    if position != 1:
+        from .models import CoOwner
+
+        co = CoOwner.all_objects.filter(agreement=agreement, position=position).first()
+        return (co.name.split(" ")[0] if co else "") or "there"
     first = (agreement.details or {}).get("first_name") or agreement.owner_name.split(" ")[0]
     return first or "there"
+
+
+def _and(names) -> str:
+    names = [n for n in names if n]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def _property(agreement) -> str:
@@ -66,29 +83,48 @@ def _property(agreement) -> str:
 
 # ------------------------------------------------------------ owner messages
 
-def owner_message(agreement, kind: str) -> dict:
+def owner_message(agreement, kind: str, position: int = 1, greet=None) -> dict:
     """{subject, text, html, link, attachment}: the words for one owner email.
-    `link` is the owner's link, put in only at delivery."""
+    `link` is that owner's own link, put in only at delivery. `greet` names
+    everyone at one shared address, for a copy."""
     from apps.intake import links as intake_links
 
     from . import services
 
     form = _form(agreement.company)
     brand = form.brand_name
-    first = _first(agreement)
+    first = _and(greet) if greet else _first(agreement, position)
     prop = _property(agreement)
     link, button, attachment = "", "", None
-    if kind == "invite":
+    everyone = services.owners(agreement)
+    later = [o["name"] for o in everyone if o["position"] > position]
+    if kind == "invite" and position != 1:
+        link, button = services.owner_link(agreement, position), "Read and sign the agreement"
+        before = _and([o["name"] for o in everyone if o["position"] < position])
+        subject = f"Your rental management agreement with {brand}"
+        paras = [f"Hi {first},",
+                 f"{before} signed the rental management agreement for {prop}. As an owner, "
+                 "you sign it too, and it's your turn now. It takes about ten minutes, and works "
+                 "well on a phone."]
+        paras.append((f"After you, {_and(later)} signs. " if later else "")
+                     + "Once every owner has signed, we'll countersign it and email you the "
+                     "final copy.")
+    elif kind == "invite":
         link, button = services.owner_link(agreement), "Read and sign the agreement"
         subject = f"Your rental management agreement with {brand}"
         paras = [f"Hi {first},",
                  f"Thank you for trusting your property to the care of the {brand} team. Your "
                  "rental management agreement is ready to read and sign. It takes about ten "
-                 "minutes, and works well on a phone.",
-                 "After you sign, we'll countersign it and email you the final copy, and you "
-                 "can start telling us about your property."]
+                 "minutes, and works well on a phone."]
+        if later:
+            paras.append(f"After you sign, {_and(later)} sign it too, in that order, each on "
+                         "their own link. Then we'll countersign it and email you the final "
+                         "copy, and you can start telling us about your property.")
+        else:
+            paras.append("After you sign, we'll countersign it and email you the final copy, and "
+                         "you can start telling us about your property.")
     elif kind == "reminder":
-        link, button = services.owner_link(agreement), "Read and sign the agreement"
+        link, button = services.owner_link(agreement, position), "Read and sign the agreement"
         subject = f"Reminder: your rental management agreement with {brand}"
         paras = [f"Hi {first},",
                  f"Your rental management agreement with {brand} is waiting for your "
@@ -96,8 +132,11 @@ def owner_message(agreement, kind: str) -> dict:
     elif kind == "owner_copy":
         subject = f"Your signed agreement with {brand} (awaiting our signature)"
         paras = [f"Hi {first},",
-                 f"Thank you for signing your rental management agreement for {prop}. Your "
-                 f"copy is attached. It shows as awaiting {brand}'s signature until we "
+                 (f"Thank you for signing your rental management agreement for {prop}. "
+                  if len(everyone) == 1 else
+                  f"Every owner has now signed the rental management agreement for {prop}. "
+                  "Thank you. ")
+                 + f"Your copy is attached. It shows as awaiting {brand}'s signature until we "
                  "countersign it; we'll email you the final copy then."]
         attachment = (agreement.owner_pdf, f"{_filename(agreement)} (awaiting signature).pdf")
     elif kind == "final_copy":
@@ -106,6 +145,13 @@ def owner_message(agreement, kind: str) -> dict:
                  f"Your rental management agreement for {prop} is now signed by you and by "
                  f"{brand}. The final copy is attached; please keep it for your records."]
         attachment = (agreement.final_pdf, f"{_filename(agreement)}.pdf")
+    elif kind == "withdrawn":
+        # Owner, 2026-11-24: to every owner who already signed; nobody else.
+        subject = f"Your rental management agreement with {brand} was withdrawn"
+        paras = [f"Hi {first},",
+                 f"The rental management agreement for {prop} that you signed has been "
+                 "withdrawn. It won't take effect, and there's nothing you need to do.",
+                 f"{brand} will be in touch with you about what happens next."]
     elif kind in ("intake_link", "intake_reminder"):
         link = intake_links.url_for(agreement.submission)
         button = "Tell us about your property"
@@ -157,25 +203,45 @@ def _html(msg, link: str) -> str:
             f"{paras}{button}{sign}</div></div>")
 
 
-def to_owner(agreement, kind: str, *, to: str = ""):
+def to_owner(agreement, kind: str, *, to: str = "", position: int = 1, greet=None):
     """Send one owner email by the company's sender, or hold it while sending
     is paused. Returns the OwnerEmail row."""
     from . import services
 
     program = services.program_for(agreement.company, create=True)
-    to = to or _owner_address(agreement)
+    to = to or _owner_address(agreement, position)
     if not to:
         return None
-    msg = owner_message(agreement, kind)
+    msg = owner_message(agreement, kind, position, greet=greet)
     row = OwnerEmail.all_objects.create(
         tenant_id=agreement.tenant_id, company=agreement.company, agreement=agreement,
-        kind=kind, to_address=to, subject=msg["subject"][:300], sender=program.sender,
-        state=OwnerEmail.State.HELD)
+        kind=kind, position=position, to_address=to, subject=msg["subject"][:300],
+        sender=program.sender, state=OwnerEmail.State.HELD)
     if program.paused_at is not None:
         services._event(agreement, "email_held",
                         detail=f"Held while owner emails are paused: {msg['subject']}")
         return row
     return _deliver(program, agreement, row, msg)
+
+
+def to_owners(agreement, kind: str, positions=None):
+    """A copy (or the withdrawn notice) to every owner, or to `positions`:
+    once to each address, greeting everyone who shares it."""
+    from . import services
+
+    by_address = {}
+    for o in services.owners(agreement):
+        if positions is not None and o["position"] not in positions:
+            continue
+        address = (o["email"] or "").strip().lower()
+        if address:
+            by_address.setdefault(address, []).append(o)
+    rows = []
+    for address, people in by_address.items():
+        greet = [p["name"].split(" ")[0] for p in people] if len(people) > 1 else None
+        rows.append(to_owner(agreement, kind, to=address, position=people[0]["position"],
+                             greet=greet))
+    return rows
 
 
 def _deliver(program, agreement, row, msg):
@@ -274,7 +340,8 @@ def resume(program, actor):
         row.sender = program.sender
         row.error = ""
         row.save(update_fields=["sender", "error"])
-        _deliver(program, row.agreement, row, owner_message(row.agreement, row.kind))
+        _deliver(program, row.agreement, row, owner_message(row.agreement, row.kind,
+                                                            row.position))
         sent += 1
     services._audit(program.company, actor, "agreements.emails_resumed", {"sent": sent})
     return sent
@@ -373,12 +440,15 @@ def to_staff(agreement, users, *, title, text, source_type, attach=None, attach_
 
 
 def _who(agreement) -> str:
+    from . import services
+
     d = agreement.details or {}
     name = " ".join(x for x in (d.get("first_name"), d.get("last_name")) if x) \
         or agreement.owner_name
     if d.get("owner_type") == "entity" and d.get("entity_name"):
         name = f"{d['entity_name']} ({name})"
-    return name
+    others = [c.name for c in services.co_owners(agreement)]
+    return _and([name] + others) if others else name
 
 
 def countersign_request(agreement, *, reminder=False):
@@ -392,14 +462,37 @@ def countersign_request(agreement, *, reminder=False):
              source_type=f"agreement_countersign{'_r' + str(reminders) if reminder else ''}")
 
 
+def owner_signed_notice(agreement, position):
+    """The team, when one owner of several signs (owner, 2026-11-24). No PDF:
+    the copy is made once every owner has signed."""
+    from . import services
+
+    company = agreement.company
+    everyone = services.owners(agreement)
+    me = services.owner_at(agreement, position)
+    nxt = services.turn(agreement)
+    to_staff(agreement, access.users_with(company, "agreements", practice_owner=True),
+             title=f"Owner agreement #{agreement.number}: {me['name']} signed ({position} of "
+                   f"{len(everyone)}), {_property(agreement)}",
+             text=(f"{me['name']} signed the rental management agreement for "
+                   f"{_property(agreement)}."
+                   + (f" Next to sign: {services.owner_at(agreement, nxt)['name']}, emailed "
+                      "their own link now." if nxt else "")),
+             source_type=f"agreement_signed_{position}")
+
+
 def signed_notice(agreement):
-    """The team: the agreement was signed; the signed-PDF people get the copy
+    """The team: every owner signed; the signed-PDF people get the copy
     awaiting SkyRun's signature."""
+    from . import services
+
     company = agreement.company
     team = access.users_with(company, "agreements", practice_owner=True)
+    n = len(services.owners(agreement))
     to_staff(agreement, team,
-             title=f"Owner agreement #{agreement.number} signed: {_who(agreement)}, "
-                   f"{_property(agreement)}",
+             title=(f"Owner agreement #{agreement.number} signed: " if n == 1 else
+                    f"Owner agreement #{agreement.number} signed by all {n} owners: ")
+             + f"{_who(agreement)}, {_property(agreement)}",
              text=(f"{_who(agreement)} signed the rental management agreement for "
                    f"{_property(agreement)}. It is waiting for SkyRun's signature."),
              source_type="agreement_signed",
@@ -408,13 +501,16 @@ def signed_notice(agreement):
 
 
 def final_notice(agreement):
+    from . import services
+
     company = agreement.company
     to_staff(agreement, access.users_with(company, "agreements", practice_owner=True),
              title=f"Owner agreement #{agreement.number} countersigned: {_who(agreement)}, "
                    f"{_property(agreement)}",
              text=(f"The rental management agreement for {_property(agreement)} is signed by "
                    f"both sides, dated {agreement.agreement_date:%B} {agreement.agreement_date.day}"
-                   f", {agreement.agreement_date.year}. The final copy went to the owner."),
+                   f", {agreement.agreement_date.year}. The final copy went to the "
+                   f"{'owners' if len(services.owners(agreement)) > 1 else 'owner'}."),
              source_type="agreement_countersigned",
              attach=(agreement.final_pdf, f"{_filename(agreement)}.pdf"),
              attach_to=access.users_with(company, "signed_pdfs"))

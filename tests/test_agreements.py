@@ -37,7 +37,7 @@ DETAILS = {"owner_type": "person", "first_name": "Alex", "last_name": "Sample",
            "phone": "435-555-0123", "email": "alex@samplehomes.net",
            "business_phone": "", "mailing": {"street": "9 Elm St", "city": "Denver",
                                              "state": "CO", "zip": "80202"},
-           "bedrooms": "3", "bathrooms": "2.5", "square_feet": "1,850",
+           "bedrooms": "3", "bathrooms": "2.5", "square_feet": "1,850", "sleeps": "8",
            "emergency": {"name": "Jamie Sample", "phone": "435-555-0188",
                          "address": "1 Oak Ave, Denver"}}
 TERMS = {"owner_percent": "70", "manager_percent": "30",
@@ -309,7 +309,7 @@ def test_a_correction_replaces_an_unsigned_agreement_and_a_signed_one_is_locked(
     owner_signs(a)
     r = c.patch(f"/api/agreements/{a.pk}", json.dumps({"terms": TERMS}),
                 content_type="application/json")
-    assert r.status_code == 409 and "can't be edited" in r.json()["detail"]
+    assert r.status_code == 409 and "can't be corrected" in r.json()["detail"]
 
 
 def test_the_owner_may_correct_the_address_and_staff_see_it(aw):

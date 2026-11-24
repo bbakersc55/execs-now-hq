@@ -118,8 +118,7 @@ Kitchen/Accessories:
 
 - Microwave
 - Dinnerware
-  - 8 place settings (40 pieces for Studios, 1 and 2 bedrooms)
-  - 12 place settings (60 pieces for 3 and 4 bedrooms)
+  - {{place_settings}} place settings ({{dinnerware_pieces}} pieces)
     - Dinner Plate
     - Salad Plate
     - Soup Bowl
@@ -130,22 +129,22 @@ Kitchen/Accessories:
   - Creamer (1)
   - Sugar with lid (1)
 - Flatware
-- 8 place settings (for Studios, 1 and 2 bedrooms, 12 place settings for 3 and 4 bedrooms)
+- {{place_settings}} place settings
   - Dinner Knife
   - Dinner Fork
   - Salad Fork
   - Soup Spoon
   - Steak Knife
-  - Teaspoons (12 for Studios, 1 and 2 bedrooms) (16 for 3 and 4 bedrooms)
+  - Teaspoons ({{teaspoons}})
 - Serving Spoons (2)
 - Cold Meat Fork
 - Butter Knife (1)
 - Silverware Tray (1)
 - Glassware
-  - Juice (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)
-  - Wine (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)
-  - Highball (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)
-  - Old Fashioned (8 for Studios, 1 and 2 bedrooms, 12 for 3 and 4 bedrooms)
+  - Juice ({{place_settings}})
+  - Wine ({{place_settings}})
+  - Highball ({{place_settings}})
+  - Old Fashioned ({{place_settings}})
 - Cookware (12 pieces)
   - 4.5 Qt. Dutch oven with lid
   - 8" Skillet with lid
@@ -200,7 +199,7 @@ Kitchen/Accessories:
 - Kitchen Wastebasket (1)
 - Paper Towel Holder (1)
 - Pot Holders (2)
-- Place mats (set of 8 for Studios, 1 and 2 bedrooms, set of 12 for 3 and 4 bedrooms)
+- Place mats (set of {{place_mats}})
 - Clothes Hangers (6 wooden per closet)
 - Fire Extinguisher (1)
 - Humidifier (1 per bedroom)
@@ -239,4 +238,4 @@ Kitchen/Accessories:
     - Blanket for foot of the bed (1 per bed)
     - Decorative pillow (1 per bed)
 
-**Other Features (optional):** For our use in creating your web page and marketing the unit, please list any Unique Features that would be attractive to renters: (e.g., slope view, laundry in room, etc.) on this page and add pages as necessary and send any photos you have that you would like for us to use in addition to the ones we take.
+**Other Features:** After signing, you will be able to list your Unit's amenities and unique features on the onboarding form, and send any photos you would like us to use in addition to the ones we take.

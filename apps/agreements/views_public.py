@@ -8,6 +8,9 @@ PATCH  /api/fa/<token>/details    the owner's section, saved as they go
 POST   /api/fa/<token>/sign       {method, typed|drawn, agreed}
 POST   /api/fa/<token>/onboarding {choice: now|later} -> {link}
 GET    /api/fa/<token>/pdf        the owner's copy (awaiting, or final)
+
+Owners 2 to 4 (owner, 2026-11-24) have their own tokens: they read and sign,
+and fill nothing in; before their turn their link says who signs first.
 """
 
 from __future__ import annotations
@@ -40,10 +43,11 @@ def _body(request) -> dict:
 
 
 def _resolve(request, token):
+    """((the agreement, which owner), None) or (None, the error)."""
     ip = client_ip(request)
     if too_many_shared(PER_ADDRESS, ip) or too_many_shared(PER_TOKEN, token):
         return None, JsonResponse(SLOW_DOWN, status=429)
-    agreement = links.resolve(token)
+    agreement, position = links.resolve_signer(token)
     if agreement is None:
         if too_many_shared(BAD_TOKENS, ip):
             return None, JsonResponse(SLOW_DOWN, status=429)
@@ -53,6 +57,7 @@ def _resolve(request, token):
         return None, JsonResponse(GONE, status=404)
     if agreement.voided_at is not None or not access.is_on(agreement.company):
         return None, JsonResponse(GONE, status=404)
+    agreement.position = position
     return agreement, None
 
 
@@ -60,45 +65,62 @@ def _error(exc: services.Refused):
     return JsonResponse({"detail": str(exc)}, status=exc.status)
 
 
-def page(agreement) -> dict:
+def page(agreement, position: int = 1) -> dict:
     """Everything the owner's pages show. Nothing names the product, the
-    practice or anyone in it; SkyRun's side shows only the signer's name."""
+    practice or anyone in it; SkyRun's side shows only the signer's name.
+    A later owner sees the whole agreement with the first owner's answers in
+    it, and nothing to fill in."""
     from apps.intake.services import form_for
 
     from .models import AgreementSignature
 
     form = form_for(agreement.company)
     terms = services.terms_for(agreement)
-    sigs = {s.role: s for s in AgreementSignature.all_objects.filter(agreement=agreement)}
+    mine = AgreementSignature.all_objects.filter(agreement=agreement, role="owner",
+                                                 position=position).first()
     tpl = texts.get(agreement.template_key)
     details = agreement.details or {}
     version = services.current(agreement)
     staff_address = (version.terms or {}).get("property_address") or {}
+    everyone = services.owners(agreement)
+    me = next(o for o in everyone if o["position"] == position)
+    turn = services.turn(agreement)
     state = ("complete" if agreement.countersigned_at else
-             "signed" if agreement.owner_signed_at else "open")
+             "signed" if mine else
+             "waiting" if turn is not None and turn < position else "open")
+    first = position == 1
     return {
         "state": state,
+        "role": "first" if first else "co_owner",
+        "position": position,
         "number": agreement.number,
         "title": tpl.title, "brand_name": form.brand_name,
-        "first_name": details.get("first_name") or agreement.owner_name.split(" ")[0],
-        "blocks": render.document(agreement.template_key, terms, details,
-                                  agreement_date=agreement.agreement_date),
+        "first_name": (details.get("first_name") or agreement.owner_name.split(" ")[0]) if first
+        else me["name"].split(" ")[0],
+        "owners": [{"position": o["position"], "name": o["name"],
+                    "signed": bool(o["signed_at"])} for o in everyone],
+        "waiting_for": (next(o["name"] for o in everyone if o["position"] == turn)
+                        if turn is not None and turn != position else ""),
+        "all_signed": agreement.all_signed_at is not None,
+        "blocks": [] if state == "waiting" else render.document(
+            agreement.template_key, terms, details, agreement_date=agreement.agreement_date,
+            owners=services.signing_owners(agreement)),
         "terms": {"owner_percent": terms.get("owner_percent"),
                   "manager_percent": terms.get("manager_percent"),
                   "section_30": render.section_30(terms),
                   "property_address": render.one_line(terms.get("property_address"))},
-        "staff_address": staff_address,
-        "details": details,
-        "prefill": {"name": agreement.owner_name, "email": agreement.owner_email,
-                    "phone": agreement.owner_phone},
-        "missing": services.missing_details(agreement),
+        "staff_address": staff_address if first else {},
+        "details": details if first else {},
+        "prefill": ({"name": agreement.owner_name, "email": agreement.owner_email,
+                     "phone": agreement.owner_phone} if first else
+                    {"name": me["name"], "email": me["email"], "phone": ""}),
+        "missing": services.missing_details(agreement) if first else [],
         "consent": consent.owner(company=form.brand_name,
-                                 email=details.get("email") or agreement.owner_email or
-                                 "the email address you give"),
-        "signed_at": sigs["owner"].signed_at.isoformat() if "owner" in sigs else None,
+                                 email=(me["email"] or "the email address you give")),
+        "signed_at": mine.signed_at.isoformat() if mine else None,
         "countersigned_at": agreement.countersigned_at.isoformat()
         if agreement.countersigned_at else None,
-        "onboarding_choice": agreement.onboarding_choice,
+        "onboarding_choice": agreement.onboarding_choice if first else "",
         "has_pdf": bool(agreement.final_pdf_id or agreement.owner_pdf_id),
         "signer_name": tpl.signer_name,
     }
@@ -111,9 +133,12 @@ def agreement_page(request, token):
     if error:
         return error
     with tenant_context(agreement.tenant_id):
-        services.opened(agreement, ip=client_ip(request),
-                        user_agent=request.META.get("HTTP_USER_AGENT", ""))
-        return JsonResponse(page(agreement))
+        position = agreement.position
+        if services.turn(agreement) is None or services.turn(agreement) >= position:
+            services.opened(agreement, ip=client_ip(request),
+                            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                            position=position)
+        return JsonResponse(page(agreement, position))
 
 
 @csrf_exempt
@@ -122,6 +147,9 @@ def details(request, token):
     agreement, error = _resolve(request, token)
     if error:
         return error
+    if agreement.position != 1:
+        return JsonResponse({"detail": "Only the first owner fills in the owner's page."},
+                            status=403)
     with tenant_context(agreement.tenant_id):
         try:
             services.save_details(agreement, _body(request).get("details") or {})
@@ -131,7 +159,9 @@ def details(request, token):
                              "missing": services.missing_details(agreement),
                              "blocks": render.document(agreement.template_key,
                                                        services.terms_for(agreement),
-                                                       agreement.details or {})})
+                                                       agreement.details or {},
+                                                       owners=services.signing_owners(
+                                                           agreement))})
 
 
 @csrf_exempt
@@ -148,11 +178,13 @@ def sign(request, token):
             services.owner_sign(agreement, method=data.get("method", ""),
                                 typed=data.get("typed", ""), drawn=data.get("drawn", ""),
                                 agreed=data.get("agreed") is True, ip=client_ip(request),
-                                user_agent=request.META.get("HTTP_USER_AGENT", ""))
+                                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                                position=agreement.position)
         except services.Refused as exc:
             return _error(exc)
+        position = agreement.position
         agreement.refresh_from_db()
-        return JsonResponse(page(agreement))
+        return JsonResponse(page(agreement, position))
 
 
 @csrf_exempt
@@ -161,6 +193,9 @@ def onboarding(request, token):
     agreement, error = _resolve(request, token)
     if error:
         return error
+    if agreement.position != 1:
+        return JsonResponse({"detail": "The first owner tells us about the property."},
+                            status=403)
     with tenant_context(agreement.tenant_id):
         try:
             link = services.choose(agreement, _body(request).get("choice", ""))

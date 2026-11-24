@@ -7,10 +7,17 @@ export type Block =
   | { type: "para"; indent: number; spans: Span[] }
   | { type: "list"; items: { level: number; spans: Span[] }[] }
   | { type: "section_30"; paras: string[] }
-  | { type: "owner_section"; lines: ({ note: string } | { fields: { label: string; key: string;
-      value: string }[] })[] }
-  | { type: "signatures"; signer_name: string; signer_title: string }
+  | { type: "owner_section"; lines: OwnerLine[] }
+  | { type: "signatures"; signer_name: string; signer_title: string;
+      /** One block per owner, in the order they sign (owner, 2026-11-24). */
+      owners?: { name: string }[] }
   | { type: "page_break" };
+
+/** The owner's page: two headed parts, labelled fields, one note. */
+export type OwnerLine =
+  | { heading: string }
+  | { note: string }
+  | { fields: { label: string; key: string; value: string }[] };
 
 export interface Address { street?: string; unit?: string; city?: string; state?: string;
   zip?: string }
@@ -20,12 +27,21 @@ export interface Details {
   business_phone?: string;
   mailing?: { street?: string; street2?: string; city?: string; state?: string; zip?: string };
   bedrooms?: string; bathrooms?: string; square_feet?: number | string;
+  sleeps?: number | string;
   emergency?: { name?: string; address?: string; phone?: string };
   property_address?: Address;
 }
 
 export interface AgreementPage {
-  state: "open" | "signed" | "complete";
+  /** "waiting": a later owner's link before their turn. */
+  state: "open" | "signed" | "complete" | "waiting";
+  /** The first owner fills in the owner's page; the others read and sign. */
+  role: "first" | "co_owner";
+  position: number;
+  owners: { position: number; name: string; signed: boolean }[];
+  /** Whose turn it is, when it isn't this owner's. */
+  waiting_for: string;
+  all_signed: boolean;
   number: number; title: string; brand_name: string; first_name: string;
   blocks: Block[];
   terms: { owner_percent: string; manager_percent: string; section_30: string[];

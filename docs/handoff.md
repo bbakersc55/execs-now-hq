@@ -89,8 +89,13 @@ accounts (Bryan has two: FF and SkyRun FCC).
    everyone the old rule let in; adds rows only; on SkyRun that is Jackie,
    Kendra, Michael, Bryan's FCC account), `intake 0002` (one column with a
    default), `agreements 0003` (two columns with a default: the signed text,
-   the authorization's recorder's name), `crm 0062` and `notify 0008` (no SQL).
-   Then `ensure_schedules` (new hourly `agreements.tick`).
+   the authorization's recorder's name), `crm 0062` and `notify 0008` (no SQL),
+   `agreements 0004` (2026-11-24, later: the co-owners table, columns with
+   defaults, the signature constraint widened to one per owner, and a data
+   step that only fills `all_signed_at` on agreements already signed; nothing
+   is dropped). Then `ensure_schedules` (new hourly `agreements.tick`).
+   Before real owners sign: SkyRun's GM confirms Exhibit A's rules
+   (`apps/agreements/exhibit_a.py`, one line each; placeholders until then).
 2. From the release, **intake's Send to Track is in test mode** (missing
    setting = on) until the practice owner or the Client owner turns it off in
    Form settings (nobody else can, and not while acting as someone).

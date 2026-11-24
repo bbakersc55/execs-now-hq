@@ -420,6 +420,7 @@ export function StaffCard({ r, onSaved }: { r: Review; onSaved: (r: Review) => v
           onBlur={(e) => void save({ sleeps_total: e.target.value === "" ? null
             : Number(e.target.value) })} />
           <span className="muted small">Worked out from the beds: {r.derived.sleeps_worked_out}
+            {r.agreement?.sleeps ? ` · On the agreement: ${r.agreement.sleeps}` : ""}
           </span></label>
       </div>
       {baths.length > 0 && (

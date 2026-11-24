@@ -45,7 +45,7 @@ TEMPLATES = {
         key="rental_management", title="Rental Management Agreement",
         version="V.2 – November 2026", copyright="© Park City Ski Chalets, LLC",
         file="rental_management_v2.txt",
-        sha256="33d2a346f607cace407852ea527a4bec2dd73d68a774953eccc4be6a6a1bfd74",
+        sha256="b956269241fe05d53f10bce8f59ab3cc91c5202c1c9965c43a3ac632ee30a9c4",
         new_owner=True,
         variables=("split", "fees", "additional_items", "property_address"),
         signer_name="Michael LeClerc", signer_title="President"),

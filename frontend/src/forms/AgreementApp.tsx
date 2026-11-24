@@ -1,7 +1,9 @@
 /** The owner's rental management agreement behind a personal link: welcome,
- *  the agreement in full, the owner's section, consent and signature, then
- *  onboarding now or later. Phone first, the intake form's look, white label:
- *  only the company's own brand appears. */
+ *  the owner's section, the agreement in full with their answers in it (so
+ *  Exhibit A shows the numbers worked out from Sleeps before they sign),
+ *  consent and signature, then onboarding now or later. A later owner (2 to
+ *  4) reads and signs, filling nothing in. Phone first, the intake form's
+ *  look, white label: only the company's own brand appears. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FormError } from "./api";
 import { agreementApi, type AgreementPage, type Block, type Details } from "./agreementApi";
@@ -12,12 +14,24 @@ import { Choice, Note, Text } from "./ui";
 
 type Phase = "loading" | "ready" | "gone" | "error";
 type Step = "welcome" | "agreement" | "details" | "sign";
-const STEPS: { key: Step; title: string }[] = [
+/** Owner, 2026-11-24: the details come before the reading. */
+const FIRST_STEPS: { key: Step; title: string }[] = [
   { key: "welcome", title: "Welcome" },
-  { key: "agreement", title: "Your agreement" },
   { key: "details", title: "Your details" },
+  { key: "agreement", title: "Your agreement" },
   { key: "sign", title: "Sign" },
 ];
+const CO_STEPS: { key: Step; title: string }[] = [
+  { key: "welcome", title: "Welcome" },
+  { key: "agreement", title: "Your agreement" },
+  { key: "sign", title: "Sign" },
+];
+const NEXT: Record<Step, string> = { welcome: "", details: "Fill in your details",
+  agreement: "Read the agreement", sign: "Continue to sign" };
+
+function names(list: string[]): string {
+  return list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
 
 export function AgreementApp({ brand, token }: { brand: Brand; token: string | null }) {
   const api = useMemo(() => agreementApi(token ?? ""), [token]);
@@ -92,10 +106,19 @@ export function AgreementApp({ brand, token }: { brand: Brand; token: string | n
       </Frame>
     );
   }
+  if (page.state === "waiting") {
+    return (
+      <Frame brand={brand} title={`Hi${page.first_name ? ` ${page.first_name}` : ""}!`}>
+        <p className="ix-lead">{page.waiting_for} signs this agreement first. We'll email you
+          when it's your turn to sign.</p>
+      </Frame>
+    );
+  }
   if (page.state !== "open") {
     return <AfterSigning brand={brand} page={page} api={api} onChange={apply} />;
   }
 
+  const STEPS = page.role === "first" ? FIRST_STEPS : CO_STEPS;
   const index = STEPS.findIndex((s) => s.key === step);
   return (
     <div className="ix-root" style={brandStyle(brand)}>
@@ -120,7 +143,8 @@ export function AgreementApp({ brand, token }: { brand: Brand; token: string | n
         {step === "details" && <DetailsForm page={page} details={details} update={update} />}
         {step === "sign" && <SignStep page={page} missing={missing} api={api} flush={flush}
           onSigned={(data) => { apply(data); window.scrollTo({ top: 0 }); }}
-          back={() => void go("details")} />}
+          back={() => void go(STEPS[index - 1].key)}
+          toDetails={page.role === "first" ? () => void go("details") : undefined} />}
       </main>
       {step !== "sign" && (
         <nav className="ix-nav" aria-label="Agreement steps">
@@ -128,8 +152,7 @@ export function AgreementApp({ brand, token }: { brand: Brand; token: string | n
             onClick={() => void go(STEPS[index - 1].key)}>Back</button> : <span />}
           <button type="button" className="ix-btn ix-btn-primary"
             onClick={() => void go(STEPS[index + 1].key)}>
-            {step === "welcome" ? "Read the agreement" : step === "agreement"
-              ? "Fill in your details" : "Continue to sign"}</button>
+            {NEXT[STEPS[index + 1].key]}</button>
         </nav>
       )}
       <Footer brand={brand} />
@@ -152,14 +175,35 @@ function Frame({ brand, title, children }: { brand: Brand; title?: string;
 }
 
 function Welcome({ page }: { page: AgreementPage }) {
+  const others = page.owners.filter((o) => o.position !== page.position);
+  if (page.role === "co_owner") {
+    const before = page.owners.filter((o) => o.position < page.position).map((o) => o.name);
+    return (
+      <>
+        <p className="ix-lead">{names(before)} signed the rental management agreement with
+          {" "}{page.brand_name}. As an owner, you sign it too.</p>
+        <h2 className="ix-subtitle">Your next steps</h2>
+        <ol className="ix-next">
+          <li><strong>Read the agreement</strong>, with the answers {before[0]} gave about the
+            property and the owners. There's nothing for you to fill in.</li>
+          <li><strong>Sign it.</strong> It takes about ten minutes in all.</li>
+          <li>Once every owner has signed, {page.brand_name} countersigns it and we email you
+            the final copy.</li>
+        </ol>
+      </>
+    );
+  }
   return (
     <>
       <p className="ix-lead">Thank you for trusting your property to the care of the
         {" "}{page.brand_name} team, and congratulations on your decision to rent it.</p>
       <h2 className="ix-subtitle">Your next steps</h2>
       <ol className="ix-next">
-        <li><strong>Read and sign your rental management agreement.</strong> It takes about ten
-          minutes.</li>
+        <li><strong>Fill in your details, then read and sign your rental management
+          agreement.</strong> It takes about ten minutes.</li>
+        {others.length > 0 && <li>{names(others.map((o) => o.name))} then
+          {others.length > 1 ? " sign it too, in that order," : " signs it too,"} each on their
+          own link.</li>}
         <li>{page.brand_name} countersigns it, and we email you the final copy.</li>
         <li>Tell us about your property in our onboarding form: right after you sign, or later
           from the link we email you.</li>
@@ -192,7 +236,8 @@ function Terms({ page }: { page: AgreementPage }) {
 export function AgreementText({ page, blocks }: { page: AgreementPage; blocks: Block[] }) {
   return (
     <>
-      <p className="ix-lead">Here is your agreement in full. The parts set for you are
+      <p className="ix-lead">Here is your agreement in full{page.role === "first"
+        ? ", with your answers in it" : ""}. The parts set for you are
         {" "}<mark className="ix-term">highlighted</mark>.</p>
       <Terms page={page} />
       <article className="ix-doc" aria-label={page.title}>
@@ -231,7 +276,9 @@ function DocBlock({ block, page }: { block: Block; page: AgreementPage }) {
     case "owner_section":
       return (
         <div className="ix-doc-owner" aria-label="The owner's section">
-          {block.lines.map((line, i) => "note" in line ? <p key={i}>{line.note}</p> : (
+          {block.lines.map((line, i) => "heading" in line
+            ? <h4 key={i} className="ix-doc-heading">{line.heading}</h4>
+            : "note" in line ? <p key={i}>{line.note}</p> : (
             <p key={i}>{line.fields.map((f) => (
               <span key={f.key} className="ix-doc-field">{f.label}{" "}
                 <span className="ix-doc-value">{f.value || "—"}</span></span>
@@ -247,8 +294,13 @@ function DocBlock({ block, page }: { block: Block; page: AgreementPage }) {
             {" "}{block.signer_title}. Signs after you.</p>
           <p>By signing below, you are indicating that you own all or part of the unit. You are
             also indicating that ANY AND ALL additional owners have signed below.</p>
-          <p><strong>OWNER</strong>: you sign on the last step.
-            {" "}(ALL owners of condo must sign)</p>
+          {(block.owners ?? [{ name: "" }]).map((o, i) => (
+            <p key={i}><strong>OWNER</strong>{o.name ? `: ${o.name}` : ""}
+              {page.owners[i]?.position === page.position ? ". You sign on the last step."
+                : page.owners[i]?.signed ? ". Signed." : page.owners[i] ? ". Signs in turn."
+                : ""}</p>
+          ))}
+          <p>(ALL owners of Unit must sign)</p>
           <p className="ix-hint">{page.title}, #{page.number}</p>
         </div>
       );
@@ -268,59 +320,14 @@ function DetailsForm({ page, details, update }: { page: AgreementPage; details: 
     [staff.state, staff.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   const [correcting, setCorrecting] = useState(!staffLine || !!d.property_address?.street);
   const address = d.property_address ?? {};
+  const alone = page.owners.length <= 1;
   return (
     <div className="ix-section">
       <p className="ix-lead">This is the owner's section of the agreement. Everything here
-        appears in your agreement as you enter it.</p>
-      <Choice label="Who owns the property?" value={d.owner_type ?? "person"}
-        onChange={(v) => set({ owner_type: v as "person" | "entity" })}
-        options={[{ value: "person", label: "I do (a person)" },
-                  { value: "entity", label: "A company or trust" }]} />
-      {d.owner_type === "entity" && (
-        <>
-          <Text label="Owner of record (the company or trust's name)" value={d.entity_name}
-            onChange={(v) => set({ entity_name: v })} autoComplete="organization" />
-          <Text label="Your title" hint="For example: Manager, Trustee"
-            value={d.signer_title} onChange={(v) => set({ signer_title: v })} />
-        </>
-      )}
-      <div className="ix-grid2">
-        <Text label={d.owner_type === "entity" ? "Your first name (the signer)" : "First name"}
-          value={d.first_name} onChange={(v) => set({ first_name: v })}
-          autoComplete="given-name" />
-        <Text label={d.owner_type === "entity" ? "Your last name" : "Last name"}
-          value={d.last_name} onChange={(v) => set({ last_name: v })}
-          autoComplete="family-name" />
-      </div>
-      <Text label="Phone" type="tel" inputMode="tel" value={d.phone}
-        onChange={(v) => set({ phone: v })} autoComplete="tel" />
-      <Text label="Email address" type="email" inputMode="email" value={d.email}
-        hint="Your signed agreement is emailed here."
-        onChange={(v) => set({ email: v })} autoComplete="email" />
+        appears in your agreement as you enter it{alone ? "" : ", and the other owners read it "
+        + "when they sign"}.</p>
       <fieldset className="ix-fieldset">
-        <legend className="ix-label">Mailing address</legend>
-        <Text label="Street" value={mailing.street}
-          onChange={(v) => set({ mailing: { ...mailing, street: v } })}
-          autoComplete="address-line1" />
-        <Text label="Apartment, suite (optional)" value={mailing.street2}
-          onChange={(v) => set({ mailing: { ...mailing, street2: v } })}
-          autoComplete="address-line2" />
-        <div className="ix-grid3">
-          <Text label="City" value={mailing.city}
-            onChange={(v) => set({ mailing: { ...mailing, city: v } })}
-            autoComplete="address-level2" />
-          <Text label="State" value={mailing.state}
-            onChange={(v) => set({ mailing: { ...mailing, state: v } })}
-            autoComplete="address-level1" />
-          <Text label="ZIP" value={mailing.zip} inputMode="numeric"
-            onChange={(v) => set({ mailing: { ...mailing, zip: v } })}
-            autoComplete="postal-code" />
-        </div>
-      </fieldset>
-      <Text label="Business phone (optional)" type="tel" inputMode="tel"
-        value={d.business_phone} onChange={(v) => set({ business_phone: v })} />
-      <fieldset className="ix-fieldset">
-        <legend className="ix-label">The property</legend>
+        <legend className="ix-label">Unit information</legend>
         {staffLine && !correcting ? (
           <div className="ix-confirm">
             <p style={{ margin: 0 }}><strong>{staffLine}</strong></p>
@@ -348,33 +355,84 @@ function DetailsForm({ page, details, update }: { page: AgreementPage; details: 
             </div>
           </>
         )}
-        <div className="ix-grid3">
+        <div className="ix-grid2">
           <Text label="Bedrooms" inputMode="numeric" value={String(d.bedrooms ?? "")}
             onChange={(v) => set({ bedrooms: v })} />
           <Text label="Bathrooms" inputMode="text" hint="Halves are fine: 2.5"
             value={String(d.bathrooms ?? "")} onChange={(v) => set({ bathrooms: v })} />
           <Text label="Square footage" inputMode="numeric" value={String(d.square_feet ?? "")}
             onChange={(v) => set({ square_feet: v })} />
+          <Text label="Sleeps" inputMode="numeric" value={String(d.sleeps ?? "")}
+            hint="How many guests it sleeps. Exhibit A's kitchen numbers follow it."
+            onChange={(v) => set({ sleeps: v })} />
         </div>
       </fieldset>
       <fieldset className="ix-fieldset">
-        <legend className="ix-label">Emergency contact</legend>
+        <legend className="ix-label">Owner information</legend>
+        <Choice label="Who owns the property?" value={d.owner_type ?? "person"}
+          onChange={(v) => set({ owner_type: v as "person" | "entity" })}
+          options={[{ value: "person", label: alone ? "I do (a person)" : "We do (people)" },
+                    { value: "entity", label: "A company or trust" }]} />
+        {d.owner_type === "entity" && (
+          <>
+            <Text label="Owner of record (the company or trust's name)" value={d.entity_name}
+              onChange={(v) => set({ entity_name: v })} autoComplete="organization" />
+            <Text label="Your title" hint="For example: Manager, Trustee"
+              value={d.signer_title} onChange={(v) => set({ signer_title: v })} />
+          </>
+        )}
+        <div className="ix-grid2">
+          <Text label={d.owner_type === "entity" ? "Your first name (the signer)" : "First name"}
+            value={d.first_name} onChange={(v) => set({ first_name: v })}
+            autoComplete="given-name" />
+          <Text label={d.owner_type === "entity" ? "Your last name" : "Last name"}
+            value={d.last_name} onChange={(v) => set({ last_name: v })}
+            autoComplete="family-name" />
+        </div>
+        <Text label="Phone" type="tel" inputMode="tel" value={d.phone}
+          onChange={(v) => set({ phone: v })} autoComplete="tel" />
+        <Text label="Email address" type="email" inputMode="email" value={d.email}
+          hint="Your signed agreement is emailed here."
+          onChange={(v) => set({ email: v })} autoComplete="email" />
+        <Text label="Mailing address" value={mailing.street}
+          onChange={(v) => set({ mailing: { ...mailing, street: v } })}
+          autoComplete="address-line1" />
+        <Text label="Apartment, suite (optional)" value={mailing.street2}
+          onChange={(v) => set({ mailing: { ...mailing, street2: v } })}
+          autoComplete="address-line2" />
+        <div className="ix-grid3">
+          <Text label="City" value={mailing.city}
+            onChange={(v) => set({ mailing: { ...mailing, city: v } })}
+            autoComplete="address-level2" />
+          <Text label="State" value={mailing.state}
+            onChange={(v) => set({ mailing: { ...mailing, state: v } })}
+            autoComplete="address-level1" />
+          <Text label="ZIP" value={mailing.zip} inputMode="numeric"
+            onChange={(v) => set({ mailing: { ...mailing, zip: v } })}
+            autoComplete="postal-code" />
+        </div>
+        <Text label="Alternate phone (optional)" type="tel" inputMode="tel"
+          value={d.business_phone} onChange={(v) => set({ business_phone: v })} />
+      </fieldset>
+      <fieldset className="ix-fieldset">
+        <legend className="ix-label">Emergency contact{alone ? "" : " (optional)"}</legend>
         <p className="ix-hint">If only one owner, please list another person we could contact in
           case of an emergency.</p>
         <Text label="Their name" value={emergency.name}
           onChange={(v) => set({ emergency: { ...emergency, name: v } })} />
         <Text label="Their phone" type="tel" inputMode="tel" value={emergency.phone}
           onChange={(v) => set({ emergency: { ...emergency, phone: v } })} />
-        <Text label="Their address (optional)" value={emergency.address}
+        <Text label="Their mailing address (optional)" value={emergency.address}
           onChange={(v) => set({ emergency: { ...emergency, address: v } })} />
       </fieldset>
     </div>
   );
 }
 
-function SignStep({ page, missing, api, flush, onSigned, back }: {
+function SignStep({ page, missing, api, flush, onSigned, back, toDetails }: {
   page: AgreementPage; missing: string[]; api: ReturnType<typeof agreementApi>;
   flush: () => Promise<boolean>; onSigned: (data: AgreementPage) => void; back: () => void;
+  toDetails?: () => void;
 }) {
   const [method, setMethod] = useState<"typed" | "drawn">("typed");
   const [typed, setTyped] = useState("");
@@ -390,7 +448,8 @@ function SignStep({ page, missing, api, flush, onSigned, back }: {
         <div className="ix-note ix-note-info">
           <p style={{ margin: "0 0 8px" }}>Before you sign, please add:</p>
           <ul style={{ margin: 0 }}>{missing.map((m) => <li key={m}>{m}</li>)}</ul>
-          <button type="button" className="ix-link" onClick={back}>Back to your details</button>
+          <button type="button" className="ix-link" onClick={toDetails ?? back}>Back to your
+            details</button>
         </div>
       ) : (
         <p className="ix-lead">You're signing the {page.title} with {page.brand_name}, as shown
@@ -444,8 +503,9 @@ function AfterSigning({ brand, page, api, onChange }: { brand: Brand; page: Agre
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [choice, setChoice] = useState(page.onboarding_choice);
-  const email = page.details.email;
+  const email = page.role === "first" ? page.details.email : page.prefill.email;
   const complete = page.state === "complete";
+  const later = page.owners.filter((o) => !o.signed).map((o) => o.name);
   const choose = async (c: "now" | "later") => {
     setBusy(true);
     setError("");
@@ -468,6 +528,10 @@ function AfterSigning({ brand, page, api, onChange }: { brand: Brand; page: Agre
       {complete ? (
         <p className="ix-lead">Your rental management agreement is signed by you and by
           {" "}{page.brand_name}. The final copy was emailed to you.</p>
+      ) : !page.all_signed ? (
+        <p className="ix-lead">{names(later)} {later.length > 1 ? "sign" : "signs"} next, on
+          {later.length > 1 ? " their own links" : " their own link"}. We'll email you a copy
+          once every owner has signed, and the final copy once {page.brand_name} has signed.</p>
       ) : (
         <p className="ix-lead">Your copy{email ? <> was emailed to <strong>{email}</strong></> : ""}.
           It shows as awaiting {page.brand_name}'s signature until we countersign it, and we'll
@@ -475,6 +539,7 @@ function AfterSigning({ brand, page, api, onChange }: { brand: Brand; page: Agre
       )}
       {page.has_pdf && <p><a href={api.pdf} target="_blank" rel="noreferrer">Open your copy
         (PDF)</a></p>}
+      {page.role === "first" && <>
       <h2 className="ix-subtitle">Next: tell us about your property</h2>
       {choice === "later" ? (
         <>
@@ -495,6 +560,7 @@ function AfterSigning({ brand, page, api, onChange }: { brand: Brand; page: Agre
           </div>
         </>
       )}
+      </>}
       {error && <p className="ix-error" role="alert">{error}</p>}
     </Frame>
   );

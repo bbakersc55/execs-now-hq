@@ -39,7 +39,7 @@ OWNER = {"owner_type": "person", "first_name": "Zebulon", "last_name": "Quarterf
          "phone": "435-555-0177", "email": "zebulon.q@quarterfield-example.net",
          "mailing": {"street": "12 Obscurely Lane", "city": "Denver", "state": "CO",
                      "zip": "80202"},
-         "bedrooms": "2", "bathrooms": "1", "square_feet": "900",
+         "bedrooms": "2", "bathrooms": "1", "square_feet": "900", "sleeps": "4",
          "emergency": {"name": "Ophelia Quarterfield", "phone": "435-555-0178"}}
 PROPERTY = {"street": "77 Unlikelyname Way", "unit": "", "city": "Park City", "state": "UT",
             "zip": "84060"}

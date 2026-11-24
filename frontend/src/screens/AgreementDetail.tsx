@@ -2,12 +2,15 @@
  *  history, corrections before the owner signs, and countersigning. */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { SignatureCapture, hasSignature } from "../components/SignatureCapture";
 import { Banner, Card, Pill, when } from "../components/ui";
 import type { CapturedSignature, Me } from "../lib/api";
-import { agreements, type AgreementDetail as Detail, type Terms } from "../lib/agreements";
-import { AgreementBlocks, StatusLine, TermsEditor } from "./Agreements";
+import {
+  agreements, SHARED_EMAIL, sharesEmail, type AgreementDetail as Detail, type CoOwnerInput,
+  type Terms,
+} from "../lib/agreements";
+import { AgreementBlocks, CoOwnersEditor, StatusLine, TermsEditor } from "./Agreements";
 
 const PERIOD: Record<string, string> = { winter: "Dec 1 – Mar 31", summer: "Apr 1 – Jul 31",
   fall: "Aug 1 – Nov 30" };
@@ -16,6 +19,10 @@ export function AgreementDetail({ me: _me }: { me: Me }) {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [owners, setOwners] = useState<CoOwnerInput[] | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [reason, setReason] = useState("");
   const { data, error } = useQuery({ queryKey: ["agreement", id],
                                      queryFn: () => agreements.get(id) });
   const [said, setSaid] = useState(params.get("copied") ? "Link copied."
@@ -55,30 +62,97 @@ export function AgreementDetail({ me: _me }: { me: Me }) {
         {data.property ? ` · ${data.property}` : ""}</p>
       <StatusLine row={data} />
       {problem && <Banner kind="warn">{problem}</Banner>}
+      {data.cancelled && <Banner kind="warn">Cancelled{data.cancel_reason
+        ? `: ${data.cancel_reason}` : ""}.{data.successor && <> A new agreement was started
+        from it: <Link to={`/agreements/${data.successor.id}`}>#{data.successor.number}</Link>.
+        </>}</Banner>}
+      {data.started_from && <p className="muted small">Started from cancelled agreement
+        {" "}<Link to={`/agreements/${data.started_from.id}`}>#{data.started_from.number}</Link>.
+        </p>}
+      {data.words_problem && <Banner kind="warn">{data.words_problem}</Banner>}
+      {data.may_restart && (
+        <p><button type="button" className="primary" onClick={async () => {
+          setProblem("");
+          try {
+            const made = await agreements.restart(id);
+            void qc.invalidateQueries({ queryKey: ["agreements", data.company_id] });
+            navigate(`/agreements/${made.id}`);
+          } catch (e) { setProblem((e as Error).message); }
+        }}>Start a new agreement from this one</button>
+        <span className="muted small"> Copies the terms and the owners into a new draft, and
+          moves the owner's intake to it with its answers.</span></p>
+      )}
 
       {data.may_countersign && <Countersign data={data} onDone={(out) => {
         set(out); setSaid("Countersigned. The final copy went to the owner.");
       }} onError={setProblem} />}
 
-      {data.editable && data.may_work && (
+      {data.owners.length > 1 && (
+        <Card title="Owners" actions={data.editable && data.may_work && !owners
+          ? <button type="button" className="small ghost"
+              onClick={() => setOwners(data.co_owners)}>Correct</button> : undefined}>
+          {owners ? (
+            <>
+              <p className="muted small">Owner 1: {data.owner_name}</p>
+              <CoOwnersEditor rows={owners} onChange={setOwners} />
+              {sharesEmail([data.owner_email, ...owners.map((o) => o.email)])
+                && <Banner kind="info">{SHARED_EMAIL}</Banner>}
+              <div className="agreement-actions">
+                <button type="button" className="primary" onClick={async () => {
+                  const out = await act(() => agreements.update(id, { co_owners: owners }),
+                                        "Owners corrected. Email it again so the first owner "
+                                        + "has the corrected agreement.");
+                  if (out) setOwners(null);
+                }}>Save the owners</button>
+                <button type="button" className="ghost" onClick={() => setOwners(null)}>
+                  Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ol className="owners-list">
+                {data.owners.map((o) => (
+                  <li key={o.position}><strong>{o.name}</strong>{o.title ? `, ${o.title}` : ""}
+                    {" "}<span className="muted small">{o.email}</span>{" "}
+                    {o.signed_at ? <Pill kind="good">Signed {when(o.signed_at)}</Pill>
+                      : o.turn ? <Pill kind="warn">Their turn</Pill>
+                      : <Pill>Signs in turn</Pill>}</li>
+                ))}
+              </ol>
+              {data.shared_email && <p className="muted small">{SHARED_EMAIL}</p>}
+              {!data.editable && !data.cancelled && <p className="muted small">The owners are
+                fixed once the first owner has signed. To change them, cancel this agreement and
+                start a new one from it.</p>}
+            </>
+          )}
+        </Card>
+      )}
+
+      {data.may_work && data.turn_position !== null && (() => {
+        const next = data.owners.find((o) => o.turn);
+        const who = data.owners.length > 1 && next ? next.name : "the owner";
+        const email = data.turn_position === 1 ? data.owner_email : next?.email;
+        return (
         <Card title="Send">
           <div className="agreement-actions">
-            <button type="button" className="primary" disabled={!data.owner_email}
+            <button type="button" className="primary" disabled={!email}
               onClick={() => void act(() => agreements.action(id, "send"),
-                                      "Emailed to the owner.")}>
-              {data.status[0].at ? "Email it again" : "Send by email"}</button>
+                                      `Emailed to ${who}.`)}>
+              {data.turn_position === 1 && !data.status[0].at ? "Send by email"
+                : data.owners.length > 1 ? `Email ${who} again` : "Email it again"}</button>
             <button type="button" className="ghost" onClick={async () => {
               const out = await act(() => agreements.action(id, "link"), "Link copied.");
               if (out?.link) await navigator.clipboard?.writeText(out.link)
                 .catch(() => setSaid(out.link ?? ""));
-            }}>Copy the link</button>
+            }}>{data.owners.length > 1 ? `Copy ${who}'s link` : "Copy the link"}</button>
           </div>
-          {!data.owner_email && <p className="muted small">No email for this owner: copy the
+          {!email && <p className="muted small">No email for this owner: copy the
             link and send it yourself.</p>}
           {data.sender === "testing" && <p className="muted small">Owner email is on ENHQ's own
             sender (testing): the owner would see Executives Now.</p>}
         </Card>
-      )}
+        );
+      })()}
 
       <Card title="Terms" actions={data.editable && data.may_work && !editing
         ? <button type="button" className="small ghost"
@@ -141,7 +215,8 @@ export function AgreementDetail({ me: _me }: { me: Me }) {
           <li><a href={agreements.pdfUrl(id, "preview")} target="_blank" rel="noreferrer">
             Preview the agreement (PDF)</a></li>
           {data.has_owner_pdf && <li><a href={agreements.pdfUrl(id, "owner")} target="_blank"
-            rel="noreferrer">Signed by the owner, awaiting SkyRun's signature (PDF)</a></li>}
+            rel="noreferrer">Signed by {data.owners.length > 1 ? "every owner" : "the owner"},
+            awaiting SkyRun's signature (PDF)</a></li>}
           {data.has_final_pdf && <li><a href={agreements.pdfUrl(id, "final")} target="_blank"
             rel="noreferrer"><strong>Final, signed by both (PDF)</strong></a>
             {data.agreement_date && <> · dated {data.agreement_date}</>}</li>}
@@ -182,13 +257,28 @@ export function AgreementDetail({ me: _me }: { me: Me }) {
         </ul>
       </Card>
 
-      {data.editable && data.may_work && (
-        <p><button type="button" className="small ghost danger" onClick={() => {
-          if (window.confirm("Cancel this agreement? Its link stops working.")) {
-            void act(() => agreements.action(id, "cancel"), "Cancelled.");
-          }
-        }}>Cancel this agreement</button></p>
-      )}
+      {data.may_cancel && (cancelling ? (
+        <Card title="Cancel this agreement">
+          <p className="small">The owners' links stop working.
+            {data.owners.some((o) => o.signed_at) ? " Every owner who has already signed is "
+              + "emailed that the agreement was withdrawn and that SkyRun will be in touch."
+              : " Nobody is emailed: no owner has signed yet."}</p>
+          <label className="field"><span>Why is it being cancelled? (recorded)</span>
+            <textarea rows={2} value={reason} maxLength={300}
+              onChange={(e) => setReason(e.target.value)} /></label>
+          <div className="agreement-actions">
+            <button type="button" className="danger" disabled={!reason.trim()} onClick={async () => {
+              const out = await act(() => agreements.cancel(id, reason), "Cancelled.");
+              if (out) { setCancelling(false); setReason(""); }
+            }}>Cancel the agreement</button>
+            <button type="button" className="ghost" onClick={() => setCancelling(false)}>
+              Keep it</button>
+          </div>
+        </Card>
+      ) : (
+        <p><button type="button" className="small ghost danger"
+          onClick={() => setCancelling(true)}>Cancel this agreement</button></p>
+      ))}
     </div>
   );
 }
@@ -207,8 +297,11 @@ function Countersign({ data, onDone, onError }: { data: Detail; onDone: (d: Deta
       {data.address_changed && <Banner kind="warn">The owner changed the address: you
         entered <strong>{data.staff_address}</strong>; the owner signed with
         {" "}<strong>{data.owner_address}</strong>. Check it before countersigning.</Banner>}
-      <p>{data.owner_signature?.name} signed on {when(data.owner_signature?.at)}. The agreement's
-        date will be today's.</p>
+      <p>{data.owner_signatures.length > 1
+        ? `Every owner has signed, the last on ${when(data.owner_signatures[
+          data.owner_signatures.length - 1].at)}.`
+        : `${data.owner_signature?.name} signed on ${when(data.owner_signature?.at)}.`} The
+        agreement's date will be today's.</p>
       {needsMark ? (
         <SignatureCapture value={sig} onChange={setSig} consent={words} agreed={agreed}
           onAgree={setAgreed} />

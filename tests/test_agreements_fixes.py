@@ -173,12 +173,16 @@ def test_the_record_names_the_account_never_the_template(aw):
     a.refresh_from_db()
     final = pdf_text(a.final_pdf)
     jackie = aw["jackie"].user
-    for phrase in (f"Applied by {jackie.full_name} under the authorization Dana Fictional "
-                   "recorded on",
-                   "the standing authorization recorded by Dana Fictional on",
-                   "Signature block Michael LeClerc, President (as printed in the agreement)",
-                   "NAME: Michael LeClerc, President"):
-        assert flat(phrase) in final, phrase
+    # Owner, 2026-11-24: who applied it is on the signing record only, exactly as
+    # before, and no longer under SkyRun's signature.
+    pages, record = final.split(flat("Signing record"), 1)
+    for phrase in (f"Applied by {jackie.full_name} Under the standing authorization recorded "
+                   "by Dana Fictional on",
+                   "Signature block Michael LeClerc, President (as printed in the agreement)"):
+        assert flat(phrase) in record, phrase
+    assert flat("NAME: Michael LeClerc, President") in pages
+    assert "Appliedby" not in pages and "undertheauthorization" not in pages
+    assert "Signedpersonallyby" not in pages
     assert flat("Michael LeClerc's standing authorization") not in final
     for email in (jackie.email, dana.email, aw["ff"].user.email):
         assert flat(email) not in final
@@ -200,7 +204,9 @@ def test_signing_personally_names_the_account(aw):
         .status_code == 200
     a.refresh_from_db()
     final = pdf_text(a.final_pdf)
-    assert flat("Signed personally by Dana Fictional") in final
+    pages, record = final.split(flat("Signing record"), 1)
+    assert flat("Signed personally by Dana Fictional") in record
+    assert "Signedpersonally" not in pages          # the record only (owner, 2026-11-24)
     assert flat("Michael LeClerc, personally") not in final
 
 
