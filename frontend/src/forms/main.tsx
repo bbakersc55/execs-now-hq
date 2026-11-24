@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AgreementApp } from "./AgreementApp";
 import { FormApp } from "./FormApp";
 import "./forms.css";
-import { tokenFrom } from "./token";
+import { isAgreement, tokenFrom } from "./token";
 import type { Brand } from "./types";
 
 /** The page's brand comes from the server (apps/intake/hosts.py), never
@@ -20,6 +21,8 @@ function brand(): Brand {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <FormApp brand={brand()} token={tokenFrom(window.location.pathname)} />
+    {isAgreement(window.location.pathname)
+      ? <AgreementApp brand={brand()} token={tokenFrom(window.location.pathname)} />
+      : <FormApp brand={brand()} token={tokenFrom(window.location.pathname)} />}
   </StrictMode>,
 );

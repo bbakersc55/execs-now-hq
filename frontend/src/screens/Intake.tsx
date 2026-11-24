@@ -45,6 +45,8 @@ export function IntakeScreen({ me }: { me: Me }) {
           ))}
         </div>
       )}
+      {data?.test_mode && <Banner kind="warn"><strong>Test mode is on.</strong> Send to Track
+        checks everything and writes nothing. Turn it off in Form settings.</Banner>}
       <Card title="Start an intake for a new owner">
         <p className="muted" style={{ marginTop: 0 }}>Makes the owner's personal link. Copy it,
           or open it in your own email; the app never emails owners. You can also fill the whole
@@ -76,7 +78,8 @@ export function IntakeScreen({ me }: { me: Me }) {
                   <td>{s.owner}</td>
                   <td>{s.property || <span className="muted">Not given yet</span>}</td>
                   <td><Pill kind={STATUS_KIND[s.status] === "danger" ? "bad"
-                    : STATUS_KIND[s.status] ?? ""}>{s.status_label}</Pill></td>
+                    : STATUS_KIND[s.status] ?? ""}>{s.status_label}</Pill>
+                    {s.tested && <> <Pill kind="warn">Test</Pill></>}</td>
                   <td>{s.status === "sent" || s.status === "discarded" ? "—"
                     : s.link_open ? "Open" : <Pill kind="warn">Expired</Pill>}</td>
                   <td className="when">{when(s.created_at)}</td>
@@ -86,8 +89,8 @@ export function IntakeScreen({ me }: { me: Me }) {
           </table>
         )}
       </Card>
-      {me.role === "FF" && <p className="muted small">Who sees intakes: you, and the company's
-        Client owner and anyone at Manager or Senior leadership on one of its teams.</p>}
+      {me.role === "FF" && <p className="muted small">Who sees intakes: you, and everyone ticked
+        for Owner intake in the company's Owner agreement settings, People and permissions.</p>}
     </div>
   );
 }

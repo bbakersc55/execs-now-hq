@@ -49,6 +49,9 @@ def conditions(submission, *, mode: str) -> set:
         out.add("has_owner_dates")
     if mode == "existing" and len(plan.people(a)) > 1:
         out.add("existing_owner_new_people")
+    emergency = (a.get("about") or {}).get("emergency") or {}
+    if mode == "existing" and (emergency.get("name") or emergency.get("phone")):
+        out.add("existing_owner_emergency")
     return out
 
 

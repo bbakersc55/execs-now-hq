@@ -43,9 +43,13 @@ export interface About {
   street?: string; street2?: string; city?: string; state?: string; postal?: string;
   country?: string; mobile?: string; email?: string; contact_pref?: string; heard?: string;
   heard_detail?: string; has_extra_owners?: string; extra_owners?: ExtraOwner[];
+  /** Owner, 2026-11-23: someone to call in an emergency. */
+  emergency?: { name?: string; address?: string; phone?: string };
 }
 export interface Property {
   street?: string; street2?: string; city?: string; state?: string; postal?: string;
+  /** Owner, 2026-11-23: goes to the unit's area in Track. */
+  square_feet?: number | null;
   lodging_type_id?: number | null; ready?: string; ready_date?: string;
   has_bookings?: string; bookings?: Range[];
 }

@@ -276,3 +276,57 @@ html { scroll-padding-bottom: 104px; }
 @media (prefers-reduced-motion: reduce) {
   .ix-root * { transition: none !important; }
 }
+
+/* ---------------------------------------------------------------- the agreement
+   (docs/p15_owner_agreements.md): the owner's rental management agreement. */
+@font-face {
+  font-family: "Signature Script";
+  src: url("./fonts/DancingScript-Medium.ttf") format("truetype");
+  font-display: swap;
+}
+.ix-term { background: color-mix(in srgb, #f6bc26 30%, white); color: inherit;
+  border-radius: 3px; padding: 0 2px; }
+.ix-terms { border: 1.5px solid var(--ix-primary); border-radius: var(--ix-radius);
+  background: var(--ix-tint); padding: 16px 18px; margin: 0 0 22px; }
+.ix-terms dl { margin: 0; display: grid; gap: 4px; }
+.ix-terms dt { font-weight: 700; color: var(--ix-heading); margin-top: 8px; }
+.ix-terms dd { margin: 0; }
+.ix-doc { font-size: 1rem; line-height: 1.6; color: var(--ix-text); overflow-wrap: anywhere; }
+.ix-doc-title { text-align: center; font-weight: 800; color: var(--ix-heading); margin: 0; }
+.ix-doc-title + .ix-doc-title { margin-bottom: 16px; }
+.ix-doc-heading { font-size: 1.05rem; color: var(--ix-heading); margin: 20px 0 8px; }
+.ix-doc-p { margin: 0 0 12px; }
+.ix-indent-1 { margin-left: 14px; } .ix-indent-2 { margin-left: 28px; }
+.ix-doc-list { margin: 0 0 12px; padding-left: 18px; }
+.ix-doc-list li { margin: 2px 0; }
+.ix-doc-list .ix-level-2 { margin-left: 18px; list-style: circle; }
+.ix-doc-list .ix-level-3 { margin-left: 36px; list-style: square; }
+.ix-doc-s30 p { margin: 0 0 10px 14px; }
+.ix-doc-owner { border: 1px dashed var(--ix-line); border-radius: 12px; padding: 12px 14px;
+  margin: 0 0 12px; }
+.ix-doc-owner p { margin: 0 0 6px; }
+.ix-doc-field { margin-right: 14px; display: inline-block; }
+.ix-doc-value { font-weight: 600; color: var(--ix-heading); }
+.ix-doc-sigs { border-top: 1px solid var(--ix-line); padding-top: 12px; }
+.ix-doc-break { border: 0; border-top: 1px dotted var(--ix-line); margin: 20px 0; }
+.ix-grid2, .ix-grid3 { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 560px) {
+  .ix-grid2 { grid-template-columns: 1fr 1fr; }
+  .ix-grid3 { grid-template-columns: 2fr 1fr 1fr; }
+}
+.ix-confirm { display: grid; gap: 4px; }
+.ix-sig { display: grid; gap: 14px; }
+.ix-sig-tabs { display: flex; gap: 8px; }
+.ix-sig-typed { font-family: "Signature Script", cursive; font-size: 2.2rem; line-height: 1.3;
+  color: #1f2a33; border-bottom: 1.5px solid var(--ix-line); min-height: 3.2rem;
+  overflow-wrap: anywhere; }
+.ix-sig-pad { width: 100%; height: 170px; border: 1.5px dashed #aeb5ba; border-radius: 12px;
+  background: #fff; touch-action: none; display: block; }
+.ix-sig-row { display: flex; justify-content: space-between; align-items: center;
+  margin-top: 6px; }
+.ix-sig-consent { display: flex; gap: 12px; align-items: flex-start; font-size: .92rem;
+  line-height: 1.45; }
+.ix-sig-consent input { width: 22px; height: 22px; margin-top: 2px; flex: 0 0 auto; }
+.ix-sign-actions { display: flex; justify-content: space-between; gap: 12px;
+  margin-bottom: 40px; }
+.ix-choice-buttons { display: grid; gap: 12px; margin: 16px 0; }

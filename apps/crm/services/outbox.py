@@ -444,9 +444,10 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
 
     # One check per address (owner, 2026-10-26): real mail leaves a laptop
     # only when every address on it is on the allow-list.
-    dev_real = settings.IS_LOCAL and all(
-        is_real_send_allowed(address, message.tenant, message.mailbox)
-        for address in recipients_of(message))
+    dev_real = settings.IS_LOCAL and \
+        message.producer not in OutboxMessage.NEVER_REAL_FROM_LAPTOP and all(
+            is_real_send_allowed(address, message.tenant, message.mailbox)
+            for address in recipients_of(message))
     # The demo sends only through its redirect (owner, 2026-10-08). Where it
     # can, the one address below replaces the recipient before anything is
     # built; where it cannot (no redirect set, no connection of its own, or
@@ -461,6 +462,12 @@ def _deliver(message, *, actor=None, body_text=None, body_html=None):
     mailbox = message.mailbox
     if not use_real_transport:
         transport = DevOutboxTransport()
+    elif message.sent_via == "owner_domain" and not demo:
+        # Owner agreements (docs/p15): a company's own-domain owner email goes
+        # only through its own provider; never through another sender.
+        from apps.agreements.postmark import OwnerDomainTransport
+
+        transport = OwnerDomainTransport.for_message(message)
     elif mailbox is not None and not mailbox.is_own and not demo:
         # A shared or a client's mailbox goes through its own provider.
         transport = get_transport("microsoft" if mailbox.provider == "microsoft" else None)

@@ -504,3 +504,18 @@ register(SubmissionEvent, factories.IntakeSubmissionEventFactory, api_exposed=Tr
 register(SendRun, factories.IntakeSendRunFactory, api_exposed=True)
 register(OwnerDate, factories.IntakeOwnerDateFactory, api_exposed=True)
 register(TrackListSnapshot, factories.IntakeTrackListFactory, api_exposed=False)
+
+from apps.agreements.models import (  # noqa: E402
+    AgreementEvent, AgreementSignature, AgreementVersion, CountersignAuthority, OwnerAgreement,
+    OwnerEmail, Program, StaffAccess,
+)
+
+# Owner agreements (docs/p15_owner_agreements.md).
+register(Program, factories.AgreementProgramFactory, api_exposed=True)
+register(StaffAccess, factories.AgreementStaffAccessFactory, api_exposed=True)
+register(OwnerAgreement, factories.OwnerAgreementFactory, api_exposed=True)
+register(AgreementVersion, factories.AgreementVersionFactory, api_exposed=True)
+register(CountersignAuthority, factories.CountersignAuthorityFactory, api_exposed=True)
+register(AgreementSignature, factories.AgreementSignatureFactory, api_exposed=True)
+register(AgreementEvent, factories.AgreementEventFactory, api_exposed=True)
+register(OwnerEmail, factories.OwnerEmailFactory, api_exposed=False)

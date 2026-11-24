@@ -17,6 +17,7 @@ import { longDate } from "../lib/money";
 import { ClientTeamsCard } from "../components/ClientTeams";
 import { CompanyCommitments } from "../components/ContactCommitments";
 import { DocumentsCard } from "../components/Documents";
+import { OwnerAgreementDocs } from "../components/OwnerAgreementDocs";
 import { PortalAccessCard, usePortalAccess } from "../components/PortalAccessCard";
 import { ScorecardSetup } from "../components/ScorecardSetup";
 import { BestyConnectionCard } from "../components/ScorecardBesty";
@@ -205,6 +206,7 @@ export function CompanyDetail({ me }: { me: Me }) {
 
       {/* E-signature (2026-10-29): proposals, letters and PDFs to sign. */}
       <DocumentsCard me={me} companyId={c.id} people={theirs} />
+      {me.has_agreements && <OwnerAgreementDocs companyId={c.id} />}
 
       {/* P8: a playbook started here makes a dated goal, projects and tasks. */}
       <StartPlaybookCard me={me} company={c} people={theirs} />

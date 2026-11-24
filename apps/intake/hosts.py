@@ -24,7 +24,9 @@ from django.http import HttpResponse
 from django.utils.html import escape
 
 TOKEN_PATH = re.compile(r"^/(?P<token>[A-Za-z0-9_-]{20,100})/?$")
-ALLOWED = re.compile(r"^/(?:api/f/[A-Za-z0-9_-]{1,100}(?:/.*)?|static/forms/.+|"
+#: An owner agreement's page (docs/p15_owner_agreements.md), on the same domain.
+AGREEMENT_PATH = re.compile(r"^/a/(?P<token>[A-Za-z0-9_-]{20,100})/?$")
+ALLOWED = re.compile(r"^/(?:api/fa?/[A-Za-z0-9_-]{1,100}(?:/.*)?|static/forms/.+|"
                      r"api/forms/[a-z0-9-]+/(?:logo|icon))$")
 #: Seconds a host -> form lookup is trusted before the database is asked again.
 CACHE_SECONDS = 60
@@ -91,6 +93,9 @@ class FormDomainMiddleware:
         match = TOKEN_PATH.match(path)
         if match and request.method in ("GET", "HEAD"):
             return shell(request, token=match.group("token"), form=form)
+        match = AGREEMENT_PATH.match(path)
+        if match and request.method in ("GET", "HEAD"):
+            return agreement_shell(request, token=match.group("token"), form=form)
         if ALLOWED.match(path):
             return self.get_response(request)
         return not_found(form)
@@ -126,11 +131,13 @@ BLANK_ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' view
               "%3E%3C/svg%3E")
 
 
-def _head(form) -> str:
+def _head(form, page_title=None) -> str:
     brand = _branding(form)
+    if page_title:
+        brand["title"] = page_title
     icon = brand["icon"] or BLANK_ICON
     config = json.dumps(brand).replace("<", "\\u003c")
-    title = f"{form.title} · {form.brand_name}"
+    title = f"{page_title or form.title} · {form.brand_name}"
     return (f"<title>{escape(title)}</title>"
             f'<link rel="icon" href="{escape(icon)}" />'
             f'<meta name="theme-color" content="{escape(brand["colors"]["primary"])}" />'
@@ -146,7 +153,7 @@ def _respond(html: str, status=200) -> HttpResponse:
     return response
 
 
-def shell(request, token=None, slug=None, form=None):
+def shell(request, token=None, slug=None, form=None, agreement=False):
     """The owner's form page (the built bundle in `dist/forms`), with the
     form's own title, icon and look. A token that doesn't resolve still gets
     the page: it shows the form's own "this link isn't valid" screen."""
@@ -157,14 +164,34 @@ def shell(request, token=None, slug=None, form=None):
         if form is None or not is_on(form):
             return _respond(_plain("This page isn't here", "Check the link you were sent.",
                                    None), 404)
+    if not agreement and not is_on(form):
+        return not_found(form)
     index = _built_index()
     if index is None:
         return _respond(_plain(form.title, "This form isn't available just now. Please try "
                                "again later.", form), 503)
     html = re.sub(r"<title>.*?</title>", "", index, count=1, flags=re.S)
     html = re.sub(r'<link rel="icon"[^>]*>', "", html)
-    html = html.replace("</head>", _head(form) + "</head>", 1)
+    html = html.replace("</head>", _head(form, "Rental Management Agreement" if agreement
+                                         else None) + "</head>", 1)
     return _respond(html)
+
+
+def agreement_shell(request, token=None, slug=None, form=None):
+    """An owner agreement's page: the same bundle and look as the form's,
+    while the company has owner agreements switched on."""
+    from apps.agreements.access import is_on as agreements_on
+
+    from .models import IntakeForm
+
+    if form is None:
+        form = IntakeForm.all_objects.select_related("company").filter(slug=slug).first()
+        if form is None:
+            return _respond(_plain("This page isn't here", "Check the link you were sent.",
+                                   None), 404)
+    if not agreements_on(form.company) or form.company.deleted_at is not None:
+        return not_found(form)
+    return shell(request, token=token, form=form, agreement=True)
 
 
 def not_found(form) -> HttpResponse:

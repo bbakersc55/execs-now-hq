@@ -11,9 +11,10 @@ import re
 
 SETTING_KEYS = (
     "common_amenities", "hidden_groups", "lodging_type_ids", "code_type_ids",
-    "custom_fields", "sleeps", "checklist", "message_invite", "message_reminder",
+    "custom_fields", "sleeps", "checklist", "checklist_offered", "message_invite",
+    "message_reminder",
     "new_units_bookable", "owner_active", "default_contract_id",
-    "default_management_agreement",
+    "default_management_agreement", "test_mode",
 )
 
 #: The owner's common list (owner, 2026-11-19): label, then Track amenity names.
@@ -60,9 +61,15 @@ OWNER_FIELDS = [
     "pms_units_hoa_management_company_other_notes", "pms_units_heat_tape_notes",
     "pms_units_snow_plowing_provider", "pms_units_snow_shoveling_provider",
     "pms_units_snow_plowing_notes", "pms_units_nightly_rental_permit", "pms_units_hvac_notes",
-    "pms_units_parking_instructions", "pms_units_other_maintenance_or_service_notes",
+    "pms_units_parking_instructions", "pms_units_water_softener", "pms_units_landscaping",
     "pms_units_coffee_maker_type",
 ]
+#: Owner, 2026-11-23: the water softener and landscaping answers have their own
+#: fields in Track now. Other Maintenance or Service Notes carried them before;
+#: a form set up then has it "owner", which would now ask it as a question of
+#: its own, so the move switches it off (once; a manager can switch it back).
+MOVED_FIELDS = {"pms_units_other_maintenance_or_service_notes":
+                ("pms_units_water_softener", "pms_units_landscaping")}
 #: Filled in by the reviewer.
 STAFF_FIELDS = [
     "pms_units_management_agreement_type", "pms_units_contract_effective_date",
@@ -101,6 +108,10 @@ CHECKLIST = [
      "title": "Bring over the current bookings listed in the intake from the former manager"},
     {"key": "extra_owners", "offset_days": 3, "when": "existing_owner_new_people",
      "title": "Add the new additional owners listed in the intake to the owner in Track"},
+    # Owner, 2026-11-23: a new owner's emergency contact goes in its notes; an
+    # existing owner is never changed, so a person adds it.
+    {"key": "emergency_contact", "offset_days": 3, "when": "existing_owner_emergency",
+     "title": "Add the emergency contact from the intake to the owner's notes in Track"},
     {"key": "housekeeping", "offset_days": 4, "when": "always",
      "title": "Place the Property Onboarding - Housekeeping Set Up hold" + HOLD_NOTE},
     {"key": "photography", "offset_days": 6, "when": "always",
@@ -116,7 +127,10 @@ CHECKLIST = [
      "title": "Confirm the owner's dates were placed"},
 ]
 CHECKLIST_WHEN = ("always", "no_permit", "has_insurance", "no_insurance", "has_bookings",
-                  "existing_owner_new_people", "has_owner_dates")
+                  "existing_owner_new_people", "existing_owner_emergency", "has_owner_dates")
+#: Checklist items added after forms were made: offered once to a form's
+#: checklist (a manager may then remove them).
+ADDED_ITEMS = ("emergency_contact",)
 
 #: The message staff copy or open in their own email (owner, 2026-11-19: ENHQ
 #: never emails owners). {first_name}, {link}, {signature}, {brand}.
@@ -147,8 +161,9 @@ def _by_name(rows):
 def sleeps_for_name(name: str) -> tuple[int, bool]:
     """(sleeps, known) for a bed type by Track's name, from the owner's rules:
     2 for a king, queen, double, Murphy bed, futon or any sofa bed except the
-    twin one; 1 for a twin, twin sofa bed, child bed, trundle or day bed; a bunk
-    by its two beds; a crib 0. A name that fits none starts at 2, unconfirmed."""
+    twin one (King Sofa Sleeper, owner 2026-11-23); 1 for a twin, twin sofa bed,
+    child bed, trundle, day bed or roll away bed (owner, 2026-11-23); a bunk by
+    its two beds; a crib 0. A name that fits none starts at 2, unconfirmed."""
     n = name.strip().lower()
     if "crib" in n:
         return 0, True
@@ -157,7 +172,8 @@ def sleeps_for_name(name: str) -> tuple[int, bool]:
         if len(parts) == 2:
             return sum(1 if "twin" in p and "/" not in p else 2 for p in parts), True
         return 2, False
-    if n in ("twin", "twin sofa bed", "child bed", "twin trundle", "twin day bed", "toddler bed"):
+    if n in ("twin", "twin sofa bed", "child bed", "twin trundle", "twin day bed", "toddler bed",
+             "roll away bed", "rollaway bed", "rollaway", "roll away", "roll-away bed"):
         return 1, True
     if n in ("king", "california king", "queen", "double", "full", "murphy bed", "futon") \
             or ("sofa" in n or "sleeper" in n):
@@ -166,14 +182,16 @@ def sleeps_for_name(name: str) -> tuple[int, bool]:
 
 
 def other_place_bed(name: str) -> bool:
-    """Bed types for "Other places people sleep": sofa beds, futons, Murphy beds."""
+    """Bed types for "Other places people sleep": sofa beds, futons, Murphy
+    beds and roll away beds."""
     n = name.lower()
-    return any(word in n for word in ("sofa", "sleeper", "futon", "murphy"))
+    return any(word in n for word in ("sofa", "sleeper", "futon", "murphy", "roll"))
 
 
 def sleeps_table(bed_types, existing=None) -> dict:
     """The sleeps table for these bed types, keeping what a manager already set.
-    A bed type new in Track starts at 2 and is flagged for a manager."""
+    A bed type new in Track whose name the rules know arrives confirmed; one
+    they don't know starts at 2 and is flagged for a manager."""
     table = dict(existing or {})
     for bed in bed_types or []:
         key = str(bed["id"])
@@ -181,7 +199,7 @@ def sleeps_table(bed_types, existing=None) -> dict:
             continue
         sleeps, known = sleeps_for_name(bed["name"])
         table[key] = {"sleeps": sleeps, "label": BED_LABELS.get(bed["name"], bed["name"]),
-                      "confirmed": known and existing is None,
+                      "confirmed": known,
                       "other_places": other_place_bed(bed["name"])}
     return table
 
@@ -212,6 +230,7 @@ def build(lists: dict) -> dict:
         "custom_fields": fields,
         "sleeps": sleeps_table(lists.get("bed_types") or [], None),
         "checklist": [dict(item) for item in CHECKLIST],
+        "checklist_offered": list(ADDED_ITEMS),
         "message_invite": dict(MESSAGE_INVITE),
         "message_reminder": dict(MESSAGE_REMINDER),
         # Make's unit call sends no isBookable, and the unit it made (211) is
@@ -221,6 +240,9 @@ def build(lists: dict) -> dict:
         "owner_active": True,
         "default_contract_id": contract["id"] if contract else None,
         "default_management_agreement": "full_service",
+        # Owner, 2026-11-23: on to start with. Send to Track checks everything
+        # and writes nothing while it is on.
+        "test_mode": True,
     }
 
 
@@ -230,9 +252,29 @@ def refreshed(settings: dict, lists: dict) -> dict:
     out = dict(settings)
     out["sleeps"] = sleeps_table(lists.get("bed_types") or [], settings.get("sleeps") or {})
     fields = dict(settings.get("custom_fields") or {})
+    refs = {field.get("reference") or "" for field in lists.get("custom_fields") or []}
+    for old, new_refs in MOVED_FIELDS.items():
+        if (fields.get(old) or {}).get("state") == "owner" \
+                and any(r in refs and r not in fields for r in new_refs):
+            fields[old] = {**fields[old], "state": "off"}
+            for ref in new_refs:
+                if ref in refs and ref not in fields:
+                    fields[ref] = {"state": "owner", "label": "", "help": "",
+                                   "section": GENERIC_SECTION}
     for field in lists.get("custom_fields") or []:
         ref = field.get("reference") or ""
         fields.setdefault(ref, {"state": "off", "label": field.get("name", ""), "help": "",
                                 "section": GENERIC_SECTION})
+        if not fields[ref].get("label"):
+            fields[ref] = {**fields[ref], "label": field.get("name", "")}
     out["custom_fields"] = fields
+    offered = set(settings.get("checklist_offered") or [])
+    if settings.get("checklist") is not None and any(k not in offered for k in ADDED_ITEMS):
+        keys = {item.get("key") for item in settings.get("checklist") or []}
+        items = list(settings.get("checklist") or [])
+        for item in CHECKLIST:
+            if item["key"] in ADDED_ITEMS and item["key"] not in offered and item["key"] not in keys:
+                items.append(dict(item))
+        out["checklist"] = items
+        out["checklist_offered"] = sorted(offered | set(ADDED_ITEMS))
     return out

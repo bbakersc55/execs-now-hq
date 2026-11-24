@@ -1369,6 +1369,12 @@ class OutboxMessage(TenantScopedModel):
         # company's managers and the practice owner. Never an answer in it,
         # and never to an owner (ENHQ doesn't email owners).
         INTAKE_NOTICE = "intake_notice", "Owner intake notice"
+        # Owner agreements (docs/p15_owner_agreements.md): to an owner while the
+        # company's owner-email sender is "ENHQ's own sender (testing)", and the
+        # notices to the company's own people. Fixed wording; the owner's link
+        # is filled in on delivery and never stored.
+        OWNER_AGREEMENT = "owner_agreement", "Owner agreement email"
+        OWNER_AGREEMENT_NOTICE = "owner_agreement_notice", "Owner agreement notice"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -1398,7 +1404,13 @@ class OutboxMessage(TenantScopedModel):
         Producer.SIGNATURE_REMINDER, Producer.SIGNED_COPY,
         # Intake forms: internal, fixed wording, no answers.
         Producer.INTAKE_NOTICE,
+        # Owner agreements: fixed wording, sent when the owner or staff act.
+        Producer.OWNER_AGREEMENT, Producer.OWNER_AGREEMENT_NOTICE,
     }
+
+    #: Never real mail from a laptop, whatever the allow-list says (owner,
+    #: 2026-11-23): owner agreement mail always goes to the dev outbox there.
+    NEVER_REAL_FROM_LAPTOP = {Producer.OWNER_AGREEMENT, Producer.OWNER_AGREEMENT_NOTICE}
 
     state = models.CharField(max_length=20, choices=State.choices, db_index=True)
     producer = models.CharField(max_length=24, choices=Producer.choices, db_index=True)

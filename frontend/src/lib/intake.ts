@@ -8,12 +8,23 @@ export interface IntakeRow {
   id: string; number: number; status: string; status_label: string; owner: string;
   property: string; link_open: boolean; expires_at: string; created_at: string;
   submitted_at: string | null; sent_at: string | null;
+  /** A test send was made (owner, 2026-11-23). */
+  tested?: boolean;
 }
 
 export interface Step { key: string; label: string; state: string; detail: string }
 export interface Run {
   id: string; state: string; steps: Step[]; error: string; created_at: string;
   finished_at: string | null;
+  /** Test mode: every check ran, nothing was written. */
+  test?: boolean;
+}
+export interface AgreementCard {
+  id: string; number: number;
+  status: { key: string; label: string; at: string | null }[];
+  countersigned: boolean; agreement_date: string | null; cancelled: boolean;
+  may_open: boolean; contract: { contract_id: number | null; name: string; flag: string };
+  waiting: string;
 }
 export interface OwnerDateRow {
   id: string; start: string; end: string; state: string; state_label: string; message: string;
@@ -78,6 +89,10 @@ export interface Review extends IntakeRow {
   today: string;
   /** Once the owner is linked to the unit, what to say while that link hasn't started; else "". */
   link_note: string;
+  /** Owner, 2026-11-23: Send to Track checks everything and writes nothing. */
+  test_mode: boolean;
+  /** The owner agreement this intake came from, if any. */
+  agreement: AgreementCard | null;
   owner_dates: OwnerDateRow[];
   may_send: boolean;
   is_practice: boolean;
@@ -99,6 +114,8 @@ export interface FormSettings {
     message_invite: { subject: string; body: string };
     message_reminder: { subject: string; body: string };
     new_units_bookable: boolean; owner_active: boolean;
+    /** Owner, 2026-11-23: on to start with (missing means on). */
+    test_mode?: boolean;
     default_contract_id: number | null; default_management_agreement: string;
   };
   lists: Record<string, (Named & Record<string, unknown>)[]>;
@@ -110,7 +127,8 @@ export interface FormSettings {
 export const intake = {
   companies: () => api.get<{ companies: { id: string; name: string }[] }>("/api/intake/companies"),
   submissions: (company: string) =>
-    api.get<{ submissions: IntakeRow[] }>(`/api/intake/companies/${company}/submissions`),
+    api.get<{ submissions: IntakeRow[]; test_mode?: boolean }>(
+      `/api/intake/companies/${company}/submissions`),
   start: (company: string, body: { first_name: string; last_name: string; email: string }) =>
     api.post<{ id: string; number: number }>(`/api/intake/companies/${company}/submissions`, body),
   review: (id: string) => api.get<Review>(`/api/intake/submissions/${id}`),

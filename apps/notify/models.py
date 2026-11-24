@@ -33,6 +33,9 @@ class Kind(models.TextChoices):
     PAYMENTS = "payments", "Card payments that need you"
     #: Intake forms: an owner submitted, a send's result, owner dates.
     INTAKE = "intake", "Owner intake forms"
+    #: Owner agreements: signed by an owner, to countersign, countersigned,
+    #: owner emails paused.
+    AGREEMENT = "agreement", "Owner agreements"
 
 
 class Notice(TenantScopedModel):

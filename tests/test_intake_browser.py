@@ -66,10 +66,16 @@ def browser(bundles, settings, live_server, monkeypatch):
     # The worker, at once and in the request: Send returns once the send ran.
     monkeypatch.setattr("django_q.tasks.async_task",
                         lambda name, tenant_id, run_id, **kw: tasks.run_send(tenant_id, run_id))
+    # The form page is cached once per process; another test on this worker
+    # may have cached one from a different build.
+    from apps.intake import hosts
+
+    hosts._built_index.cache_clear()
     with sync_playwright() as p:
         chrome = p.chromium.launch(channel="chrome", headless=True)
         yield chrome
         chrome.close()
+    hosts._built_index.cache_clear()
 
 
 def start(world, live_server, access):

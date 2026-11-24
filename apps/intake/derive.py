@@ -378,16 +378,14 @@ def owner_field_values(answers, lists) -> dict:
             "Guests need a parking pass that must be returned."
             if home.get("parking_pass") == "yes" else "",
             home.get("parking_note", ""))
-    other = []
+    # Owner, 2026-11-23: each answer to its own field (they went to Other
+    # Maintenance or Service Notes before Track had these).
     if home.get("landscaping_by"):
         who = _by_label("done_by", home["landscaping_by"])
-        other.append(_join(f"Landscaping: {who}.", home.get("landscaping_note", "")))
-    if home.get("softener") in ("yes", "unsure"):
-        other.append(_join("Water softener: "
-                           + schema.label("yes_no_unsure", home["softener"]).lower() + ".",
-                           home.get("softener_note", "")))
-    if other:
-        v["pms_units_other_maintenance_or_service_notes"] = "\n\n".join(other)
+        v["pms_units_landscaping"] = _join(f"{who}.", home.get("landscaping_note", ""))
+    if home.get("softener"):
+        v["pms_units_water_softener"] = _join(
+            schema.label("yes_no_unsure", home["softener"]) + ".", home.get("softener_note", ""))
     return {k: val for k, val in v.items() if val not in ("", None, [])}
 
 
@@ -480,6 +478,10 @@ def owner_notes(answers, brand: str) -> str:
         heard = schema.label("heard", about["heard"])
         detail = f" ({about['heard_detail']})" if about.get("heard_detail") else ""
         lines.append(f"How they heard about {brand}: {heard}{detail}.")
+    e = about.get("emergency") or {}
+    if e.get("name") or e.get("phone"):
+        lines.append("Emergency contact: " + ", ".join(x for x in (e.get("name"), e.get("phone"),
+                                                                    e.get("address")) if x) + ".")
     return "\n".join(lines)
 
 

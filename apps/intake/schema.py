@@ -90,7 +90,8 @@ BUILTIN_FIELDS = {
     "pms_units_nightly_rental_permit": "Rental permit number",
     "pms_units_hvac_notes": "Heating and cooling",
     "pms_units_parking_instructions": "Parking",
-    "pms_units_other_maintenance_or_service_notes": "Landscaping and water softener",
+    "pms_units_water_softener": "Water softener",
+    "pms_units_landscaping": "Landscaping",
 }
 
 #: Code slots with their own questions; extras are "extra-<n>".
@@ -197,7 +198,15 @@ def clean_about(data) -> dict:
         "heard_detail": _text(data.get("heard_detail")),
         "has_extra_owners": _choice(data.get("has_extra_owners"), "yes_no"),
         "extra_owners": extras,
+        # Owner, 2026-11-23: someone to call in an emergency.
+        "emergency": _emergency(data.get("emergency")),
     }
+
+
+def _emergency(value) -> dict:
+    d = value if isinstance(value, dict) else {}
+    return {"name": _text(d.get("name"), 120), "address": _text(d.get("address"), MEDIUM),
+            "phone": _text(d.get("phone"), 40)}
 
 
 def clean_tax(data) -> dict:
@@ -211,6 +220,9 @@ def clean_property(data) -> dict:
         "street": _text(data.get("street")), "street2": _text(data.get("street2")),
         "city": _text(data.get("city"), 80), "state": _text(data.get("state"), 40),
         "postal": _text(data.get("postal"), 16),
+        # Owner, 2026-11-23: goes to the unit's `area` in Track.
+        "square_feet": _int(str(data.get("square_feet") or "").replace(",", "") or None,
+                            0, 100000) or None,
         "lodging_type_id": _int(data.get("lodging_type_id"), 0, 10**9),
         "ready": _choice(data.get("ready"), "ready"),
         "ready_date": _date(data.get("ready_date")),

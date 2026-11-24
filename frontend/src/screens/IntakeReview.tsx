@@ -10,7 +10,9 @@ import { Pending, PendingContext, useSaver } from "../forms/pending";
 import { INTROS, SECTIONS, summarize } from "../forms/sections";
 import type { Answers, Ctx, FileRow, Secrets, SecretState, Section } from "../forms/types";
 import type { Me } from "../lib/api";
-import { intake, type Review, staffFormApi, type Staff, STATUS_KIND } from "../lib/intake";
+import {
+  type AgreementCard, intake, type Review, staffFormApi, type Staff, STATUS_KIND,
+} from "../lib/intake";
 
 const BATH_TYPES = [
   { value: "full_bathroom", label: "Full" },
@@ -553,7 +555,7 @@ function CheckCard({ r, act, busy, onSaved }: { r: Review; busy: string;
 
 // ------------------------------------------------------------ sending
 
-const STEP_MARK: Record<string, string> = { done: "✓", skipped: "✓", failed: "✕",
+const STEP_MARK: Record<string, string> = { would: "→", done: "✓", skipped: "✓", failed: "✕",
                                             running: "…", waiting: "·" };
 
 function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
@@ -590,6 +592,10 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
   };
   return (
     <Card title={r.locked ? "Sent to Track" : "What will be sent"} tone="current">
+      {r.test_mode && !r.locked && <Banner kind="warn"><strong>Test mode is on.</strong> Send to
+        Track runs every check and shows each step as "would send"; it writes nothing to Track
+        and changes nothing here. Turn it off in Form settings to send for real.</Banner>}
+      {r.agreement && <AgreementLine a={r.agreement} />}
       {!r.locked && (
         <>
           <ul className="intake-plan">{r.plan.summary.map((l, i) => <li key={i}>{l}</li>)}</ul>
@@ -597,6 +603,8 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
           {r.plan.warnings.map((w, i) => <p key={i} className="small muted">Note: {w}</p>)}
         </>
       )}
+      {run?.test && <p className="small"><strong>Test send</strong>, {run.finished_at
+        ? new Date(run.finished_at).toLocaleString() : ""}: nothing was written to Track.</p>}
       {run && (
         <ol className="intake-steps" aria-live="polite">
           {run.steps.map((s) => (
@@ -615,9 +623,28 @@ function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void }) {
         <button type="button" className="primary"
           disabled={!r.may_send || sending || saving || !!live} onClick={() => void send()}>
           {saving ? "Saving…" : sending || live ? "Sending…" : run?.state === "failed"
-            ? "Try the rest again" : "Send to Track"}</button>
+            && !run.test ? "Try the rest again" : r.test_mode ? "Test send (writes nothing)"
+            : "Send to Track"}</button>
       )}
     </Card>
+  );
+}
+
+function AgreementLine({ a }: { a: AgreementCard }) {
+  const reached = a.status.filter((s) => s.at);
+  return (
+    <div className="intake-agreement">
+      <p style={{ margin: 0 }}><strong>Owner agreement #{a.number}</strong>:
+        {" "}{a.cancelled ? "cancelled" : reached.length ? reached[reached.length - 1].label
+          .toLowerCase() : "not sent yet"}
+        {a.agreement_date && <>, dated {a.agreement_date}</>}
+        {a.may_open && <> · <Link to={`/agreements/${a.id}`}>Open it</Link></>}</p>
+      {a.contract.flag ? <p className="small" style={{ margin: ".25rem 0 0" }}>
+        <Pill kind="warn">Contract</Pill> {a.contract.flag}</p>
+        : <p className="small muted" style={{ margin: ".25rem 0 0" }}>Contract from the split:
+          {" "}{a.contract.name}</p>}
+      {a.waiting && <Banner kind="warn">{a.waiting}</Banner>}
+    </div>
   );
 }
 

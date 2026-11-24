@@ -2466,3 +2466,104 @@ class IntakeTrackListFactory(TenantScopedFactory):
     tenant = factory.SubFactory(TenantFactory)
     company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
     kind = factory.Sequence(lambda n: f"kind-{n}")
+
+
+# ------------------------------------------------------------ owner agreements (P15)
+
+class AgreementProgramFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.Program"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    enabled = True
+
+
+class AgreementStaffAccessFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.StaffAccess"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    user = factory.SubFactory(UserFactory)
+    agreements = True
+
+
+class OwnerAgreementFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.OwnerAgreement"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    number = factory.Sequence(lambda n: n + 1)
+    template_key = "rental_management"
+    owner_name = "Alex Sample"
+
+
+class AgreementVersionFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.AgreementVersion"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agreement = factory.SubFactory(OwnerAgreementFactory, tenant=factory.SelfAttribute("..tenant"))
+    revision = factory.Sequence(lambda n: n + 1)
+    template_key = "rental_management"
+    template_version = "V.2 – November 2026"
+    template_sha256 = "0" * 64
+    terms = factory.LazyFunction(lambda: {"owner_percent": "70", "manager_percent": "30"})
+
+
+class CountersignAuthorityFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.CountersignAuthority"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    principal = factory.SubFactory(UserFactory)
+    principal_name = "Michael LeClerc"
+    principal_title = "President"
+    method = "typed"
+    typed_text = "Michael LeClerc"
+    wording_version = "2026-11-23"
+    wording = "I authorize."
+    recorded_at = factory.LazyFunction(timezone.now)
+
+
+class AgreementSignatureFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.AgreementSignature"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agreement = factory.SubFactory(OwnerAgreementFactory, tenant=factory.SelfAttribute("..tenant"))
+    version = factory.SubFactory(AgreementVersionFactory, tenant=factory.SelfAttribute("..tenant"),
+                                 agreement=factory.SelfAttribute("..agreement"))
+    role = "owner"
+    printed_name = "Alex Sample"
+    method = "typed"
+    typed_text = "Alex Sample"
+    consent_version = "2026-11-23"
+    consent_text = "I consent."
+    signed_at = factory.LazyFunction(timezone.now)
+    text_sha256 = "0" * 64
+
+
+class AgreementEventFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.AgreementEvent"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agreement = factory.SubFactory(OwnerAgreementFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "created"
+
+
+class OwnerEmailFactory(TenantScopedFactory):
+    class Meta:
+        model = "agreements.OwnerEmail"
+
+    tenant = factory.SubFactory(TenantFactory)
+    company = factory.SubFactory(ClientCompanyFactory, tenant=factory.SelfAttribute("..tenant"))
+    kind = "invite"
+    to_address = "owner@example.test"
+    subject = "Your agreement"
+    sender = "testing"
+    state = "captured"

@@ -2554,3 +2554,62 @@ label.sop-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cu
 .intake-common input, .intake-check-row input:first-child { flex: 1 1 260px; }
 .ix-root.ix-embedded { min-height: 0; background: transparent; display: block; font-size: 15px; }
 .ix-root.ix-embedded .ix-more { margin-bottom: .5rem; }
+
+/* ---------------------------------------------------------------- owner agreements
+   (docs/p15_owner_agreements.md). Phone first: everything stacks under 640px. */
+.agreements .agreement-list { list-style: none; margin: 0; padding: 0; display: grid;
+  gap: var(--s2); }
+.agreements .agreement-row { display: grid; gap: var(--s2); width: 100%; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s3); cursor: pointer; font: inherit; color: inherit; }
+.agreements .agreement-row:hover { background: var(--hover); }
+.agreements .agreement-who { display: flex; flex-direction: column; gap: 2px; }
+.status-line { list-style: none; margin: var(--s2) 0; padding: 0; display: flex;
+  flex-wrap: wrap; gap: 4px 6px; font-size: var(--t-13); }
+.status-line li { border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+  color: var(--muted); background: var(--surface); }
+.status-line li.done { border-color: var(--ok-line); background: var(--ok-bg);
+  color: var(--ok); font-weight: 600; }
+.agreement-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0; }
+.agreement-actions > button { min-height: 44px; }
+.terms-editor fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s3); margin: 0 0 var(--s3); }
+.terms-editor legend { font-weight: 600; padding: 0 4px; }
+.terms-editor .fee-row { display: grid; grid-template-columns: 1fr; gap: var(--s1);
+  padding: var(--s2) 0; border-top: 1px dashed var(--line); }
+.terms-editor .fee-period { font-weight: 600; }
+.terms-editor textarea { width: 100%; }
+@media (min-width: 640px) {
+  .terms-editor .fee-row { grid-template-columns: 12rem 1fr 1fr; align-items: end; }
+}
+.terms-summary { display: grid; grid-template-columns: 1fr; gap: 2px var(--s3); margin: 0; }
+.terms-summary dt { color: var(--muted); font-size: var(--t-13); margin-top: var(--s2); }
+.terms-summary dd { margin: 0; }
+@media (min-width: 640px) {
+  .terms-summary { grid-template-columns: 12rem 1fr; }
+  .terms-summary dt { margin-top: 0; }
+}
+.agreement-doc { font-family: Georgia, "Times New Roman", serif; line-height: 1.55;
+  max-width: 46rem; }
+.agreement-doc .doc-title { text-align: center; font-weight: 700; margin: 0; }
+.agreement-doc .indent-1 { margin-left: 1rem; } .agreement-doc .indent-2 { margin-left: 2rem; }
+.agreement-doc mark { background: #fdf0cc; padding: 0 2px; border-radius: 3px; }
+.agreement-doc .level-2 { margin-left: 1rem; } .agreement-doc .level-3 { margin-left: 2rem; }
+.agreement-doc .doc-owner { border: 1px dashed var(--line-strong); padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm); }
+.agreement-doc .doc-field { display: inline-block; margin-right: var(--s3); }
+.table-scroll { overflow-x: auto; }
+.access-table td, .access-table th { vertical-align: middle; }
+.access-table input[type="checkbox"] { width: 22px; height: 22px; }
+.radio-line, .check-line { display: flex; gap: var(--s2); align-items: flex-start;
+  margin: var(--s2) 0; }
+.radio-line input, .check-line input { width: auto; margin-top: 4px; flex: 0 0 auto; }
+.sender-fields { display: grid; grid-template-columns: 1fr; gap: var(--s2); margin-top: var(--s3); }
+@media (min-width: 640px) { .sender-fields { grid-template-columns: 1fr 1fr; } }
+.intake-agreement { border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: var(--s2) var(--s3); margin-bottom: var(--s3); }
+.sig-preview .sig-typed, .agreements .sig-typed { font-family: "Dancing Script", cursive;
+  font-size: 30px; }
+button.big { min-height: 48px; padding-inline: var(--s4, 1.25rem); }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+.history li { padding: 3px 0; border-bottom: 1px solid var(--line); font-size: var(--t-13); }

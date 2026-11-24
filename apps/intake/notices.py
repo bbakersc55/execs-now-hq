@@ -64,10 +64,29 @@ def _send(submission, user, subject, text, path):
         source_type="intake_submission", source_id=submission.pk)
 
 
+def owner_and_address(submission) -> tuple[str, str]:
+    """The owner's name and the property's street address, as the owner gave
+    them (owner, 2026-11-23: the notice names both; task titles don't)."""
+    from . import derive, plan
+
+    a = submission.answers or {}
+    about = a.get("about") or {}
+    person = " ".join(x for x in (about.get("first_name"), about.get("last_name")) if x) \
+        or " ".join(x for x in (submission.invite_first_name, submission.invite_last_name) if x)
+    owner = plan.account_name(a) or person or "An owner"
+    prop = a.get("property") or {}
+    street = derive.street_line(prop)
+    place = ", ".join(x for x in (street, prop.get("city", "")) if x)
+    return owner, place
+
+
 def submitted(submission):
-    """Owner, 2026-11-19: managers and above and the practice owner, in the
-    app and by email. The email carries no answers."""
+    """Owner, 2026-11-19: everyone ticked for intake and the practice owner, in
+    the app and by email. Owner, 2026-11-23: it names the owner and the
+    property's address; nothing else from the answers."""
+    owner, place = owner_and_address(submission)
+    where = place or "a property with no address yet"
     tell(submission, source_type="intake_submitted", source_id=submission.pk, email=True,
-         title=f"New owner intake #{submission.number} submitted",
-         text=(f"An owner finished the {submission.form.title.lower()} form for "
-               f"{submission.company.name}. Review it and send it to Track."))
+         title=f"New owner intake #{submission.number}: {owner}, {where}",
+         text=(f"{owner} finished the {submission.form.title.lower()} form for {where}. "
+               "Review it and send it to Track."))

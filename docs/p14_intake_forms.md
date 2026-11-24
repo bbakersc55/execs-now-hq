@@ -9,16 +9,19 @@ staff screens `frontend/src/screens/Intake*.tsx`.
 ## The flow
 
 1. A company manager (or the practice owner) starts an intake with the owner's
-   name and email. ENHQ makes a personal link. **ENHQ never emails an owner:**
+   name and email. ENHQ makes a personal link. **ENHQ never emails an owner**
+   (except an intake made from an owner agreement, docs/p15_owner_agreements.md:
+   its link and its day-3 and day-7 reminders go by the agreement's sender):
    staff use Copy link, Copy message, or Open in my email (a `mailto:` with the
    owner's address, a subject and the message from the form's template), for
    the first invite and for a reminder. Each copy or open is recorded.
 2. The owner fills it in, phone first, with no account. Answers save as they
    go; the same link brings them back. Links expire 30 days after the last
    activity (a manager can reopen one) and are rate limited.
-3. On submit, the company's managers and above and the practice owner are told
-   in the app and by email (`intake_notice`, direct to sent). The email carries
-   no answers.
+3. On submit, everyone ticked for intake and the practice owner are told in
+   the app and by email (`intake_notice`, direct to sent). Since 2026-11-23
+   the notice names the owner and the property's address; nothing else from
+   the answers.
 4. A manager or the practice owner opens it, edits any answer (live on the
    welcome call), makes the staff-only choices, sees the warnings and "What will
    be sent", and presses Send to Track.
@@ -30,12 +33,10 @@ staff screens `frontend/src/screens/Intake*.tsx`.
 A manager can fill the whole form in on the owner's behalf from the review
 screen (same sections, same saving).
 
-**Who:** the practice owner, and the client company's Client owner, anyone with
-Senior leadership of all its teams, and anyone at Manager or Senior leadership
-on one of its teams. Nobody else (not associates or assistants; owner,
-2026-11-19). Note: ENHQ puts a new portal user on the company's default team
-**at Manager** unless the client owner lowers it (`work.teams.UNCHOSEN_LEVEL`),
-so every SkyRun portal user still at that default counts as a manager here.
+**Who** (owner, 2026-11-23, replacing the level rule of 2026-11-19): the
+practice owner, and anyone ticked "Owner intake" on the company's People and
+permissions screen (docs/p15_owner_agreements.md). Team levels no longer
+count. Migration `agreements 0002` ticked everyone the old rule let in.
 
 **SkyRun Park City's alone** (owner, 2026-11-20): intake forms are not a
 feature offered to other ENHQ clients or practices. There is no switch in the
@@ -175,8 +176,8 @@ not-found page. The page's policy allows nothing from any other origin.
 | 124 | HOA | Home details | the five HOA fields |
 | 125, 126 | Heat tape | Home details | Heat Tape Notes; Heat Tape (internal amenity) |
 | 127, 143, 144 | Snow removal | Home details | Snow Plowing/Shoveling Provider and Notes |
-| 128, 145, 146 | Landscaping | Home details | Other Maintenance or Service Notes |
-| 131 | Water softener | Home details | Other Maintenance or Service Notes; Water Softener (internal amenity) |
+| 128, 145, 146 | Landscaping | Home details | Landscaping (field 200, since 2026-11-23) |
+| 131 | Water softener | Home details | Water Softener (field 199, since 2026-11-23); Water Softener (internal amenity) |
 | 121, 122 | Rental permit | Home details | Nightly Rental Permit; none → checklist task |
 | 20–22, 129, 130, 155 | Smart lock, door, owner closet, alarm codes | Getting in | security codes by type |
 | 133 | Dates for own use | Your own stays | held in ENHQ; Owner Reservation blocks once bookable |
@@ -373,8 +374,10 @@ domain) · Track's lists, read about hourly and kept (`TrackListSnapshot`), with
 "Refresh from Track now" · new units bookable or not; owners active or not ·
 the common amenities and the groups owners see (Website Badges and Internal Use
 hidden) · property and code types offered · every unit custom field off / owner
-/ staff · the sleeps table (a bed type new in Track starts at 2, flagged) · the
-checklist template · the invite and reminder messages.
+/ staff · the sleeps table (a bed type new in Track starts at 2, flagged, unless
+the rules know its name) · the checklist template · the invite and reminder
+messages · **test mode** (2026-11-23, on to start: Send to Track checks
+everything and writes nothing; see docs/p15_owner_agreements.md).
 
 ## Data and migrations
 

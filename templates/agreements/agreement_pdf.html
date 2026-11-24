@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>{{ tpl.title }}</title>
+<style>
+@font-face { font-family: "Signature Script"; src: url("{{ script_font }}"); }
+@page {
+  size: Letter; margin: 0.85in 1in 0.9in 1in;
+  {% if banner %}@top-center { content: "{{ banner }}"; font: italic 9pt "Liberation Serif", "Tinos", serif; color: #8a5a00; }{% endif %}
+  @bottom-left { content: "{{ tpl.version }}"; font: 9pt "Liberation Serif", "Tinos", serif; }
+  @bottom-center { content: counter(page); font: 10pt "Liberation Serif", "Tinos", serif; }
+  @bottom-right { content: "{{ tpl.copyright }}"; font: 9pt "Liberation Serif", "Tinos", serif; }
+}
+body { font-family: "Liberation Serif", "Tinos", "Times New Roman", serif; font-size: 11.5pt;
+       line-height: 1.32; color: #111; }
+.title { text-align: center; font-weight: bold; margin: 0; font-size: 12.5pt; }
+.title + .title { text-decoration: underline; margin-bottom: 18pt; }
+h2 { font-size: 11.5pt; margin: 14pt 0 8pt; }
+p { margin: 0 0 9pt; text-align: left; }
+p.i1 { margin-left: 0.3in; } p.i2 { margin-left: 0.6in; }
+p.opening { text-indent: 0.5in; }
+{% if highlight %}.term { background: #fff4d6; }{% endif %}
+ul { margin: 0 0 0 0.25in; padding-left: 0.2in; }
+ul.l1 > li { list-style: "▪  "; } ul.l2 > li { list-style: "o  "; } ul.l3 > li { list-style: "▪  "; }
+li { margin: 1pt 0; }
+.break { page-break-before: always; }
+.s30 p { margin-left: 0.3in; }
+.owner-lines .row { margin: 0 0 9pt; }
+.owner-lines .lab { font-weight: normal; }
+.owner-lines .val { display: inline-block; min-width: 1.4in; border-bottom: 0.6pt solid #333;
+                    padding: 0 4pt; margin-right: 14pt; }
+.sig { margin: 14pt 0 4pt; }
+.sig .line { display: inline-block; min-width: 2.8in; border-bottom: 0.6pt solid #333;
+             min-height: 36pt; vertical-align: bottom; }
+.sig img { max-height: 44pt; max-width: 2.6in; }
+.sig .typed { font-family: "Signature Script", cursive; font-size: 22pt; }
+.sig .awaiting { font-style: italic; color: #8a5a00; font-size: 10.5pt; }
+.applied { font-size: 9pt; color: #444; margin: 2pt 0 10pt; }
+.small { font-size: 10pt; }
+</style></head><body>
+{% for b in blocks %}
+  {% if b.type == "title" %}<p class="title">{{ b.text }}</p>
+  {% elif b.type == "heading" %}<h2>{{ b.text }}</h2>
+  {% elif b.type == "page_break" %}<div class="break"></div>
+  {% elif b.type == "para" %}<p class="{% if b.indent %}i{{ b.indent }}{% endif %}">{% for s in b.spans %}{% if s.t == "bold" %}<b>{{ s.v }}</b>{% elif s.t == "term" %}<span class="term">{{ s.v }}</span>{% else %}{{ s.v }}{% endif %}{% endfor %}</p>
+  {% elif b.type == "list" %}<ul class="l1">{% for i in b.items %}<li style="margin-left: {% widthratio i.level 1 18 %}pt; list-style: {% if i.level == 2 %}'o  '{% else %}'▪  '{% endif %}">{% for s in i.spans %}{{ s.v }}{% endfor %}</li>{% endfor %}</ul>
+  {% elif b.type == "section_30" %}<div class="s30">{% for p in b.paras %}<p class="term">{{ p }}</p>{% endfor %}</div>
+  {% elif b.type == "owner_section" %}
+    <div class="owner-lines">{% for line in b.lines %}
+      {% if line.note %}<p>{{ line.note }}</p>{% else %}<div class="row">{% for f in line.fields %}<span class="lab">{{ f.label }}</span> <span class="val">{{ f.value|default:"&nbsp;" }}</span>{% endfor %}</div>{% endif %}
+    {% endfor %}</div>
+  {% elif b.type == "signatures" %}
+    <p>THE PARTIES HERETO HAVE EXECUTED THIS AGREEMENT.</p>
+    <p><u>MANAGER</u><br>SKYRUN PARK CITY</p>
+    <div class="sig">BY: <span class="line">{% if manager.signed %}{% if manager.png %}<img src="{{ manager.png }}" alt="">{% else %}<span class="typed">{{ manager.typed }}</span>{% endif %}{% else %}<span class="awaiting">Awaiting SkyRun Park City’s signature</span>{% endif %}</span>
+      &nbsp; DATE: <span class="line" style="min-width:1.6in;min-height:14pt">{{ manager.date }}</span></div>
+    {% if manager.applied %}<p class="applied">{{ manager.applied }}</p>{% endif %}
+    <p>NAME: {{ b.signer_name }}, {{ b.signer_title }}</p>
+    <p style="margin-top:22pt">By signing below, you are indicating that you own all or part of the unit.  You are also indicating that ANY AND ALL additional owners have signed below.</p>
+    <p>OWNER</p>
+    <div class="sig">BY: <span class="line">{% if owner.signed %}{% if owner.png %}<img src="{{ owner.png }}" alt="">{% else %}<span class="typed">{{ owner.typed }}</span>{% endif %}{% endif %}</span><br><span class="small" style="margin-left:0.6in">Signature</span></div>
+    <p>DATE: <span class="line" style="display:inline-block;min-width:1.6in;border-bottom:0.6pt solid #333">{{ owner.date }}</span></p>
+    <p>(ALL owners of condo must sign)</p>
+  {% endif %}
+{% endfor %}
+</body></html>

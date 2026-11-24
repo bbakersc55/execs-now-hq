@@ -118,6 +118,10 @@ SCHEDULES = [
      Schedule.HOURLY, None, None),
     # Intake forms: sensitive values of intakes never sent, 90 days on.
     ("intake.purge", "apps.intake.tasks.purge", Schedule.DAILY, None, 3),
+    # Owner agreements (docs/p15_owner_agreements.md): reminders to owners (days
+    # 3 and 7, at 9:00) and to countersigners (24 and 72 hours, 8:00-18:00).
+    # A no-op with no company switched on.
+    ("agreements.tick", "apps.agreements.tasks.tick", Schedule.HOURLY, None, None),
 ]
 
 

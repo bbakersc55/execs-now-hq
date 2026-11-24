@@ -75,6 +75,11 @@ def world(fake, settings):
     team = teams.default_team(practice.pk, company.pk)
     teams.place(team, member, "member")
     teams.place(team, manager, "manager")
+    # Owner, 2026-11-23: intake is a tick on the permissions screen.
+    from apps.agreements.models import StaffAccess
+
+    for m in (fcc, manager):
+        StaffAccess.all_objects.create(tenant=practice, company=company, user=m.user, intake=True)
     cf = MembershipFactory(tenant=practice, role="CF")
     va = MembershipFactory(tenant=practice, role="VA")
     with tenant_context(practice.pk):
@@ -82,6 +87,8 @@ def world(fake, settings):
         form = services.form_for(company)
     form.brand_name, form.contact_phone, form.contact_email = (
         "Mountain Stays", "435-555-0100", "hello@mountainstays.net")
+    # These tests send for real (to the fake Track); test mode has its own.
+    form.settings = {**form.settings, "test_mode": False}
     form.save()
     return {"practice": practice, "company": company, "ff": ff, "fcc": fcc,
             "manager": manager, "member": member, "cf": cf, "va": va, "form": form}
@@ -172,15 +179,24 @@ def test_submit_tells_managers_and_the_practice_owner_by_app_and_email(world):
     sub, token = start(world)
     o = owner_fills(token)
     assert o.post(f"/api/f/{token}/submit").json() == {"state": "submitted"}
-    told = set(Notice.all_objects.filter(source_type="intake_submitted")
-               .values_list("recipient_id", flat=True))
-    assert told == {world["fcc"].user_id, world["manager"].user_id, world["ff"].user_id}
+    told = Notice.all_objects.filter(source_type="intake_submitted")
+    assert {n.recipient_id for n in told} == {world["fcc"].user_id, world["manager"].user_id,
+                                               world["ff"].user_id}
     mails = OutboxMessage.all_objects.filter(producer="intake_notice")
     assert {m.to_address for m in mails} == {world["fcc"].user.email,
                                              world["manager"].user.email,
                                              world["ff"].user.email}
+    # Owner, 2026-11-23: the email and the notice name the owner and the
+    # property's address, and nothing else from the answers.
     for mail in mails:
-        assert "Sample" not in mail.body_text and "400 Lift Road" not in mail.body_text
+        assert mail.subject == f"New owner intake #{sub.number}: Sample Homes LLC, " \
+            "400 Lift Road, Park City"
+        assert "Sample Homes LLC finished the new owner and property form for 400 Lift Road, " \
+            "Park City." in mail.body_text
+        for private in ("samplehomes.net", "555", "4821", "powder-day", "12-3456789"):
+            assert private not in mail.body_text and private not in mail.subject
+    for notice in told:
+        assert notice.title.startswith(f"New owner intake #{sub.number}: Sample Homes LLC")
     assert o.get(f"/api/f/{token}").json()["state"] == "submitted"
     r = o.patch(f"/api/f/{token}/answers", json.dumps({"section": "tax", "value": {}}),
                 content_type="application/json")

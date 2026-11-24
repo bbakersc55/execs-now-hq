@@ -81,9 +81,9 @@ def test_defaults_come_from_skyruns_lists_by_name():
     assert common["washer_dryer"] == [235, 185]
     assert common["community_pool"] == [1335] and common["community_hot_tub"] == [1320]
     states = SETTINGS["custom_fields"]
-    assert sum(1 for s in states.values() if s["state"] == "owner") == 23
+    assert sum(1 for s in states.values() if s["state"] == "owner") == 24       # the two new fields in, Other Maintenance out
     assert sum(1 for s in states.values() if s["state"] == "staff") == 8
-    assert len(states) == 72
+    assert len(states) == 74                    # 72, and Water Softener and Landscaping
     assert SETTINGS["new_units_bookable"] is False and SETTINGS["owner_active"] is True
     assert SETTINGS["default_contract_id"] == 1
     assert "Master Programming Code" not in {c["name"] for c in LISTS["code_types"]
@@ -96,12 +96,46 @@ def test_the_sleeps_table_follows_the_owners_rules():
               "Futon": 2, "Queen Sofa Bed": 2, "Double Sleeper Sofa": 2, "Twin": 1,
               "Twin Sofa Bed": 1, "Child Bed": 1, "Twin Trundle": 1, "Twin Day Bed": 1,
               "Crib": 0, "Twin Over Twin Bunk Bed": 2, "Twin Over Double/Queen Bunk Bed": 3,
-              "Double/Queen Over Double/Queen Bunk Bed": 4, "Twin Over Full Bunk Bed": 3}
+              "Double/Queen Over Double/Queen Bunk Bed": 4, "Twin Over Full Bunk Bed": 3,
+              # Owner, 2026-11-23: the two SkyRun added.
+              "King Sofa Sleeper": 2, "Roll Away Bed": 1}
     for name, sleeps in expect.items():
         assert table[name]["sleeps"] == sleeps, name
     assert table["Double"]["label"] == "Double (Full)"
     assert table["Double Sleeper Sofa"]["label"] == "Double (Full) Sleeper Sofa"
     assert table["Queen Sofa Bed"]["other_places"] and not table["King"]["other_places"]
+    assert table["Roll Away Bed"]["other_places"] and table["King Sofa Sleeper"]["other_places"]
+
+
+def test_the_new_bed_types_arrive_confirmed_on_a_refresh():
+    """Owner, 2026-11-23: King Sofa Sleeper sleeps 2 and Roll Away Bed 1; a
+    name the rules know needs no manager's confirmation."""
+    before = {**SETTINGS, "sleeps": {k: v for k, v in SETTINGS["sleeps"].items()
+                                     if k not in ("20", "21")}}
+    refreshed = defaults.refreshed(before, LISTS)
+    assert refreshed["sleeps"]["20"] == {"sleeps": 2, "label": "King Sofa Sleeper",
+                                         "confirmed": True, "other_places": True}
+    assert refreshed["sleeps"]["21"] == {"sleeps": 1, "label": "Roll Away Bed",
+                                         "confirmed": True, "other_places": True}
+
+
+def test_the_two_answers_move_to_their_own_fields_once():
+    """A form whose Other Maintenance or Service Notes was "owner" (it carried
+    the two answers) gets the two new fields as "owner" and the old one off,
+    once; a manager's later choice stands."""
+    old = "pms_units_other_maintenance_or_service_notes"
+    fields = {k: v for k, v in SETTINGS["custom_fields"].items()
+              if k not in ("pms_units_water_softener", "pms_units_landscaping")}
+    fields[old] = {"state": "owner", "label": "Other Maintenance or Service Notes", "help": "",
+                   "section": "home"}
+    moved = defaults.refreshed({**SETTINGS, "custom_fields": fields}, LISTS)["custom_fields"]
+    assert moved[old]["state"] == "off"
+    assert moved["pms_units_water_softener"]["state"] == "owner"
+    assert moved["pms_units_landscaping"]["state"] == "owner"
+    assert moved["pms_units_landscaping"]["label"] == "Landscaping"
+    moved[old] = {**moved[old], "state": "owner"}            # a manager switches it back
+    again = defaults.refreshed({**SETTINGS, "custom_fields": moved}, LISTS)["custom_fields"]
+    assert again[old]["state"] == "owner"
 
 
 def test_a_bed_type_new_in_track_starts_at_two_flagged():
@@ -174,8 +208,10 @@ def test_custom_values_go_by_handle_and_respect_states():
     assert values["pms_units_trigger_automation_keywords"] == [
         "Unit has Parking Pass that Requires Return",
         "Unit has Hot Tub that Requires Service Every Few Days", "Unit Does Not Have AC"]
-    assert "Landscaping: I take care of it." in values[
-        "pms_units_other_maintenance_or_service_notes"]
+    # Owner, 2026-11-23: each to its own field, not Other Maintenance or Service Notes.
+    assert values["pms_units_landscaping"].startswith("I take care of it.")
+    assert values["pms_units_water_softener"].startswith("Yes.")
+    assert "pms_units_other_maintenance_or_service_notes" not in values
     off = {**SETTINGS, "custom_fields": {**SETTINGS["custom_fields"],
                                          "pms_units_wifi_password": {"state": "off"}}}
     assert "pms_units_wifi_password" not in derive.custom_values(a, staff(), off, LISTS)

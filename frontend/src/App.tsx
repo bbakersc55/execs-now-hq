@@ -70,6 +70,7 @@ import { BillingSettings } from "./screens/BillingSettings";
 import { PayLink } from "./screens/PayLink";
 import { SignDocument } from "./screens/SignDocument";
 import { DocumentTemplates } from "./screens/DocumentTemplates";
+import { OwnerAgreementDocs } from "./components/OwnerAgreementDocs";
 import { PortalDocuments } from "./screens/PortalDocuments";
 import { Suspended } from "./screens/Suspended";
 import { AiUsage } from "./screens/AiUsage";
@@ -95,6 +96,9 @@ import { Sessions } from "./screens/Sessions";
 import { Digests } from "./screens/Digests";
 import { Report } from "./screens/Report";
 import { Tasks } from "./screens/Tasks";
+import { AgreementDetail } from "./screens/AgreementDetail";
+import { AgreementNew, AgreementsScreen } from "./screens/Agreements";
+import { AgreementAuthority, AgreementSettings } from "./screens/AgreementSettings";
 import { IntakeScreen } from "./screens/Intake";
 import { IntakeReview } from "./screens/IntakeReview";
 import { IntakeSettings } from "./screens/IntakeSettings";
@@ -214,6 +218,9 @@ export const NAV: NavItem[] = [
   // client company has them on.
   { to: "/intake", label: "Owner intake", roles: ["FF"], icon: House,
     when: (me) => !!me.has_intake },
+  // Owner agreements (docs/p15_owner_agreements.md): SkyRun's alone.
+  { to: "/agreements", label: "Owner agreements", roles: ["FF"], icon: FileSignature,
+    when: (me) => !!me.has_agreements },
   // The client portal: the same work, scoped to their company (FR-3.34).
   { to: "/work", label: "Our work", roles: CLIENT , group: "Your engagement" , icon: Target },
   // P11: the plan and the week, while the practice has a Command Center on.
@@ -242,6 +249,8 @@ export const NAV: NavItem[] = [
   // Intake forms: the company's managers and above, while they're on.
   { to: "/intake", label: "Owner intake", roles: CLIENT, icon: House,
     when: (me) => !!me.has_intake },
+  { to: "/agreements", label: "Owner agreements", roles: CLIENT, icon: FileSignature,
+    when: (me) => !!me.has_agreements },
   { to: "/vendors", label: "Vendors", roles: TENANT , group: "Elsewhere" , icon: Store },
   { to: "/sending-queue", label: "Sending queue", roles: TENANT , icon: Send },
   { to: "/campaigns", label: "Campaigns", roles: TENANT , icon: Megaphone },
@@ -537,6 +546,16 @@ export function App() {
                 (design brief, Tier 1), so the task's URL renders the board
                 with the sheet on top of it. */}
             <Route path="/tasks/:id" element={<Tasks me={me} />} />
+            {me.has_agreements && <Route path="/agreements"
+              element={<AgreementsScreen me={me} />} />}
+            {me.has_agreements && <Route path="/agreements/new"
+              element={<AgreementNew me={me} />} />}
+            {me.has_agreements && <Route path="/agreements/settings/:companyId"
+              element={<AgreementSettings me={me} />} />}
+            {me.has_agreements && <Route path="/agreements/authority/:companyId"
+              element={<AgreementAuthority me={me} />} />}
+            {me.has_agreements && <Route path="/agreements/:id"
+              element={<AgreementDetail me={me} />} />}
             {me.has_intake && <Route path="/intake" element={<IntakeScreen me={me} />} />}
             {me.has_intake && <Route path="/intake/:id" element={<IntakeReview me={me} />} />}
             {me.has_intake && <Route path="/intake/settings/:companyId"
@@ -562,7 +581,8 @@ export function App() {
               ? <ClientInvoices /> : <Invoices me={me} />} />
             <Route path="/invoices/:id" element={<InvoiceDetail me={me} />} />
             {me.role && CLIENT.includes(me.role) && <Route path="/documents"
-              element={<PortalDocuments />} />}
+              element={<><PortalDocuments />{me.has_agreements
+                && <OwnerAgreementDocs companyId={me.client_company} />}</>} />}
             {me.role === "FCC" && <Route path="/team" element={<YourTeam me={me} />} />}
             {me.role === "FF" && <Route path="/settings/invoices"
               element={<Settings me={me}><InvoiceSettings /></Settings>} />}

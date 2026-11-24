@@ -315,6 +315,9 @@ def me(request):
         # Intake forms: the practice owner, or a client company's managers
         # and above, with intake forms on for a company they run.
         "has_intake": _has_intake(membership),
+        # Owner agreements (docs/p15_owner_agreements.md): someone who may see,
+        # send or countersign a company's agreements, with them switched on.
+        "has_agreements": _has_agreements(membership),
         # Whether this build offers the development-only controls (the digest
         # "Generate now", for instance). False anywhere that is not localhost,
         # so the control cannot appear in front of a client.
@@ -336,6 +339,14 @@ def _has_intake(membership) -> bool:
     from apps.intake.access import has_intake
 
     return has_intake(membership)
+
+
+def _has_agreements(membership) -> bool:
+    if membership is None:
+        return False
+    from apps.agreements.access import has_agreements
+
+    return has_agreements(membership)
 
 
 def _has_scorecard(request) -> bool:

@@ -293,6 +293,8 @@ def build(*, answers, staff, settings, lists, brand, held, today: date, sent=fro
         "streetAddress": prop.get("street"), "extendedAddress": prop.get("street2"),
         "locality": prop.get("city"), "region": prop.get("state"), "postal": prop.get("postal"),
         "country": "US", "maxOccupancy": sleeps or None,
+        # Owner, 2026-11-23: square footage, in Track's `area` (unproven live).
+        "area": prop.get("square_feet") or None,
     })
     steps.append({"key": "unit", "kind": "create",
                   "label": "Create the unit (inactive, " + ("bookable" if unit_bookable

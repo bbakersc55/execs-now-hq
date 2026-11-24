@@ -254,6 +254,9 @@ class SendRun(TenantScopedModel):
     #: [{key, label, state, detail, track_id}] in the order they run.
     steps = models.JSONField(default=list, blank=True)
     error = models.TextField(blank=True, default="")
+    #: Test mode (owner, 2026-11-23): every check ran, each step shows "would
+    #: send", nothing was written to Track and nothing changed in ENHQ.
+    test = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 

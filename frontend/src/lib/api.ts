@@ -118,6 +118,8 @@ export interface Me {
   /** Intake forms: the practice owner, or a client company's managers and
    *  above, with intake forms on for a company they run. */
   has_intake?: boolean;
+  /** Owner agreements: may see, send or countersign a company's agreements. */
+  has_agreements?: boolean;
   tenant: string | null;
   client_company: string | null;
   /** True only on a localhost build: gates the development-only controls. */

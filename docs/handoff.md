@@ -1,8 +1,9 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-23**, after Release 50. **The next session starts at
-"2026-11-23: Release 50, and the intake read, start here" just below**; then "2026-11-21:
+2026-11-24**, after the owner agreements build. **The next session starts at
+"2026-11-24: owner agreements (P15), on `owner-agreements`, start here" just
+below**; then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
 stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
 "2026-11-16: Release 44, refunds and Test Mode"; then "2026-11-14, evening: Release 43, SOP
 sections and the card form's words"; then "2026-11-14: Release 42, the
@@ -34,7 +35,63 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-23: Release 50, and the intake read, start here
+## 2026-11-24: owner agreements (P15), on `owner-agreements`, start here
+
+Built on Bryan's go of 2026-11-23 (answers, the approved change list, "Go").
+Spec: `docs/p15_owner_agreements.md`. **On branch `owner-agreements`, cut from
+`dev` at `9dcac4d`; committed after a green gate, not pushed, not merged,
+not released.** Nothing is released without Bryan.
+
+### What it is
+
+- SkyRun's new owners sign the Rental Management Agreement on one link, phone
+  first; SkyRun countersigns (Michael, or someone he names under his standing
+  authorization, recorded as applied by them); the owner's answers start the
+  intake, prefilled; Send to Track waits for the countersignature.
+- The words are the 2014 PDF's plus the approved change list, proven by a test
+  against the PDF (all 53 finds applied, nothing else differs).
+- One permissions screen (ticks: agreements, signed PDFs, intake). It replaced
+  intake's "Manager or above" rule.
+- Owner email: "ENHQ's own sender (testing)" (the start) or "our own domain"
+  (Postmark; no account yet; no domain decided).
+- Intake: King Sofa Sleeper 2 / Roll Away Bed 1; Water Softener and
+  Landscaping to their own fields; the new-submission notice names the owner
+  and the address; test mode (on to start); square footage → unit `area`;
+  emergency contact → new owner's notes (task for an existing owner).
+
+### Read-only line that ran (2026-11-23)
+
+`sh scripts/track_definitions.sh <log>` (committed with this build): bed types
+20 and 21, fields 199 and 200 (text), no square-footage or emergency field,
+unit `area`, contract codes = the manager's percent, and the five people's
+accounts (Bryan has two: FF and SkyRun FCC).
+
+### Releasing it (when Bryan says "release")
+
+1. It has **migrations**: the runbook's "Releasing a migration" sequence.
+   `agreements 0001` (8 new tables), `agreements 0002` (data: ticks intake for
+   everyone the old rule let in; adds rows only; on SkyRun that is Jackie,
+   Kendra, Michael, Bryan's FCC account), `intake 0002` (one column with a
+   default), `crm 0062` and `notify 0008` (no SQL). Then `ensure_schedules`
+   (new hourly `agreements.tick`).
+2. From the release, **intake's Send to Track is in test mode** (missing
+   setting = on) until someone turns it off in Form settings.
+3. `python manage.py owner_agreements c4e5ca2a-bee1-4b11-976b-838d63544de1 on`.
+4. Bryan: Owner agreements → Settings → "Who signs for the company" = Michael;
+   People and permissions: a for Sandra, Jackie, Kendra, Michael, Bryan; b for
+   Jackie (c is already there from the migration).
+5. Michael records his authorization (Jackie and Bryan).
+6. Later, apart from the release: Postmark sign-up and its DNS, then
+   `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
+   chosen (p14 "Adding a domain", p15 "The form's address").
+
+### Not proven
+
+- Against SkyRun's real Track: `area` (its unit isn't in Track's reference;
+  read a unit back after the first real send), the two new fields.
+- Postmark end to end. A real phone's drawing pad.
+
+## 2026-11-23: Release 50, and the intake read
 
 ### Release 50 is live
 

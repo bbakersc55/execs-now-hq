@@ -1,18 +1,18 @@
-"""Who may see and run a company's intake forms (owner, 2026-11-19):
+"""Who may see and run a company's intake forms.
 
-- the practice owner, for any client company of the practice;
-- a client company's managers and above: its Client owner, anyone with
-  Senior leadership of all its teams, and anyone who is a Manager or Senior
-  leadership on one of its teams.
+Owner, 2026-11-23: one permissions screen (apps/agreements/access.py) ticks,
+per person, "Owner intake: review, edit and send to Track, and get the team
+notices". That tick replaced the level-based rule (the Client owner, Senior
+leadership, and Managers on a team): intake no longer looks at team levels.
+The practice owner always has it.
 
-Nobody else: not associates, not assistants, not other team members. For
-anyone else a company's intake is a 404, as if it did not exist. The same
-people are told, in the app and by email, when an owner submits.
+Nobody else: for anyone else a company's intake is a 404, as if it did not
+exist. The same people are told, in the app and by email, when an owner
+submits.
 """
 
 from __future__ import annotations
 
-from django.db.models import Q
 from django.http import Http404
 
 from apps.tenancy.models import Membership, Role
@@ -23,17 +23,14 @@ def _active(qs):
 
 
 def manager_memberships(company):
-    """The client company's managers and above (active memberships)."""
-    from apps.work.models import ClientTeamMember
+    """The company's users ticked for intake (active memberships)."""
+    from apps.agreements.models import StaffAccess
 
-    base = _active(Membership.all_objects.filter(tenant_id=company.tenant_id,
-                                                 client_company=company))
-    on_teams = ClientTeamMember.all_objects.filter(
-        team__client_company=company, team__archived_at__isnull=True,
-        level__in=[ClientTeamMember.Level.MANAGER, ClientTeamMember.Level.LEADER],
-        membership__revoked_at__isnull=True).values_list("membership_id", flat=True)
-    return base.filter(role__in=[Role.FCC, Role.ECC]).filter(
-        Q(role=Role.FCC) | Q(leads_all_teams=True) | Q(pk__in=on_teams))
+    ticked = StaffAccess.all_objects.filter(company=company, intake=True) \
+        .values_list("user_id", flat=True)
+    return _active(Membership.all_objects.filter(
+        tenant_id=company.tenant_id, client_company=company, role__in=[Role.FCC, Role.ECC],
+        user_id__in=ticked))
 
 
 def practice_owners(tenant_id):
@@ -41,8 +38,8 @@ def practice_owners(tenant_id):
 
 
 def recipients(company) -> list:
-    """Users told about this company's intakes: its managers and above, and
-    the practice owner(s)."""
+    """Users told about this company's intakes: everyone ticked for intake,
+    and the practice owner(s)."""
     ids = set(manager_memberships(company).values_list("user_id", flat=True))
     ids |= set(practice_owners(company.tenant_id).values_list("user_id", flat=True))
     from django.contrib.auth import get_user_model
@@ -51,12 +48,13 @@ def recipients(company) -> list:
 
 
 def is_manager(membership, company) -> bool:
+    """May run this company's intakes: the practice owner, or someone ticked."""
     if membership is None or company is None:
         return False
     if membership.role == Role.FF:
         return membership.tenant_id == company.tenant_id
     if membership.role not in (Role.FCC, Role.ECC) \
-            or membership.client_company_id != company.pk:
+            or membership.client_company_id != company.pk or membership.revoked_at is not None:
         return False
     return manager_memberships(company).filter(pk=membership.pk).exists()
 

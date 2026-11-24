@@ -24,11 +24,12 @@ log = logging.getLogger(__name__)
 
 #: Which kinds each side of the app can receive.
 STAFF_KINDS = [Kind.NOTICE, Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.DOCUMENT,
-               Kind.BANK, Kind.SOP, Kind.PAYMENTS, Kind.INTAKE]
+               Kind.BANK, Kind.SOP, Kind.PAYMENTS, Kind.INTAKE, Kind.AGREEMENT]
 #: The practice owner's alone: bank connections (docs/p6_bank_feeds.md) and a
 #: card form that would not load (2026-11-13).
 OWNER_KINDS = (Kind.BANK, Kind.PAYMENTS)
-CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.SOP, Kind.INTAKE]
+CLIENT_KINDS = [Kind.CLIENT_MESSAGE, Kind.READING, Kind.MENTION, Kind.SOP, Kind.INTAKE,
+                Kind.AGREEMENT]
 #: How long a push service keeps a notification for a browser that is off.
 TTL_SECONDS = 24 * 3600
 TIMEOUT_SECONDS = 5
@@ -51,6 +52,13 @@ def kinds_for(membership) -> list[str]:
 
         if not has_intake(membership):
             kinds.remove(Kind.INTAKE)
+    # Owner agreements: only someone who may see a company's agreements or
+    # countersign them, with them switched on (apps/agreements/access.py).
+    if Kind.AGREEMENT in kinds:
+        from apps.agreements.access import has_agreements
+
+        if not has_agreements(membership):
+            kinds.remove(Kind.AGREEMENT)
     return [str(k) for k in kinds]
 
 

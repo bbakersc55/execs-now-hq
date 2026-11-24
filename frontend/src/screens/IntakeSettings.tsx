@@ -119,6 +119,24 @@ export function IntakeSettings({ me: _me }: { me: Me }) {
           {draft.lists_status.error && ` The last try failed: ${draft.lists_status.error}`}</p>
       </Card>
 
+      <Card title="Test mode">
+        {s.test_mode !== false && <Banner kind="warn"><strong>Test mode is on.</strong> Send to
+          Track runs every check and shows each step as "would send". It writes nothing to Track,
+          makes no tasks, holds no dates, and leaves the intake open, marked as a test.</Banner>}
+        <label className="intake-inline"><input type="radio" checked={s.test_mode !== false}
+          onChange={() => void save({ settings: { test_mode: true } })} /> On: check everything,
+          write nothing</label>
+        <label className="intake-inline"><input type="radio" checked={s.test_mode === false}
+          onChange={() => {
+            if (window.confirm("Turn test mode off? Send to Track will write to Track.")) {
+              void save({ settings: { test_mode: false } });
+            }
+          }} /> Off: Send to Track writes to Track</label>
+        <p className="small muted">Who may review and send intakes is set in
+          {" "}<Link to={`/agreements/settings/${companyId}`}>People and permissions</Link>
+          {" "}(the practice owner and the Client owner change it).</p>
+      </Card>
+
       <Card title="What owners are offered">
         <h4>New units start as</h4>
         <label className="intake-inline"><input type="radio" checked={!s.new_units_bookable}

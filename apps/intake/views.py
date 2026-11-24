@@ -205,14 +205,19 @@ def _row(sub) -> dict:
             "property": derive.street_line(prop), "link_open": sub.link_open,
             "expires_at": sub.expires_at.isoformat(), "created_at": sub.created_at.isoformat(),
             "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
-            "sent_at": sub.sent_at.isoformat() if sub.sent_at else None}
+            "sent_at": sub.sent_at.isoformat() if sub.sent_at else None,
+            # Owner, 2026-11-23: a test send marks the intake as a test.
+            "tested": SendRun.all_objects.filter(submission=sub, test=True).exists()}
 
 
 class SubmissionsView(Base):
     def get(self, request, company_id):
         company = access.company_or_404(request, company_id)
         subs = Submission.all_objects.filter(company=company).order_by("-created_at")[:500]
-        return Response({"submissions": [_row(s) for s in subs]})
+        form = services.form_for(company)
+        lists, _ = tracklists.stored(company)
+        return Response({"submissions": [_row(s) for s in subs],
+                         "test_mode": services.test_mode(services.settings_of(form, lists))})
 
     def post(self, request, company_id):
         company = access.company_or_404(request, company_id)
@@ -307,9 +312,33 @@ def review_payload(sub, request) -> dict:
         and sub.status in (Submission.Status.SUBMITTED, Submission.Status.FAILED,
                            Submission.Status.DRAFT, Submission.Status.IN_PROGRESS),
         "is_practice": bool(membership and membership.role not in ("FCC", "ECC")),
+        "test_mode": services.test_mode(settings),
+        "agreement": _agreement_card(sub, membership),
         "people": [{"first": p["first"], "last": p["last"], "email": p["email"],
                     "mobile": p["mobile"], "portal": p["portal"]} for p in plan.people(answers)],
     }
+
+
+def _agreement_card(sub, membership) -> dict | None:
+    """The owner agreement this intake came from: its status, a link to it
+    for those who may see it, the contract its split points at, and whether
+    it holds Send to Track back (owner, 2026-11-23)."""
+    from apps.agreements import access as agreement_access
+    from apps.agreements import services as agreements
+
+    agreement = services.agreement_of(sub)
+    if agreement is None:
+        return None
+    return {"id": str(agreement.pk), "number": agreement.number,
+            "status": agreements.status_line(agreement),
+            "countersigned": agreement.countersigned_at is not None,
+            "agreement_date": agreement.agreement_date.isoformat()
+            if agreement.agreement_date else None,
+            "cancelled": agreement.voided_at is not None,
+            "may_open": bool(membership and agreement_access.companies_for(membership)
+                             .filter(pk=sub.company_id).exists()),
+            "contract": agreements.contract_for(agreement),
+            "waiting": services.agreement_waiting(sub)}
 
 
 def _owner_form_safe(sub) -> dict:
@@ -322,6 +351,7 @@ def _run(run) -> dict | None:
     if run is None:
         return None
     return {"id": str(run.pk), "state": run.state, "steps": run.steps, "error": run.error,
+            "test": run.test,
             "created_at": run.created_at.isoformat(),
             "finished_at": run.finished_at.isoformat() if run.finished_at else None}
 

@@ -689,6 +689,22 @@
    "type": "date",
    "subType": "",
    "values": []
+  },
+  {
+   "id": 199,
+   "name": "Water Softener",
+   "reference": "pms_units_water_softener",
+   "type": "text",
+   "subType": "",
+   "values": []
+  },
+  {
+   "id": 200,
+   "name": "Landscaping",
+   "reference": "pms_units_landscaping",
+   "type": "text",
+   "subType": "",
+   "values": []
   }
  ],
  "bed_types": [
@@ -785,6 +801,16 @@
   {
    "id": 19,
    "name": "Twin Day Bed",
+   "isActive": true
+  },
+  {
+   "id": 20,
+   "name": "King Sofa Sleeper",
+   "isActive": true
+  },
+  {
+   "id": 21,
+   "name": "Roll Away Bed",
    "isActive": true
   }
  ],
@@ -1189,49 +1215,49 @@
  "contracts": [
   {
    "id": 1,
-   "code": "",
+   "code": "30",
    "name": "Standard 30",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 2,
-   "code": "",
+   "code": "25",
    "name": "25 Commission",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 3,
-   "code": "",
+   "code": "2335",
    "name": "Contract 23.35",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 4,
-   "code": "",
+   "code": "28",
    "name": "28%",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 5,
-   "code": "",
+   "code": "20",
    "name": "30%, 20% Long Term",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 6,
-   "code": "",
+   "code": "ZEROPERCENT",
    "name": "Property Management Only",
    "type": "standard",
    "isActive": true
   },
   {
    "id": 7,
-   "code": "",
+   "code": "20",
    "name": "20% commission",
    "type": "standard",
    "isActive": true

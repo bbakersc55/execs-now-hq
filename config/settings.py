@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "apps.tools",
     "apps.sops",
     "apps.intake",
+    "apps.agreements",
 ]
 
 MIDDLEWARE = [
@@ -247,6 +248,11 @@ INTAKE_FORM_HOSTS = [h.strip().lower() for h in env.list("INTAKE_FORM_HOSTS", de
                      if h.strip()]
 ALLOWED_HOSTS = [*ALLOWED_HOSTS, *INTAKE_FORM_HOSTS]
 CSRF_TRUSTED_ORIGINS += [f"https://{h}" for h in INTAKE_FORM_HOSTS]
+# Owner agreements (docs/p15_owner_agreements.md): the Postmark server token
+# for owner email from a company's own domain; its own Postmark server, apart
+# from the app's. The domain and the addresses are the company's settings.
+# Called only in production.
+OWNER_EMAIL_POSTMARK_TOKEN = env("OWNER_EMAIL_POSTMARK_TOKEN", default="")
 CLIENT_SESSION_AGE = 60 * 60 * 24 * 30
 
 REST_FRAMEWORK = {

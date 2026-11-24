@@ -10,6 +10,7 @@ from apps.billing import views_proof as billing_proof
 from apps.crm import views_gmail, views_microsoft
 from apps.crm import views_site_leads as crm_site_leads
 from apps.esign import views_sign as esign_sign
+from apps.agreements import views_public as agreement_public
 from apps.intake import hosts as intake_hosts
 from apps.intake import views_public as intake_public
 from apps.finance.bankfeeds import views as bank_views
@@ -73,6 +74,7 @@ urlpatterns = [
     path("api/", include("apps.scorecard.urls")),
     path("api/", include("apps.esign.urls")),
     path("api/", include("apps.intake.urls")),
+    path("api/", include("apps.agreements.urls")),
     # Intake forms, the owner's side (docs/p14_intake_forms.md): a personal
     # link, no session. White label: nothing here names the practice.
     path("api/f/<str:token>", intake_public.form_page, name="intake-form"),
@@ -84,6 +86,16 @@ urlpatterns = [
     path("api/f/<str:token>/submit", intake_public.submit, name="intake-submit"),
     path("api/f/<str:token>/another", intake_public.another, name="intake-another"),
     path("api/forms/<slug:slug>/<str:which>", intake_public.form_image, name="intake-image"),
+    # Owner agreements, the owner's side (docs/p15_owner_agreements.md): the
+    # same white-label pages, on the same form domain.
+    path("api/fa/<str:token>", agreement_public.agreement_page, name="agreement-page"),
+    path("api/fa/<str:token>/details", agreement_public.details, name="agreement-details"),
+    path("api/fa/<str:token>/sign", agreement_public.sign, name="agreement-sign"),
+    path("api/fa/<str:token>/onboarding", agreement_public.onboarding,
+         name="agreement-onboarding"),
+    path("api/fa/<str:token>/pdf", agreement_public.owner_pdf, name="agreement-pdf"),
+    path("forms/<slug:slug>/a/<str:token>", intake_hosts.agreement_shell,
+         name="agreement-shell"),
     path("forms/<slug:slug>/<str:token>", intake_hosts.shell, name="intake-page"),
     path("forms/<slug:slug>", intake_hosts.shell, name="intake-page-bare"),
     # FR-3.33a — the cadence link from a digest footer. No session: the signed

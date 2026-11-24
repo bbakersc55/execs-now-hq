@@ -75,7 +75,7 @@ def custom_allowed(form) -> set:
 # ------------------------------------------------------------ starting one
 
 def start(form, *, first_name, last_name="", email="", actor=None, answers=None,
-          carried_from=None):
+          carried_from=None, detail=None):
     first_name = (first_name or "").strip()[:80]
     email = (email or "").strip().lower()[:200]
     if not first_name:
@@ -100,7 +100,8 @@ def start(form, *, first_name, last_name="", email="", actor=None, answers=None,
         links.issue(submission)
         submission.save()
     _event(submission, SubmissionEvent.Kind.STARTED, actor,
-           "Started by a manager" if actor else "Started from another property's form")
+           detail or ("Started by a manager" if actor else
+                      "Started from another property's form"))
     return submission
 
 
@@ -316,10 +317,40 @@ def build_plan(submission, lists, form_settings, *, owner_active=None, unit_book
                today=None):
     today = today or practice_today(submission)
     staff = staff_choices(submission, form_settings, lists, today=today)
-    return plan.build(answers=submission.answers or {}, staff=staff, settings=form_settings,
-                      lists=lists, brand=submission.form.brand_name,
-                      held=vault.held_names(submission), sent=plan.sent_from(submission.track),
-                      owner_active=owner_active, unit_bookable=unit_bookable, today=today)
+    the_plan = plan.build(answers=submission.answers or {}, staff=staff, settings=form_settings,
+                          lists=lists, brand=submission.form.brand_name,
+                          held=vault.held_names(submission),
+                          sent=plan.sent_from(submission.track),
+                          owner_active=owner_active, unit_bookable=unit_bookable, today=today)
+    waiting = agreement_waiting(submission)
+    if waiting:
+        the_plan["problems"] = [*the_plan["problems"], waiting]
+    return the_plan
+
+
+def agreement_of(submission):
+    from apps.agreements.models import OwnerAgreement
+
+    return OwnerAgreement.all_objects.filter(submission=submission).first()
+
+
+def agreement_waiting(submission) -> str:
+    """Owner, 2026-11-23: an intake made from an owner agreement can't go to
+    Track until the agreement is countersigned. Intakes started without one
+    are not held back."""
+    agreement = agreement_of(submission)
+    if agreement is None or agreement.countersigned_at is not None:
+        return ""
+    if agreement.voided_at is not None:
+        return "The owner agreement this intake came from was cancelled."
+    return ("The owner agreement isn't countersigned yet: Send to Track opens once SkyRun "
+            "has signed it.")
+
+
+def test_mode(form_settings) -> bool:
+    """Owner, 2026-11-23: a form setting, on to start with. A form set up
+    before it existed is in test mode."""
+    return form_settings.get("test_mode", True) is not False
 
 
 # ------------------------------------------------------------ sending
@@ -339,6 +370,8 @@ def start_send(submission, actor):
     the_plan = build_plan(submission, lists, form_settings)
     if the_plan["problems"]:
         raise Refused("Not ready to send: " + " ".join(the_plan["problems"]))
+    if test_mode(form_settings):
+        return test_send(submission, actor, the_plan)
     run = SendRun.all_objects.create(
         tenant_id=submission.tenant_id, submission=submission, started_by=actor,
         steps=[{"key": s["key"], "label": s["label"], "state": "waiting", "detail": ""}
@@ -359,6 +392,50 @@ def start_send(submission, actor):
     return run
 
 
+def test_send(submission, actor, the_plan, *, client=None):
+    """Test mode: every check a send makes, each step shown as "would send",
+    nothing written to Track and nothing changed in ENHQ (no tasks, no dates
+    held, nothing deleted, not locked). The run and the intake are marked as
+    a test. Track is only read: the same look for an owner, contact or unit
+    like this one that the review's check makes."""
+    from apps.scorecard import feeds, track
+
+    steps = []
+    for step in the_plan["steps"]:
+        target = step.get("path", "")
+        steps.append({"key": step["key"], "label": step["label"], "state": "would",
+                      "detail": f"Would send {step.get('method', '')} {target}".strip()})
+    found = ""
+    try:
+        client = client or feeds.track_client(submission.company)
+        result = check_track(submission, client)
+        if result.get("error"):
+            found = f"Track couldn't be read: {result['error']}"
+        else:
+            n = len(result["owners"]) + len(result["units"]) + len(result["contacts"])
+            found = ("Checked Track: no owner, contact or unit like this one" if not n else
+                     f"Checked Track: {n} match(es) to look at on the review screen")
+    except track.TrackUnavailable as exc:
+        found = f"Track couldn't be read: {exc}"
+    steps.insert(0, {"key": "test:check", "label": "Look in Track for this owner, contact and "
+                     "unit (read only)", "state": "done" if found.startswith("Checked")
+                     else "failed", "detail": found})
+    steps += [{"key": "enhq:tasks", "label": "Create the onboarding tasks in ENHQ",
+               "state": "would", "detail": "Would make the onboarding project and tasks"},
+              {"key": "enhq:dates", "label": "Hold the owner's dates in ENHQ", "state": "would",
+               "detail": "Would hold the owner's dates"},
+              {"key": "enhq:lock", "label": "Lock the intake and delete what Track now holds",
+               "state": "would", "detail": "Would lock the intake"}]
+    now = timezone.now()
+    run = SendRun.all_objects.create(
+        tenant_id=submission.tenant_id, submission=submission, started_by=actor, steps=steps,
+        test=True, state=SendRun.State.SUCCEEDED, finished_at=now,
+        error="" if found.startswith("Checked") else found)
+    _event(submission, SubmissionEvent.Kind.SEND_STARTED, actor,
+           "Test send: every check ran, nothing was written to Track")
+    return run
+
+
 def _step(run, key, state, detail=""):
     for step in run.steps:
         if step["key"] == key:
@@ -373,6 +450,8 @@ def run_send(run, *, client=None, today=None):
     from . import checklist, notices, ownerdates, track_writer
 
     submission = run.submission
+    if run.test:
+        return run                         # a test send writes nothing, ever
     today = today or practice_today(submission)
     run.state = SendRun.State.RUNNING
     run.save(update_fields=["state"])

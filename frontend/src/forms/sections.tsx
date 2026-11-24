@@ -165,6 +165,16 @@ export function AboutSection({ ctx }: { ctx: Ctx }) {
         <Text label={a.heard === "other" ? "Tell us a little more" : "Who referred you?"}
           value={a.heard_detail} onChange={(v) => set({ heard_detail: v })} />
       )}
+      <Block title="Emergency contact">
+        <p className="ix-hint">Someone we could contact in an emergency, other than
+          {you ? " you" : " the owner"}.</p>
+        <Text label="Name" value={a.emergency?.name}
+          onChange={(v) => set({ emergency: { ...a.emergency, name: v } })} />
+        <Text label="Phone" type="tel" inputMode="tel" value={a.emergency?.phone}
+          onChange={(v) => set({ emergency: { ...a.emergency, phone: v } })} />
+        <Text label="Address (optional)" value={a.emergency?.address}
+          onChange={(v) => set({ emergency: { ...a.emergency, address: v } })} />
+      </Block>
       <YesNo label="Are there any other owners?" value={a.has_extra_owners}
         onChange={(v) => set({
           has_extra_owners: v,
@@ -256,6 +266,10 @@ export function PropertySection({ ctx }: { ctx: Ctx }) {
         <Text label="ZIP code" value={p.postal} inputMode="numeric"
           onChange={(v) => set({ postal: v })} />
       </div>
+      <Text label="Square footage (optional)" inputMode="numeric"
+        value={p.square_feet ? String(p.square_feet) : ""}
+        onChange={(v) => set({ square_feet: v.replace(/[^\d]/g, "")
+          ? Number(v.replace(/[^\d]/g, "")) : null })} />
       <Select label="What kind of property is it?" value={p.lodging_type_id ?? ""}
         options={ctx.form.lodging_types.map((t) => ({ value: String(t.id), label: t.name }))}
         onChange={(v) => set({ lodging_type_id: v ? Number(v) : null })} />
@@ -604,22 +618,22 @@ export function HomeSection({ ctx }: { ctx: Ctx }) {
             onChange={(v) => set({ snow_note: v })} />}
         </Block>
       )}
-      {on("other_maintenance_or_service_notes") && (
-        <>
-          <Block title="Landscaping">
-            <Choice label="Who takes care of the landscaping?" options={opts(f, "done_by")}
-              value={h.landscaping_by} onChange={(v) => set({ landscaping_by: v })} />
-            {h.landscaping_by && <Area label="Landscaping notes (optional)"
-              value={h.landscaping_note} rows={2}
-              onChange={(v) => set({ landscaping_note: v })} />}
-          </Block>
-          <Block title="Water softener">
-            <YesNo label="Is there a water softener?" unsure value={h.softener}
-              onChange={(v) => set({ softener: v })} />
-            {h.softener === "yes" && <Area label="Where is it, and who services it?"
-              value={h.softener_note} rows={2} onChange={(v) => set({ softener_note: v })} />}
-          </Block>
-        </>
+      {on("landscaping") && (
+        <Block title="Landscaping">
+          <Choice label="Who takes care of the landscaping?" options={opts(f, "done_by")}
+            value={h.landscaping_by} onChange={(v) => set({ landscaping_by: v })} />
+          {h.landscaping_by && <Area label="Landscaping notes (optional)"
+            value={h.landscaping_note} rows={2}
+            onChange={(v) => set({ landscaping_note: v })} />}
+        </Block>
+      )}
+      {on("water_softener") && (
+        <Block title="Water softener">
+          <YesNo label="Is there a water softener?" unsure value={h.softener}
+            onChange={(v) => set({ softener: v })} />
+          {h.softener === "yes" && <Area label="Where is it, and who services it?"
+            value={h.softener_note} rows={2} onChange={(v) => set({ softener_note: v })} />}
+        </Block>
       )}
       {on("nightly_rental_permit") && (
         <Block title="Rental permit">
@@ -795,6 +809,8 @@ export function summarize(ctx: Ctx, key: string): string[] {
         [x.street, x.street2, x.city, x.state, x.postal].filter(Boolean).join(", "),
         [x.mobile, x.email].filter(Boolean).join(" · "),
         x.contact_pref ? `Prefers: ${label(f, "contact_pref", x.contact_pref)}` : "",
+        x.emergency?.name || x.emergency?.phone ? `Emergency contact: ${[x.emergency?.name,
+          x.emergency?.phone].filter(Boolean).join(", ")}` : "",
       ];
       for (const o of x.has_extra_owners === "yes" ? x.extra_owners ?? [] : [])
         lines.push(`Also an owner: ${[o.first_name, o.last_name].filter(Boolean).join(" ")}`);
@@ -811,6 +827,7 @@ export function summarize(ctx: Ctx, key: string): string[] {
       const p = a.property ?? {};
       const type = f.lodging_types.find((t) => t.id === p.lodging_type_id)?.name;
       return [[p.street, p.street2, p.city, p.state, p.postal].filter(Boolean).join(", "),
+        p.square_feet ? `${p.square_feet.toLocaleString("en-US")} sq ft` : "",
         type ? `Type: ${type}` : "",
         p.ready ? `Ready: ${p.ready === "date" ? p.ready_date : label(f, "ready", p.ready)}` : "",
         p.has_bookings === "yes" ? `${(p.bookings ?? []).length} booked date range(s)` : "",

@@ -246,6 +246,12 @@ def for_delivery(message, *, body_text=None, body_html=None) -> tuple[str, str]:
     """
     from apps.crm.services import unsubscribe
 
+    if getattr(message, "sent_via", "") == "owner_domain":
+        # Owner agreements (docs/p15): a company's own-domain email to an owner
+        # is white label. It goes out exactly as made: the company's layout,
+        # no practice footer, branding or unsubscribe line.
+        return (message.body_html if body_html is None else body_html,
+                message.body_text if body_text is None else body_text)
     text = _with_footer(message, message.body_text if body_text is None else body_text)
     html = message.body_html if body_html is None else body_html
     if is_document(html):
