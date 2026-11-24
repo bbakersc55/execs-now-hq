@@ -168,9 +168,11 @@ def _exhibit(details):
     return " ".join(render._words_of(b, False) for b in blocks[start:])
 
 
+# Owner, 2026-11-24, later: 1.5 × Sleeps up to 10, 2 × Sleeps from 11.
 @pytest.mark.parametrize("sleeps, p, m", [(1, 8, 4), (2, 8, 4), (5, 8, 6), (6, 12, 6),
-                                          (8, 12, 8), (10, 16, 10), (11, 20, 12),
-                                          (16, 24, 16)])
+                                          (8, 12, 8), (9, 16, 10), (10, 16, 10),
+                                          (11, 24, 12), (12, 24, 12), (13, 28, 14),
+                                          (16, 32, 16), (20, 40, 20)])
 def test_the_quantities_follow_sleeps(sleeps, p, m):
     from apps.agreements import exhibit_a
 
@@ -207,7 +209,8 @@ def test_other_features_reads_as_written():
 def test_the_rules_are_one_small_table():
     from apps.agreements import exhibit_a
 
-    assert exhibit_a.RULES == {"place_settings": (1.5, 4, 8), "place_mats": (1, 2, 4)}
+    assert exhibit_a.RULES == {"place_settings": (((10, 1.5), (None, 2)), 4, 8),
+                               "place_mats": (((None, 1),), 2, 4)}
 
 
 def test_one_signature_block_per_owner_each_named():

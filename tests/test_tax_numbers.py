@@ -304,6 +304,33 @@ def test_a_real_send_needs_the_tick_and_removes_it_a_test_send_removes_nothing(w
     assert not SubmissionSecret.all_objects.filter(submission=sub, kind="tax_id").exists()
 
 
+def test_an_existing_owner_gets_no_number_and_the_plan_says_so(world, fake):
+    """Owner, 2026-11-24, later: an existing Track owner is never changed, so
+    the number isn't sent, and the Send plan says what staff must do."""
+    world["_fake"] = fake
+    sub, token, o = with_ssn(world)
+    c = review(world, sub, node_id=24, shares={"1": 40}, owner_mode="existing",
+               existing_owner_id=900)
+    p = c.get(f"/api/intake/submissions/{sub.pk}").json()
+    said = [line for line in p["plan"]["summary"] if "tax number" in line]
+    assert said == ["The owner's tax number is not sent to Track: this is an existing owner, "
+                    "and nothing about them changes. Before sending, check that the owner in "
+                    "Track already has a tax ID, or add it in Track by hand. The number is "
+                    "removed from ENHQ after this send."]
+    assert p["tax"]["ack_needed"] is True and p["may_send"] is True
+    run = send(world, sub)
+    assert run.state == "succeeded", run.error
+    assert not any(SSN in json.dumps(w, default=str) or DIGITS in json.dumps(w, default=str)
+                   for w in fake.writes())
+    assert "taxId" not in fake.owners[900] and fake.owners[900]["taxIdMasked"] is None
+    assert vault.value(sub, "tax_id") is None
+    # A new owner's plan says nothing of the kind.
+    sub2, t2, o2 = with_ssn(world)
+    p2 = review(world, sub2, node_id=24, shares={"1": 40}).get(
+        f"/api/intake/submissions/{sub2.pk}").json()
+    assert not any("existing owner" in line and "tax" in line for line in p2["plan"]["summary"])
+
+
 def test_unsent_it_goes_30_days_after_submitting_and_the_intake_says_so(world):
     sub, token, o = with_ssn(world)
     old = timezone.now() - timedelta(days=31)

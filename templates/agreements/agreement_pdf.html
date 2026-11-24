@@ -32,6 +32,12 @@ li { margin: 1pt 0; }
 .owner-lines .row { margin: 0 0 7pt; }
 .owner-lines p { margin: 8pt 0 6pt; }
 .owner-lines .lab { font-weight: normal; }
+/* Each label stays on the same line as its value (owner, 2026-11-24, later);
+   the four short numbers are narrower so their line holds all four. */
+.owner-lines .fld { display: inline-block; white-space: nowrap; margin-right: 10pt; }
+.owner-lines .fld .val { margin-right: 0; }
+.owner-lines .k-bedrooms .val, .owner-lines .k-bathrooms .val,
+.owner-lines .k-square_feet .val, .owner-lines .k-sleeps .val { min-width: 0.55in; }
 .owner-lines .val { display: inline-block; min-width: 1.1in; border-bottom: 0.6pt solid #333;
                     padding: 0 4pt; margin-right: 10pt; }
 .sig { margin: 14pt 0 4pt; }
@@ -56,7 +62,7 @@ li { margin: 1pt 0; }
   {% elif b.type == "section_30" %}<div class="s30">{% for p in b.paras %}<p class="term">{{ p }}</p>{% endfor %}</div>
   {% elif b.type == "owner_section" %}
     <div class="owner-lines">{% for line in b.lines %}
-      {% if line.heading %}<h3{% if not forloop.first %} class="part"{% endif %}>{{ line.heading }}</h3>{% elif line.note %}<p>{{ line.note }}</p>{% else %}<div class="row">{% for f in line.fields %}<span class="lab">{{ f.label }}</span> <span class="val">{{ f.value|default:"&nbsp;" }}</span>{% endfor %}</div>{% endif %}
+      {% if line.heading %}<h3{% if not forloop.first %} class="part"{% endif %}>{{ line.heading }}</h3>{% elif line.note %}<p>{{ line.note }}</p>{% else %}<div class="row">{% for f in line.fields %}<span class="fld k-{{ f.key }}"><span class="lab">{{ f.label }}</span> <span class="val">{{ f.value|default:"&nbsp;" }}</span></span>{% endfor %}</div>{% endif %}
     {% endfor %}</div>
   {% elif b.type == "signatures" %}<div class="{% if compact %}compact{% endif %}">
     <p>THE PARTIES HERETO HAVE EXECUTED THIS AGREEMENT.</p>

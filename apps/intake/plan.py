@@ -388,6 +388,13 @@ def build(*, answers, staff, settings, lists, brand, held, today: date, sent=fro
     else:
         summary.append(f"The unit goes to the existing owner #{staff.get('existing_owner_id')} "
                        "in Track. Nothing about that owner, its notes or its contacts changes.")
+        if "tax_id" in held:
+            # Owner, 2026-11-24, later: an existing owner is never changed, so
+            # the number the owner gave stays out of Track.
+            summary.append("The owner's tax number is not sent to Track: this is an existing "
+                           "owner, and nothing about them changes. Before sending, check that "
+                           "the owner in Track already has a tax ID, or add it in Track by hand. "
+                           "The number is removed from ENHQ after this send.")
     summary.append(
         f"A unit named {unit_body.get('name', '')}, inactive and "
         f"{'bookable' if unit_bookable else 'not bookable'}, in "

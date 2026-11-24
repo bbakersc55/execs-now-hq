@@ -321,7 +321,7 @@ def test_a_change_to_exhibit_a_that_blocks_countersigning_is_named(aw, monkeypat
     owner_signs(a)                                    # sleeps 8: 12 place settings, mats 8
     sig = AgreementSignature.all_objects.get(agreement=a, role="owner")
     assert sig.exhibit_a["place_settings"] == 12 and sig.exhibit_a["place_mats"] == 8
-    monkeypatch.setitem(exhibit_a.RULES, "place_settings", (2, 4, 8))    # now 16
+    monkeypatch.setitem(exhibit_a.RULES, "place_settings", (((None, 2),), 4, 8))   # now 16
     detail = as_(aw["michael"]).get(f"/api/agreements/{a.pk}").json()
     assert detail["may_countersign"] is False
     problem = detail["words_problem"]
@@ -364,6 +364,14 @@ def test_the_owner_page_and_the_signature_page_each_fit_one_page(aw):
     for part in ("OwnerInformation", "ALTERNATEPHONE(optional)", "Ifonlyoneowner",
                  "PHONE:435-555-0188"):
         assert part in page, part
+    # Each label on the same line as its value; the four numbers on one line.
+    from pypdf import PdfReader
+
+    from apps.tenancy import storage
+
+    raw = PdfReader(io.BytesIO(storage.read(a.final_pdf))).pages[owner_page].extract_text()
+    line = next(x for x in raw.splitlines() if "Sq Footage" in x)
+    assert "1,850" in line and "# Bedrooms" in line and "Sleeps" in line, raw
     sign_page = texts[owner_page + 1]
     assert sign_page.startswith("THEPARTIESHERETO")
     for name in ("NAME:AlexSample,SuccessorCo-Trustee", "NAME:PatSample",

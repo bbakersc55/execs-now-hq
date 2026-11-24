@@ -1,9 +1,10 @@
 """Exhibit A's quantities, from the number of guests the Unit sleeps (owner,
 2026-11-24). S is Sleeps, the owner's answer on the owner's page.
 
-These rules are placeholders until SkyRun's GM confirms them: each is one line
-of `RULES` below. Every other line of Exhibit A stays as written, including
-the "per bedroom", "per bathroom" and "per bed" lines.
+Each rule is one line of `RULES` below. The place settings rule was decided on
+2026-11-24 (later): 1.5 × Sleeps up to 10, 2 × Sleeps from 11. Every other line
+of Exhibit A stays as written, including the "per bedroom", "per bathroom" and
+"per bed" lines.
 
 Changing a rule changes the words of every agreement not yet signed. An
 agreement whose owners signed under the old rule can't be countersigned
@@ -14,10 +15,13 @@ from __future__ import annotations
 
 import math
 
-#: quantity: (times S, rounded up to a multiple of, never fewer than)
+#: quantity: (times S, by Sleeps: ((up to this Sleeps, times), ...; None = any more),
+#:            rounded up to a multiple of, never fewer than)
 RULES = {
-    "place_settings": (1.5, 4, 8),    # P: 1.5 × S, up to a multiple of 4, at least 8
-    "place_mats": (1, 2, 4),          # M: S, up to an even number, at least 4
+    # P: 1.5 × S up to Sleeps 10, 2 × S from 11; up to a multiple of 4; at least 8
+    "place_settings": (((10, 1.5), (None, 2)), 4, 8),
+    # M: S, up to an even number; at least 4
+    "place_mats": (((None, 1),), 2, 4),
 }
 #: Dinnerware: 5 × P pieces. Teaspoons: P + 4.
 PIECES_PER_SETTING = 5
@@ -32,7 +36,8 @@ KEYS = tuple(COMPARE)
 
 
 def _rule(name: str, sleeps: int) -> int:
-    times, step, least = RULES[name]
+    bands, step, least = RULES[name]
+    times = next(t for up_to, t in bands if up_to is None or sleeps <= up_to)
     return max(least, math.ceil(times * sleeps / step) * step)
 
 

@@ -94,8 +94,8 @@ accounts (Bryan has two: FF and SkyRun FCC).
    defaults, the signature constraint widened to one per owner, and a data
    step that only fills `all_signed_at` on agreements already signed; nothing
    is dropped). Then `ensure_schedules` (new hourly `agreements.tick`).
-   Before real owners sign: SkyRun's GM confirms Exhibit A's rules
-   (`apps/agreements/exhibit_a.py`, one line each; placeholders until then).
+   Exhibit A's rules (`apps/agreements/exhibit_a.py`, one line each) were
+   decided 2026-11-24: place settings 1.5 × Sleeps up to 10, 2 × from 11.
 2. From the release, **intake's Send to Track is in test mode** (missing
    setting = on) until the practice owner or the Client owner turns it off in
    Form settings (nobody else can, and not while acting as someone).

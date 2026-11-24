@@ -175,11 +175,12 @@ replaces `request.user`. The message comes from one place,
   Information" (as before; MAILING ADDRESS, ALTERNATE PHONE (optional)); the
   emergency block's sentence stays, with MAILING ADDRESS and PHONE. The
   emergency contact is required only with one owner.
-- **Exhibit A from Sleeps** (A12 to A15): place settings P = 1.5 × Sleeps,
-  rounded up to a multiple of 4, at least 8; dinnerware "P place settings (5 ×
-  P pieces)"; flatware "P place settings"; teaspoons P + 4; the four glasses P
-  each; place mats a set of M, Sleeps rounded up to even, at least 4. The rules
-  are placeholders until SkyRun's GM confirms them, one line each in
+- **Exhibit A from Sleeps** (A12 to A15): place settings P = 1.5 × Sleeps
+  when Sleeps is 10 or fewer, 2 × Sleeps when it is 11 or more (decided
+  2026-11-24, later), rounded up to a multiple of 4, at least 8 (Sleeps 10:
+  16; 11: 24; 16: 32); dinnerware "P place settings (5 × P pieces)"; flatware
+  "P place settings"; teaspoons P + 4; the four glasses P each; place mats a
+  set of M, Sleeps rounded up to even, at least 4. One line each in
   `apps/agreements/exhibit_a.py`. Before Sleeps is answered each number reads
   "[from Sleeps]". They replace C38 and C41. A16 is the new "Other Features"
   paragraph. Each owner signature keeps the numbers it was signed with.
