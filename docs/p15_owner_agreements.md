@@ -294,7 +294,9 @@ Templates: `templates/agreements/agreement_pdf.html`, `record_pdf.html`.
   trace when off) and `tests/test_agreements_ai_sweep.py` (every MCP tool and
   prompt, the in-app AI features that take company data, and a check of every
   module that calls Claude: no owner's name, email, address, the agreement's
-  title or a link reaches any of them).
+  title or a link reaches any of them). `frontend/src/screens/IntakeSettings.test.tsx`
+  (test mode's latest change and who may change it; the links to People and
+  permissions from Form settings and the intake list).
 - Browser walks (screenshots and a sample signed PDF in
   `~/enhq-walks/owner-agreements/`): staff send at phone width; owner signs and
   chooses Now, the intake opens prefilled; Michael records his authorization;
