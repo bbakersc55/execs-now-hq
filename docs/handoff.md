@@ -100,6 +100,9 @@ accounts (Bryan has two: FF and SkyRun FCC).
 - New tests: `tests/test_agreements_fixes.py`, `tests/test_agreements_ai_sweep.py`
   (no leak found), and more in `frontend/src/screens/Agreements.test.tsx`.
 - Migration `agreements 0003` (two columns with defaults).
+- Then (Bryan, 2026-11-24, later): intake's Send to Track and "Try the rest
+  again", real and test, refused while acting as someone; the fingerprint
+  sentences use the form's brand name, as the signing words do.
 
 ### Not proven
 

@@ -355,8 +355,18 @@ def test_mode(form_settings) -> bool:
 
 # ------------------------------------------------------------ sending
 
+def not_while_acting():
+    """Owner, 2026-11-24: Send to Track and "Try the rest again", real or test,
+    never while acting as someone."""
+    from apps.tenancy.context import acting_refusal
+
+    if (message := acting_refusal()):
+        raise Refused(message, 403)
+
+
 def start_send(submission, actor):
     """Queue a send (or "Try the rest again"). The worker does the writing."""
+    not_while_acting()
     if submission.locked:
         raise Refused("This intake was already sent to Track.", 409)
     if submission.status not in (S.SUBMITTED, S.FAILED, S.IN_PROGRESS, S.DRAFT):

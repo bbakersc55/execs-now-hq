@@ -31,21 +31,23 @@ from .models import AgreementSignature
 
 SCRIPT_FONT = (texts.HERE.parent.parent / "esign" / "fonts" / "DancingScript-Medium.ttf")
 
-#: Under the two fingerprints on the signing record (owner, 2026-11-24, as written).
+#: Under the two fingerprints on the signing record (owner, 2026-11-24, as written),
+#: with the form's brand name for {brand} (owner, 2026-11-24, later), so they always match
+#: the signing words; on SkyRun's form it is "SkyRun Park City".
 FINGERPRINTS = (
     "Words signed is the fingerprint of the full text of the agreement as the Owner saw and "
     "signed it: every section, the terms set for this Owner, the property address and the "
     "Owner's answers. In that text the agreement date read 'on the date of Manager's "
     "signature below', and it contains no signatures.",
     "Agreement pages is the fingerprint of the finished pages above, which add the agreement "
-    "date and both signatures. The agreement date was filled in when SkyRun Park City signed.",
-    "SkyRun Park City keeps the exact text the Owner signed and can provide it on request.",
+    "date and both signatures. The agreement date was filled in when {brand} signed.",
+    "{brand} keeps the exact text the Owner signed and can provide it on request.",
 )
 #: The owner's copy, before SkyRun signs: the second sentence would not be true yet.
 FINGERPRINTS_AWAITING = (
     FINGERPRINTS[0],
-    "Agreement pages is the fingerprint of the pages above, signed by the Owner. SkyRun Park "
-    "City has not signed yet; its signature and the agreement date are added when it does.",
+    "Agreement pages is the fingerprint of the pages above, signed by the Owner. {brand} "
+    "has not signed yet; its signature and the agreement date are added when it does.",
     FINGERPRINTS[2],
 )
 
@@ -139,7 +141,7 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
             ("Template", f"{tpl.version}; template SHA-256 {tpl.sha256}"),
             ("Sent", _when(agreement.sent_at, company)),
             ("Opened", _when(agreement.opened_at, company))]
-    from .services import authority_by
+    from .services import _brand, authority_by
     signers = []
     if owner_sig:
         signers.append({
@@ -182,7 +184,8 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
     html = render_to_string("agreements/record_pdf.html", {
         "rows": rows, "signers": signers, "pages_sha256": pages_sha256, "final": final,
         "words_sha256": owner_sig.text_sha256 if owner_sig else "",
-        "explain": FINGERPRINTS if final else FINGERPRINTS_AWAITING,
+        "explain": [sentence.replace("{brand}", _brand(company))
+                    for sentence in (FINGERPRINTS if final else FINGERPRINTS_AWAITING)],
         "script_font": SCRIPT_FONT.as_uri()})
     return _write(html)
 

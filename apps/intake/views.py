@@ -517,6 +517,7 @@ class DiscardView(Base):
 
 class SendView(Base):
     def post(self, request, submission_id):
+        services.not_while_acting()
         sub = _submission(request, submission_id)
         run = services.start_send(sub, request.user)
         return Response({"run": _run(run)}, status=202)

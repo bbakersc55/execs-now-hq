@@ -96,6 +96,24 @@ def get_acting() -> tuple | None:
     return _acting.get()
 
 
+#: Owner, 2026-11-24: what is refused while acting as someone says so.
+ACTING = "You're acting as {name}. Stop acting as them to do this."
+
+
+def acting_refusal() -> str:
+    """The refusal for something never done while acting as someone (owner
+    agreements' signing and settings, intake's Send to Track), naming the
+    person acted as; "" when not acting."""
+    acting = get_acting()
+    if acting is None:
+        return ""
+    from django.contrib.auth import get_user_model
+
+    person = get_user_model().objects.filter(pk=acting[1]).first()
+    name = ((person.full_name or "").strip() or person.email) if person else "someone"
+    return ACTING.format(name=name)
+
+
 @contextlib.contextmanager
 def acting_context(acting_user_id, acted_as_user_id):
     token = _acting.set((acting_user_id, acted_as_user_id))

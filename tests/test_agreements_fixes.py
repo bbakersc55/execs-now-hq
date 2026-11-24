@@ -121,6 +121,42 @@ def test_while_acting_nobody_signs_personally_applies_or_withdraws(aw):
     assert CountersignAuthority.all_objects.get(company=aw["company"]).ended_at is None
 
 
+def test_while_acting_send_to_track_and_try_the_rest_again_are_refused(world, fake):
+    """Owner, 2026-11-24 (later): real sends, test sends and "Try the rest
+    again" are refused while acting as someone."""
+    from apps.intake.models import SendRun, SubmissionEvent
+
+    from .test_intake_flow import ready, send
+
+    world["_fake"] = fake
+    sub = ready(world)
+    url = f"/api/intake/submissions/{sub.pk}/send"
+    c = acting(world, "ff", "fcc")                     # the practice owner as the Client owner
+    events = SubmissionEvent.all_objects.filter(submission=sub).count()
+    # A real send.
+    refused_as(c.post(url), world, "fcc")
+    # A test send.
+    form = world["form"]
+    form.settings = {**form.settings, "test_mode": True}
+    form.save()
+    refused_as(c.post(url), world, "fcc")
+    assert not SendRun.all_objects.filter(submission=sub).exists()
+    assert SubmissionEvent.all_objects.filter(submission=sub).count() == events
+    form.settings = {**form.settings, "test_mode": False}
+    form.save()
+    # Try the rest again, after a step failed.
+    fake.fail_once[("POST", "/pms/units/{n}/security-codes")] = "refuse"
+    first = send(world, sub)                           # not acting: it goes through
+    assert first.state == SendRun.State.FAILED
+    refused_as(c.post(url), world, "fcc")
+    assert SendRun.all_objects.filter(submission=sub).count() == 1
+    sub.refresh_from_db()
+    assert sub.status == "failed" and not sub.locked
+    # Viewing still works while acting; and once not acting, the rest goes through.
+    assert c.get(f"/api/intake/submissions/{sub.pk}/run").status_code == 200
+    assert send(world, sub).state == SendRun.State.SUCCEEDED
+
+
 # ------------------------------------------------------------ 2. names from the account
 
 def test_the_record_names_the_account_never_the_template(aw):
@@ -171,13 +207,20 @@ def test_signing_personally_names_the_account(aw):
 # ------------------------------------------------------------ 3. the fingerprints
 
 def test_the_fingerprints_are_explained_and_the_signed_text_matches(aw):
+    # The sentences name the form's brand, as the signing words do (owner,
+    # 2026-11-24, later): a brand unlike the company's name shows which is used.
+    form = IntakeForm.all_objects.get(company=aw["company"])
+    form.brand_name = "Powder Day Rentals"
+    form.save()
+    assert aw["company"].name != "Powder Day Rentals"
     a = create(aw)
     owner_signs(a)
     sig = AgreementSignature.all_objects.get(agreement=a, role="owner")
     kept = sig.signed_text
     assert kept and "on the date of Manager’s signature below" in kept
+    assert "ask Powder Day Rentals for a paper copy" in sig.consent_text
     owner_copy = pdf_text(a.owner_pdf)
-    assert flat("SkyRun Park City has not signed yet") in owner_copy
+    assert flat("signed by the Owner. Powder Day Rentals has not signed yet") in owner_copy
     countersign(aw, a, "michael", method="typed", typed="Michael LeClerc")
     a.refresh_from_db()
     final = pdf_text(a.final_pdf)
@@ -187,10 +230,16 @@ def test_the_fingerprints_are_explained_and_the_signed_text_matches(aw):
         "the Owner's answers. In that text the agreement date read 'on the date of Manager's "
         "signature below', and it contains no signatures.",
         "Agreement pages is the fingerprint of the finished pages above, which add the "
-        "agreement date and both signatures. The agreement date was filled in when SkyRun Park "
-        "City signed.",
-        "SkyRun Park City keeps the exact text the Owner signed and can provide it on request."):
+        "agreement date and both signatures. The agreement date was filled in when Powder Day "
+        "Rentals signed.",
+        "Powder Day Rentals keeps the exact text the Owner signed and can provide it on "
+        "request."):
         assert flat(sentence) in final, sentence[:40]
+    for literal in ("when SkyRun Park City signed", "SkyRun Park City keeps the exact text",
+                    "the Owner. SkyRun Park City has not signed yet"):
+        assert flat(literal) not in final and flat(literal) not in owner_copy
+    manager = AgreementSignature.all_objects.get(agreement=a, role="manager")
+    assert "Powder Day Rentals" in manager.consent_text      # the words signed with
     printed = re.search(r"Wordssigned\(SHA-256\)([0-9a-f]{64})", final).group(1)
     # Jackie is ticked for signed PDFs: the download, unchanged since signing.
     r = as_(aw["jackie"]).get(f"/api/agreements/{a.pk}/signed-text")

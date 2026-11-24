@@ -42,22 +42,13 @@ class Refused(Exception):
         self.status = status
 
 
-ACTING = "You're acting as {name}. Stop acting as them to do this."
-
-
 def not_while_acting():
     """Owner, 2026-11-24: while someone acts as another person, nothing that
     signs, authorizes or changes anything here goes through. Viewing does."""
-    from django.contrib.auth import get_user_model
+    from apps.tenancy.context import acting_refusal
 
-    from apps.tenancy.context import get_acting
-
-    acting = get_acting()
-    if acting is None:
-        return
-    person = get_user_model().objects.filter(pk=acting[1]).first()
-    name = ((person.full_name or "").strip() or person.email) if person else "someone"
-    raise Refused(ACTING.format(name=name), 403)
+    if (message := acting_refusal()):
+        raise Refused(message, 403)
 
 
 # ------------------------------------------------------------ the program

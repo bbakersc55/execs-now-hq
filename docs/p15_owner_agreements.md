@@ -79,10 +79,12 @@ permissions, and changing intake's test mode. The message: "You're acting as
 [name]. Stop acting as them to do this." Viewing still works. The check is in
 the views and again in the services (`services.not_while_acting`).
 
-Not changed: intake's own Send to Track while acting records the person acted
-as in the intake's history (its `SubmissionEvent` and `SendRun.started_by` take
-`request.user`, which acting replaces); the real person is only in the act-as
-session's own audit events (`act_as.started`, `act_as.stopped`).
+Intake's Send to Track and "Try the rest again", real sends and test sends,
+are refused the same way while acting (owner, 2026-11-24, later; in the view
+and in `intake.services.start_send`). Before that, a send while acting would
+have recorded the person acted as in the intake's history, since acting
+replaces `request.user`. The message comes from one place,
+`apps.tenancy.context.acting_refusal`.
 
 ## The agreement's words
 
@@ -151,7 +153,11 @@ authorization's own words). The owner's copy says "Awaiting SkyRun Park City's
 signature" on every page. Terms are highlighted only in staff's preview.
 
 **The two fingerprints** (owner, 2026-11-24) sit together under "Fingerprints"
-on the record, with these sentences under them, as written:
+on the record, with these sentences under them, as written. Where they say
+"SkyRun Park City" they use the intake form's brand name (owner, 2026-11-24,
+later), the same name the signing words use, so the two always match; on
+SkyRun's form it is "SkyRun Park City". The record's other mentions (its
+opening line, "Manager, SkyRun Park City", the awaiting stamp) are unchanged.
 
 > Words signed is the fingerprint of the full text of the agreement as the Owner
 > saw and signed it: every section, the terms set for this Owner, the property
