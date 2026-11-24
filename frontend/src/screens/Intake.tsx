@@ -7,7 +7,7 @@ import { Banner, Card, Empty, Field, Pill, when } from "../components/ui";
 import type { Me } from "../lib/api";
 import { intake, STATUS_KIND } from "../lib/intake";
 
-export function IntakeScreen({ me }: { me: Me }) {
+export function IntakeScreen({ me: _me }: { me: Me }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { data: companies } = useQuery({ queryKey: ["intake-companies"],
@@ -89,8 +89,10 @@ export function IntakeScreen({ me }: { me: Me }) {
           </table>
         )}
       </Card>
-      {me.role === "FF" && <p className="muted small">Who sees intakes: you, and everyone ticked
-        for Owner intake in the company's Owner agreement settings, People and permissions.</p>}
+      <p className="muted small">Who sees intakes: the practice owner, and everyone ticked for
+        Owner intake on {data?.may_edit_access && company
+          ? <Link to={`/permissions/${company}`}>People and permissions</Link>
+          : "People and permissions"}.</p>
     </div>
   );
 }

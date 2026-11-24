@@ -44,7 +44,9 @@ class Base(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def handle_exception(self, exc):
-        if isinstance(exc, services.Refused):
+        from apps.agreements.services import Refused as AgreementsRefused
+
+        if isinstance(exc, (services.Refused, AgreementsRefused)):
             return Response({"detail": str(exc)}, status=exc.status)
         return super().handle_exception(exc)
 
@@ -75,7 +77,9 @@ class CompaniesView(Base):
         return Response({"companies": rows})
 
 
-def _form_payload(form, lists, status) -> dict:
+def _form_payload(form, lists, status, membership=None) -> dict:
+    from apps.agreements import access as people
+
     settings = services.settings_of(form, lists)
     domain_live = not form.domain or form.domain.lower() in hosts.live_hosts()
     return {
@@ -93,7 +97,21 @@ def _form_payload(form, lists, status) -> dict:
         "setting_keys": list(defaults.SETTING_KEYS),
         "builtin_fields": schema.BUILTIN_FIELDS,
         "checklist_when": list(defaults.CHECKLIST_WHEN),
+        # Owner, 2026-11-24: test mode, who may change it, and its last change.
+        "test_mode": services.test_mode(settings),
+        "may_change_test_mode": people.may_edit_access(membership, form.company),
+        "may_edit_access": people.may_edit_access(membership, form.company),
+        "test_mode_change": _test_mode_change(form),
     }
+
+
+def _test_mode_change(form) -> dict | None:
+    event = (AuditEvent.all_objects.filter(verb="intake.test_mode_changed", target_id=form.pk)
+             .select_related("actor").order_by("-created_at").first())
+    if event is None:
+        return None
+    return {"to": bool((event.payload or {}).get("to")), "from": (event.payload or {}).get("from"),
+            "by": _user_name(event.actor), "at": event.created_at.isoformat()}
 
 
 _DOMAIN = re.compile(r"^(?=.{4,200}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
@@ -105,7 +123,8 @@ class FormView(Base):
         company = access.company_or_404(request, company_id)
         form = services.form_for(company)
         lists, status = tracklists.lists_for(company)
-        return Response(_form_payload(form, lists, status))
+        return Response(_form_payload(form, lists, status,
+                                      getattr(request, "membership", None)))
 
     def put(self, request, company_id):
         company = access.company_or_404(request, company_id)
@@ -144,7 +163,9 @@ class FormView(Base):
         if "settings" in data and isinstance(data["settings"], dict):
             current = dict(form.settings or {})
             for key, value in data["settings"].items():
-                if key in defaults.SETTING_KEYS:
+                # Test mode has its own door (`TestModeView`): who may change
+                # it is narrower, and each change is recorded on its own.
+                if key in defaults.SETTING_KEYS and key != "test_mode":
                     current[key] = value
             form.settings = current
         form.save()
@@ -153,7 +174,8 @@ class FormView(Base):
                                       verb="intake.form_changed", target_type="intake_form",
                                       target_id=form.pk, payload={"keys": sorted(data.keys())})
         lists, status = tracklists.lists_for(company)
-        return Response(_form_payload(form, lists, status))
+        return Response(_form_payload(form, lists, status,
+                                      getattr(request, "membership", None)))
 
 
 class FormImageView(Base):
@@ -184,6 +206,37 @@ class FormImageView(Base):
         return Response({"ok": True, which: f"/api/forms/{form.slug}/{which}"})
 
 
+class TestModeView(Base):
+    """Owner, 2026-11-24: only the people who may change the permissions screen
+    (the practice owner and the Client owner) turn test mode on or off; each
+    change is its own audit event, with who, when, from and to. Never while
+    acting as someone."""
+
+    def post(self, request, company_id):
+        from apps.agreements import access as people
+        from apps.agreements import services as agreements
+
+        agreements.not_while_acting()
+        company = access.company_or_404(request, company_id)
+        membership = getattr(request, "membership", None)
+        if not people.may_edit_access(membership, company):
+            raise services.Refused("Only the practice owner and the Client owner can change "
+                                   "test mode.", 403)
+        form = services.form_for(company)
+        lists, status = tracklists.lists_for(company)
+        before = services.test_mode(services.settings_of(form, lists))
+        on = request.data.get("on") is True
+        if on != before:
+            form.settings = {**(form.settings or {}), "test_mode": on}
+            form.save(update_fields=["settings", "updated_at"])
+            AuditEvent.all_objects.create(tenant_id=form.tenant_id, actor=request.user,
+                                          verb="intake.test_mode_changed",
+                                          target_type="intake_form", target_id=form.pk,
+                                          payload={"from": before, "to": on,
+                                                   "company_id": str(company.pk)})
+        return Response(_form_payload(form, lists, status, membership))
+
+
 class RefreshView(Base):
     def post(self, request, company_id):
         company = access.company_or_404(request, company_id)
@@ -192,7 +245,8 @@ class RefreshView(Base):
         if lists.get("bed_types"):
             form.settings = services.settings_of(form, lists)
             form.save(update_fields=["settings"])
-        return Response(_form_payload(form, lists, status))
+        return Response(_form_payload(form, lists, status,
+                                      getattr(request, "membership", None)))
 
 
 def _row(sub) -> dict:
@@ -216,8 +270,12 @@ class SubmissionsView(Base):
         subs = Submission.all_objects.filter(company=company).order_by("-created_at")[:500]
         form = services.form_for(company)
         lists, _ = tracklists.stored(company)
+        from apps.agreements import access as people
+
         return Response({"submissions": [_row(s) for s in subs],
-                         "test_mode": services.test_mode(services.settings_of(form, lists))})
+                         "test_mode": services.test_mode(services.settings_of(form, lists)),
+                         "may_edit_access": people.may_edit_access(
+                             getattr(request, "membership", None), company)})
 
     def post(self, request, company_id):
         company = access.company_or_404(request, company_id)

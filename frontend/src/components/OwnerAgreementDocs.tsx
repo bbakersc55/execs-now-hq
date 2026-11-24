@@ -18,8 +18,11 @@ export function OwnerAgreementDocs({ companyId }: { companyId: string | null }) 
             <span><strong>{d.title}</strong> · {d.owner}
               <span className="small muted"> · {d.property}{d.date ? ` · dated ${d.date}` : ""}
               </span></span>
-            <a className="btn small ghost" href={d.pdf} target="_blank" rel="noreferrer">
-              Signed copy</a>
+            <span className="row" style={{ gap: ".35rem" }}>
+              <a className="btn small ghost" href={d.pdf} target="_blank" rel="noreferrer">
+                Signed copy</a>
+              {d.text && <a className="btn small ghost" href={d.text}>Words signed (text)</a>}
+            </span>
           </li>
         ))}
       </ul>

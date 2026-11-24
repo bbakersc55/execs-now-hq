@@ -99,6 +99,7 @@ import { Tasks } from "./screens/Tasks";
 import { AgreementDetail } from "./screens/AgreementDetail";
 import { AgreementNew, AgreementsScreen } from "./screens/Agreements";
 import { AgreementAuthority, AgreementSettings } from "./screens/AgreementSettings";
+import { PeoplePermissions } from "./screens/PeoplePermissions";
 import { IntakeScreen } from "./screens/Intake";
 import { IntakeReview } from "./screens/IntakeReview";
 import { IntakeSettings } from "./screens/IntakeSettings";
@@ -556,6 +557,8 @@ export function App() {
               element={<AgreementAuthority me={me} />} />}
             {me.has_agreements && <Route path="/agreements/:id"
               element={<AgreementDetail me={me} />} />}
+            {(me.role === "FF" || me.role === "FCC") && <Route path="/permissions/:companyId"
+              element={<PeoplePermissions me={me} />} />}
             {me.has_intake && <Route path="/intake" element={<IntakeScreen me={me} />} />}
             {me.has_intake && <Route path="/intake/:id" element={<IntakeReview me={me} />} />}
             {me.has_intake && <Route path="/intake/settings/:companyId"

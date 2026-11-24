@@ -44,6 +44,18 @@ export function IntakeSettings({ me: _me }: { me: Me }) {
       setProblem((e as Error).message);
     }
   };
+  const setTestMode = async (on: boolean) => {
+    setProblem("");
+    try {
+      const out = await intake.setTestMode(companyId, on);
+      qc.setQueryData(["intake-form", companyId], out);
+      setDraft(out);
+      setSaid("Saved.");
+      window.setTimeout(() => setSaid(""), 2500);
+    } catch (e) {
+      setProblem((e as Error).message);
+    }
+  };
   const amenities = (draft.lists.amenities ?? []) as { id: number; name: string; group: string }[];
   const groups = [...new Set(amenities.map((a) => a.group))].sort();
   const beds = (draft.lists.bed_types ?? []) as { id: number; name: string; isActive: boolean }[];
@@ -120,21 +132,29 @@ export function IntakeSettings({ me: _me }: { me: Me }) {
       </Card>
 
       <Card title="Test mode">
-        {s.test_mode !== false && <Banner kind="warn"><strong>Test mode is on.</strong> Send to
-          Track runs every check and shows each step as "would send". It writes nothing to Track,
+        {draft.test_mode && <Banner kind="warn"><strong>Test mode is on.</strong> Send to Track
+          runs every check and shows each step as "would send". It writes nothing to Track,
           makes no tasks, holds no dates, and leaves the intake open, marked as a test.</Banner>}
-        <label className="intake-inline"><input type="radio" checked={s.test_mode !== false}
-          onChange={() => void save({ settings: { test_mode: true } })} /> On: check everything,
-          write nothing</label>
-        <label className="intake-inline"><input type="radio" checked={s.test_mode === false}
-          onChange={() => {
-            if (window.confirm("Turn test mode off? Send to Track will write to Track.")) {
-              void save({ settings: { test_mode: false } });
-            }
-          }} /> Off: Send to Track writes to Track</label>
+        <fieldset disabled={!draft.may_change_test_mode} style={{ border: 0, padding: 0 }}>
+          <label className="intake-inline"><input type="radio" checked={draft.test_mode}
+            onChange={() => void setTestMode(true)} /> On: check everything, write
+            nothing</label>
+          <label className="intake-inline"><input type="radio" checked={!draft.test_mode}
+            onChange={() => {
+              if (window.confirm("Turn test mode off? Send to Track will write to Track.")) {
+                void setTestMode(false);
+              }
+            }} /> Off: Send to Track writes to Track</label>
+        </fieldset>
+        {draft.test_mode_change && <p className="small" data-testid="test-mode-change">
+          Test mode turned {draft.test_mode_change.to ? "on" : "off"} by
+          {" "}{draft.test_mode_change.by} on {when(draft.test_mode_change.at)}.</p>}
+        {!draft.may_change_test_mode && <p className="small muted">Only the practice owner and
+          the Client owner can turn test mode on or off.</p>}
         <p className="small muted">Who may review and send intakes is set in
-          {" "}<Link to={`/agreements/settings/${companyId}`}>People and permissions</Link>
-          {" "}(the practice owner and the Client owner change it).</p>
+          {" "}{draft.may_edit_access
+            ? <Link to={`/permissions/${companyId}`}>People and permissions</Link>
+            : "People and permissions"} (the practice owner and the Client owner change it).</p>
       </Card>
 
       <Card title="What owners are offered">

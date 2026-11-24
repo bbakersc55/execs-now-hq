@@ -7,38 +7,21 @@ import { Link, useParams } from "react-router-dom";
 import { SignatureCapture, hasSignature } from "../components/SignatureCapture";
 import { Banner, Card, when } from "../components/ui";
 import type { CapturedSignature, Me } from "../lib/api";
-import { agreements, type AccessRow, type Program } from "../lib/agreements";
+import { agreements, type Program } from "../lib/agreements";
 import { Labeled } from "./Agreements";
 
 export function AgreementSettings({ me: _me }: { me: Me }) {
   const { companyId = "" } = useParams();
-  const qc = useQueryClient();
   const page = useQuery({ queryKey: ["agreements", companyId],
                           queryFn: () => agreements.company(companyId) });
   const canEdit = !!page.data?.may_edit_access;
-  const access = useQuery({ queryKey: ["agreement-access", companyId],
-    queryFn: () => agreements.access(companyId), enabled: canEdit });
-  const [rows, setRows] = useState<AccessRow[] | null>(null);
   const [program, setProgram] = useState<Program | null>(null);
   const [said, setSaid] = useState("");
   const [problem, setProblem] = useState("");
-  useEffect(() => { if (access.data) setRows(access.data.rows); }, [access.data]);
   useEffect(() => { if (page.data) setProgram(page.data.program); }, [page.data]);
   if (page.error) return <div className="page"><Banner kind="warn">
     {(page.error as Error).message}</Banner></div>;
   if (!page.data || !program) return <div className="page"><p className="muted">Loading…</p></div>;
-  const run = async (fn: () => Promise<unknown>, message: string) => {
-    setProblem("");
-    try {
-      await fn();
-      setSaid(message);
-      void qc.invalidateQueries({ queryKey: ["agreements", companyId] });
-    } catch (e) {
-      setProblem((e as Error).message);
-    }
-  };
-  const tick = (i: number, flag: "agreements" | "signed_pdfs" | "intake", on: boolean) =>
-    setRows((rows ?? []).map((r, j) => (j === i ? { ...r, [flag]: on } : r)));
   return (
     <div className="page agreements">
       <p className="muted small" style={{ margin: 0 }}>
@@ -47,42 +30,10 @@ export function AgreementSettings({ me: _me }: { me: Me }) {
         <span className="small" aria-live="polite">{said}</span></div>
       {problem && <Banner kind="warn">{problem}</Banner>}
 
-      {canEdit && rows && (
+      {canEdit && (
         <Card title="People and permissions">
-          <p className="muted small" style={{ marginTop: 0 }}>Everyone active at
-            {" "}{page.data.company.name} in ENHQ. A new person starts with nothing ticked. The
-            practice owner always has agreements and intake. Only the practice owner and the
-            Client owner change this.</p>
-          <div className="table-scroll">
-            <table className="table access-table">
-              <thead><tr><th>Person</th><th>Owner agreements<span className="small muted">
-                <br />create, send, see</span></th><th>Receives signed PDFs</th>
-                <th>Owner intake<span className="small muted"><br />review, send to Track,
-                  notices</span></th></tr></thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.user_id}>
-                    <td><strong>{r.name}</strong><br /><span className="small muted">{r.role}
-                      </span></td>
-                    <td><input type="checkbox" aria-label={`${r.name}: owner agreements`}
-                      checked={r.agreements} disabled={r.practice_owner}
-                      onChange={(e) => tick(i, "agreements", e.target.checked)} /></td>
-                    <td><input type="checkbox" aria-label={`${r.name}: receives signed PDFs`}
-                      checked={r.signed_pdfs}
-                      onChange={(e) => tick(i, "signed_pdfs", e.target.checked)} /></td>
-                    <td><input type="checkbox" aria-label={`${r.name}: owner intake`}
-                      checked={r.intake} disabled={r.practice_owner}
-                      onChange={(e) => tick(i, "intake", e.target.checked)} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button type="button" className="primary" onClick={() => void run(async () => {
-            const out = await agreements.saveAccess(companyId, rows);
-            setRows(out.rows);
-            void qc.invalidateQueries({ queryKey: ["agreement-access", companyId] });
-          }, "Permissions saved.")}>Save permissions</button>
+          <p style={{ margin: 0 }}>Who may send agreements, who receives signed PDFs, and who
+            runs intakes: <Link to={`/permissions/${companyId}`}>People and permissions</Link>.</p>
         </Card>
       )}
 

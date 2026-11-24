@@ -165,6 +165,11 @@ class CountersignAuthority(TenantScopedModel):
     company = models.ForeignKey("crm.Company", on_delete=models.CASCADE, related_name="+")
     principal = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                   related_name="+")
+    #: The full name of the signed-in account that recorded it, as it was that
+    #: day (owner, 2026-11-24): the record prints this, never the template's.
+    recorded_by_name = models.CharField(max_length=200, blank=True, default="",
+                                        db_default="")
+    #: The name in the agreement's signature block ("Michael LeClerc").
     principal_name = models.CharField(max_length=200)
     principal_title = models.CharField(max_length=120)
     method = models.CharField(max_length=6, choices=Method.choices)
@@ -213,6 +218,9 @@ class AgreementSignature(TenantScopedModel):
     #: The SHA-256 of the agreement's words as the owner signed them (the
     #: date line left out: it is filled in on countersigning).
     text_sha256 = models.CharField(max_length=64)
+    #: The owner's: those words, exactly, as one text (owner, 2026-11-24). Kept
+    #: unchanged; its SHA-256 is `text_sha256` and the record's "Words signed".
+    signed_text = models.TextField(blank=True, default="", db_default="")
     applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
     applied_by_name = models.CharField(max_length=200, blank=True, default="")

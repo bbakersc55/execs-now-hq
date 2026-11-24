@@ -207,7 +207,7 @@ def test_walk_new_owner_signs_now_then_jackie_countersigns_under_michaels_author
     # Jackie countersigns under it, on a phone.
     context, page = staff(browser, live_server, w["manager"], PHONE)
     page.goto(f"{live_server.url}/agreements/{a.pk}")
-    button = page.get_by_role("button", name="Apply Michael LeClerc's signature")
+    button = page.get_by_role("button", name="Apply SkyRun's signature")
     expect(button).to_be_disabled()
     page.get_by_label("I agree").check()
     shot(page, "11-jackie-countersign-phone")

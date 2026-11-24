@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Me } from "../lib/api";
 import type { AgreementDetail as Detail, CompanyPage } from "../lib/agreements";
 import { mockApi, renderRoute } from "../test/render";
+import { NAV } from "../App";
 import { AgreementDetail } from "./AgreementDetail";
-import { AgreementsScreen } from "./Agreements";
+import { AgreementNew, AgreementsScreen } from "./Agreements";
 import { AgreementSettings } from "./AgreementSettings";
+import { PeoplePermissions } from "./PeoplePermissions";
 
 const ME = { role: "ECC", full_name: "Jackie Doe" } as unknown as Me;
 const CO = "11111111-1111-1111-1111-111111111111";
@@ -35,6 +37,7 @@ function company(over: Partial<CompanyPage> = {}): CompanyPage {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+let DETAIL: Detail;
 
 describe("owner agreements, staff side", () => {
   it("shows one status line per owner", async () => {
@@ -51,17 +54,17 @@ describe("owner agreements, staff side", () => {
   });
 
   it("saves the permission ticks for everyone listed", async () => {
+    const page = { company: { id: CO, name: "Mountain Stays" },
+      columns: { agreements: true, signed_pdfs: true, intake: true },
+      rows: [{ user_id: "u1", name: "Sandra Roe", role: "Client team member",
+               practice_owner: false, agreements: false, signed_pdfs: false, intake: false }] };
     const api = mockApi({
-      [`/api/agreements/companies/${CO}/access`]: (body: unknown) => ({ body: body ?? {
-        rows: [{ user_id: "u1", name: "Sandra Roe", role: "Client team member",
-                 practice_owner: false, agreements: false, signed_pdfs: false,
-                 intake: false }] } }),
-      [`/api/agreements/companies/${CO}/authority`]: { people: [], authority: null },
-      [`/api/agreements/companies/${CO}`]: company({ may_edit_access: true }),
+      [`/api/agreements/companies/${CO}/access`]: (body: unknown) => ({ body: body
+        ? { ...page, rows: (body as { rows: unknown[] }).rows } : page }),
     });
     vi.stubGlobal("fetch", api);
-    renderRoute(<AgreementSettings me={ME} />, { path: "/s/:companyId", route: `/s/${CO}` });
-    fireEvent.click(await screen.findByLabelText("Sandra Roe: owner agreements"));
+    renderRoute(<PeoplePermissions me={ME} />, { path: "/p/:companyId", route: `/p/${CO}` });
+    fireEvent.click(await screen.findByLabelText("Sandra Roe: Owner agreements"));
     fireEvent.click(screen.getByRole("button", { name: "Save permissions" }));
     await waitFor(() => {
       const put = api.calls.find((c) => c.method === "PUT");
@@ -81,28 +84,96 @@ describe("owner agreements, staff side", () => {
       details: {}, address_changed: true, staff_address: "400 Lift Road",
       owner_address: "402 Lift Road", editable: false, may_work: true, may_countersign: true,
       countersign_as: "authorized", signer_name: "Michael LeClerc",
-      authority: { id: "a1", principal: "Michael LeClerc", recorded_at: "", method: "typed",
-                   recorded_on: "November 23, 2026", people: [], typed: "Michael LeClerc",
-                   wording: "" },
+      signer_block: "Michael LeClerc, President", may_download_text: false,
+      countersign_words: "I am applying SkyRun Park City's signature, the one Dana Fictional "
+        + "adopted for the block that reads “Michael LeClerc, President”, to this agreement, "
+        + "under the authorization Dana Fictional recorded on November 23, 2026.",
+      authority: { id: "a1", principal: "Michael LeClerc", recorded_by: "Dana Fictional",
+                   recorded_at: "", method: "typed", recorded_on: "November 23, 2026",
+                   people: [], typed: "Michael LeClerc", wording: "" },
       owner_signature: { name: "Alex Sample", at: "2026-11-24T16:20:00Z", ip: "203.0.113.9",
                          method: "typed" },
       manager_signature: null, agreement_date: null, has_owner_pdf: true,
       has_final_pdf: false, contract: { contract_id: 1, name: "Standard 30", flag: "" },
       intake: null, events: [], emails: [], sender: "testing", blocks: [],
     } as unknown as Detail;
+    DETAIL = detail;
     const api = mockApi({ [`POST /api/agreements/${ID}/countersign`]: { ...detail,
       may_countersign: false }, [`/api/agreements/${ID}`]: detail });
     vi.stubGlobal("fetch", api);
     renderRoute(<AgreementDetail me={ME} />, { path: "/a/:id", route: `/a/${ID}` });
-    const button = await screen.findByRole("button",
-                                           { name: "Apply Michael LeClerc's signature" });
+    const button = await screen.findByRole("button", { name: "Apply SkyRun's signature" });
     expect(screen.getAllByText(/The owner changed the address/)[0]).toBeInTheDocument();
-    expect(screen.getByText(/under Michael LeClerc's authorization of November 23, 2026/))
+    // The words are the server's: they name the account that recorded it.
+    expect(screen.getByText(/under the authorization Dana Fictional recorded on November 23/))
       .toBeInTheDocument();
     expect(button).toBeDisabled();
     fireEvent.click(screen.getByLabelText("I agree"));
     fireEvent.click(button);
     await waitFor(() => expect(api.calls.find((c) => c.url.endsWith("/countersign"))?.body)
       .toEqual({ agreed: true }));
+  });
+});
+
+describe("the test sender's warnings (owner, 2026-11-24)", () => {
+  const WARN = /owners? would see Executives Now/;
+
+  it("shows on Settings", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      [`/api/agreements/companies/${CO}/authority`]: { people: [], authority: null },
+      [`/api/agreements/companies/${CO}`]: company({ may_edit_access: true }),
+    }));
+    renderRoute(<AgreementSettings me={ME} />, { path: "/s/:companyId", route: `/s/${CO}` });
+    expect((await screen.findAllByText(WARN)).length).toBeGreaterThan(0);
+  });
+
+  it("shows on New owner", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`/api/agreements/companies/${CO}`]: company({
+      defaults: { owner_percent: "70", manager_percent: "30", additional_items: "",
+                  fees: { winter: { threshold: "0", fee: "0" }, summer: { threshold: "0",
+                          fee: "0" }, fall: { threshold: "0", fee: "0" } },
+                  property_address: {} } }) }));
+    renderRoute(<AgreementNew me={ME} />, { route: `/?company=${CO}` });
+    expect(await screen.findByText(/Owner email is on ENHQ's own sender \(testing\): the owner would see Executives Now/))
+      .toBeInTheDocument();
+  });
+
+  it("shows on the Send card of an unsigned agreement", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`/api/agreements/${ID}`]: {
+      ...DETAIL, editable: true, may_countersign: false, owner_signature: null,
+      address_changed: false, status: STATUS.map((x) => ({ ...x, at: null })) } }));
+    renderRoute(<AgreementDetail me={ME} />, { path: "/a/:id", route: `/a/${ID}` });
+    expect(await screen.findByRole("button", { name: "Send by email" })).toBeInTheDocument();
+    expect(screen.getByText(/Owner email is on ENHQ's own sender \(testing\): the owner would see Executives Now/))
+      .toBeInTheDocument();
+  });
+});
+
+describe("no trace when owner agreements are off", () => {
+  it("has no menu item without has_agreements, and one with it", () => {
+    const items = NAV.filter((n) => n.to === "/agreements");
+    expect(items.length).toBeGreaterThan(0);
+    for (const role of ["FF", "FCC", "ECC"] as const) {
+      const me = { role, has_agreements: false } as Me;
+      expect(items.filter((n) => (!n.roles || n.roles.includes(role))
+        && (!n.when || n.when(me)))).toHaveLength(0);
+      const on = { role, has_agreements: true } as Me;
+      expect(items.filter((n) => (!n.roles || n.roles.includes(role))
+        && (!n.when || n.when(on)))).toHaveLength(1);
+    }
+  });
+});
+
+describe("People and permissions (owner, 2026-11-24)", () => {
+  it("shows only the columns for what is on", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`/api/agreements/companies/${CO}/access`]: {
+      company: { id: CO, name: "Mountain Stays" },
+      columns: { agreements: false, signed_pdfs: false, intake: true },
+      rows: [{ user_id: "u1", name: "Jackie Doe", role: "Client team member",
+               practice_owner: false, intake: true }] } }));
+    renderRoute(<PeoplePermissions me={ME} />, { path: "/p/:companyId", route: `/p/${CO}` });
+    expect(await screen.findByLabelText("Jackie Doe: Owner intake")).toBeChecked();
+    expect(screen.queryByText("Owner agreements")).not.toBeInTheDocument();
+    expect(screen.queryByText("Receives signed PDFs")).not.toBeInTheDocument();
   });
 });

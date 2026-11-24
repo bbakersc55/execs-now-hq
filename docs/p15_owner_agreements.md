@@ -68,6 +68,22 @@ and 7 after sending, from 9:00 practice time; an unfinished form on days 3
 and 7 after it was made, from 9:00; countersigners 24 and 72 hours after the
 owner signed, between 8:00 and 18:00.
 
+## While acting as someone (owner, 2026-11-24)
+
+While a person acts as another (FR-3.42), owner agreements refuses everything
+that signs, authorizes or changes anything: recording or withdrawing the
+authorization, applying the company signature, signing personally, creating,
+correcting, sending (email or Copy link) or cancelling an agreement, changing
+"Who signs for the company" or the sender, changing ticks on People and
+permissions, and changing intake's test mode. The message: "You're acting as
+[name]. Stop acting as them to do this." Viewing still works. The check is in
+the views and again in the services (`services.not_while_acting`).
+
+Not changed: intake's own Send to Track while acting records the person acted
+as in the intake's history (its `SubmissionEvent` and `SendRun.started_by` take
+`request.user`, which acting replaces); the real person is only in the act-as
+session's own audit events (`act_as.started`, `act_as.stopped`).
+
 ## The agreement's words
 
 - **One template now**, `apps/agreements/texts/rental_management_v2.txt`
@@ -103,10 +119,20 @@ owner signed, between 8:00 and 18:00.
   record each change; Withdraw ends it. Until one is recorded, only Michael can
   countersign.
 - Anyone named countersigns with one tap (in ENHQ; the email's button opens
-  ENHQ, signed in). The record shows Michael's signature **applied by** that
-  person, **under his authorization of** its date, with their name, time, IP
-  address and device; a line under the signature says so too. Michael's own
-  countersignature says he signed personally. Never as if Michael pressed it.
+  ENHQ, signed in).
+- **Names come from the account, never the template** (owner, 2026-11-24).
+  Every line about SkyRun's signature or the authorization prints the full
+  name of the signed-in account that did it: "Signed personally by [account]",
+  "Applied by [account] under the authorization [account] recorded on
+  [date]", and the authorization's own words ("I, [account], adopt the
+  signature shown here as SkyRun Park City's signature in the block that reads
+  “Michael LeClerc, President”…", wording version 2026-11-24; the 2026-11-23
+  words are kept for anything signed under them). The name is kept as it was
+  that day (`AgreementSignature.applied_by_name`,
+  `CountersignAuthority.recorded_by_name`). The agreement's signature block
+  still reads "Michael LeClerc, President". The audit log keeps the account's
+  id and email (`agreements.countersigned`, `agreements.authority_recorded`);
+  the PDF prints names only, no staff email and never an Executives Now address.
 - Before countersigning, the words are re-hashed: if they no longer match what
   the owner signed, nothing is countersigned.
 - Owner-facing records print names only, never an email (Bryan has two
@@ -124,11 +150,41 @@ hash; for SkyRun, who applied it and under which authorization (with the
 authorization's own words). The owner's copy says "Awaiting SkyRun Park City's
 signature" on every page. Terms are highlighted only in staff's preview.
 
+**The two fingerprints** (owner, 2026-11-24) sit together under "Fingerprints"
+on the record, with these sentences under them, as written:
+
+> Words signed is the fingerprint of the full text of the agreement as the Owner
+> saw and signed it: every section, the terms set for this Owner, the property
+> address and the Owner's answers. In that text the agreement date read 'on the
+> date of Manager's signature below', and it contains no signatures.
+>
+> Agreement pages is the fingerprint of the finished pages above, which add the
+> agreement date and both signatures. The agreement date was filled in when
+> SkyRun Park City signed.
+>
+> SkyRun Park City keeps the exact text the Owner signed and can provide it on
+> request.
+
+On the owner's copy, before SkyRun signs, the second sentence would not be true
+yet, so it reads: "Agreement pages is the fingerprint of the pages above, signed
+by the Owner. SkyRun Park City has not signed yet; its signature and the
+agreement date are added when it does."
+
+**The exact signed text is kept**, unchanged, on the owner's signature
+(`AgreementSignature.signed_text`, written once at signing); its SHA-256 is
+"Words signed". People ticked "Receives signed agreement PDFs" download it as
+plain text (`GET /api/agreements/<id>/signed-text`, from the agreement page and
+the company's Documents).
+
 ## People and permissions (owner, 2026-11-23)
 
-One screen (Owner agreements → Settings), edited by the practice owner and the
-company's Client owner (Bryan and Michael). Every active user of the company,
-plus the practice owner, with three ticks:
+One screen, `/permissions/<company id>` ("People and permissions"), edited by
+the practice owner and the company's Client owner (Bryan and Michael). It is
+reachable whenever intake forms **or** owner agreements are on for the company
+(owner, 2026-11-24), and shows only the columns for what is on: a and b with
+owner agreements, c with intake. Form settings, the intake list and agreement
+Settings link to it. Every active user of the company, plus the practice
+owner, with up to three ticks:
 
 a. Owner agreements: create, send, see agreements and their documents.
 b. Receives signed agreement PDFs.
@@ -196,7 +252,13 @@ host with CNAME flattening or ALIAS (Cloudflare, DNS only).
   (141) is switched off once when they move (it carried them).
 - **The new-submission notice** (in ENHQ and by email) names the owner and the
   property's address. Task titles don't.
-- **Test mode** (Form settings, on to start; missing means on): Send to Track
+- **Test mode** (Form settings, on to start; missing means on). Only the people
+  who may change People and permissions (the practice owner and the Client
+  owner) turn it on or off (`POST /api/intake/companies/<id>/test-mode`); Form
+  settings' own Save can't change it. Everyone else sees its state. Each change
+  is its own audit event (`intake.test_mode_changed`, with who, when, from and
+  to), and Form settings shows the latest ("Test mode turned off by [name] on
+  [date]"). Never while acting as someone. With it on, Send to Track
   runs every check (the plan's problems, the sensitive values, Track read for
   a matching owner, contact or unit), shows each step as "would send", writes
   nothing to Track and changes nothing in ENHQ (no tasks, no dates held,
@@ -213,7 +275,9 @@ host with CNAME flattening or ALIAS (Cloudflare, DNS only).
 `owner_agreement`, `owner_agreement_version`, `owner_agreement_signature`,
 `owner_agreement_authority`, `owner_agreement_event`, `owner_agreement_email`)
 and 0002 (intake ticks from the old rule; data, adds rows only); `intake` 0002
-(`send_run.test`); `crm` 0062 and `notify` 0008 (choices only, no SQL).
+(`send_run.test`); `crm` 0062 and `notify` 0008 (choices only, no SQL);
+`agreements` 0003 (2026-11-24: `owner_agreement_signature.signed_text` and
+`owner_agreement_authority.recorded_by_name`, both text with a default '').
 Schedule `agreements.tick` (hourly) needs `ensure_schedules` at release.
 Templates: `templates/agreements/agreement_pdf.html`, `record_pdf.html`.
 
@@ -224,6 +288,13 @@ Templates: `templates/agreements/agreement_pdf.html`, `record_pdf.html`.
   Track writes), `tests/test_intake_p15_changes.py`, `tests/test_agreements_browser.py`
   (Chrome), `frontend/src/forms/agreement.test.tsx`,
   `frontend/src/screens/Agreements.test.tsx`.
+- Added 2026-11-24: `tests/test_agreements_fixes.py` (acting as someone, names
+  from the account, the fingerprints and the signed text, the permissions
+  screen with intake alone and with both, test mode, stored Outbox copies, no
+  trace when off) and `tests/test_agreements_ai_sweep.py` (every MCP tool and
+  prompt, the in-app AI features that take company data, and a check of every
+  module that calls Claude: no owner's name, email, address, the agreement's
+  title or a link reaches any of them).
 - Browser walks (screenshots and a sample signed PDF in
   `~/enhq-walks/owner-agreements/`): staff send at phone width; owner signs and
   chooses Now, the intake opens prefilled; Michael records his authorization;

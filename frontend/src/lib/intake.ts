@@ -103,6 +103,9 @@ export interface FormSettings {
   id: string; title: string; brand_name: string; slug: string; domain: string;
   colors: Record<string, string>; contact_phone: string; contact_email: string;
   has_logo: boolean; has_icon: boolean; base: string; warning: string;
+  /** Owner, 2026-11-24: test mode, who may change it, and its last change. */
+  test_mode: boolean; may_change_test_mode: boolean; may_edit_access: boolean;
+  test_mode_change: { to: boolean; from: boolean | null; by: string; at: string } | null;
   settings: {
     common_amenities: { key: string; label: string; amenity_ids: number[] }[];
     hidden_groups: string[]; lodging_type_ids: number[]; code_type_ids: number[];
@@ -127,7 +130,7 @@ export interface FormSettings {
 export const intake = {
   companies: () => api.get<{ companies: { id: string; name: string }[] }>("/api/intake/companies"),
   submissions: (company: string) =>
-    api.get<{ submissions: IntakeRow[]; test_mode?: boolean }>(
+    api.get<{ submissions: IntakeRow[]; test_mode?: boolean; may_edit_access?: boolean }>(
       `/api/intake/companies/${company}/submissions`),
   start: (company: string, body: { first_name: string; last_name: string; email: string }) =>
     api.post<{ id: string; number: number }>(`/api/intake/companies/${company}/submissions`, body),
@@ -153,6 +156,8 @@ export const intake = {
     api.post<{ owner_dates: OwnerDateRow[] }>(
       `/api/intake/submissions/${id}/dates/${dateId}/cancel`),
   form: (company: string) => api.get<FormSettings>(`/api/intake/companies/${company}/form`),
+  setTestMode: (company: string, on: boolean) =>
+    api.post<FormSettings>(`/api/intake/companies/${company}/test-mode`, { on }),
   saveForm: (company: string, body: Record<string, unknown>) =>
     api.put<FormSettings>(`/api/intake/companies/${company}/form`, body),
   refresh: (company: string) =>

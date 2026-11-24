@@ -152,10 +152,16 @@ export function AgreementDetail({ me: _me }: { me: Me }) {
             : `#${data.intake.number}`} <Pill>{data.intake.status.replace("_", " ")}</Pill></p>
         )}
         {data.manager_signature && (
-          <p className="small">SkyRun's signature: {data.manager_signature.name}
+          <p className="small">SkyRun's signature ({data.signer_block}):
             {data.manager_signature.under_authority
-              ? `, applied by ${data.manager_signature.applied_by} under the authorization`
-              : ", signed personally"}, {when(data.manager_signature.at)}.</p>
+              ? ` applied by ${data.manager_signature.applied_by} under the authorization `
+                + `${data.manager_signature.authority_by} recorded`
+              : ` signed personally by ${data.manager_signature.applied_by}`},
+            {" "}{when(data.manager_signature.at)}.</p>
+        )}
+        {data.may_download_text && (
+          <p className="small"><a href={agreements.signedTextUrl(id)}>The words the owner signed
+            (text)</a>: its SHA-256 is "Words signed" on the signing record.</p>
         )}
       </Card>
 
@@ -194,13 +200,8 @@ function Countersign({ data, onDone, onError }: { data: Detail; onDone: (d: Deta
   const [sig, setSig] = useState<CapturedSignature>({ method: "typed", typed: "", drawn: "" });
   const signer = data.countersign_as === "signer";
   const needsMark = signer && !data.authority;
-  const words = signer
-    ? "By signing electronically, I agree that my electronic signature is the legal "
-      + "equivalent of my handwritten signature on this agreement, and that it records my "
-      + "signature for SkyRun Park City."
-    : `I am applying ${data.signer_name}'s signature to this agreement for SkyRun Park City, `
-      + `under ${data.signer_name}'s authorization of ${data.authority?.recorded_on}. The `
-      + "signing record will show that I applied it, with my name, the time and my IP address.";
+  // The exact words, from the server: the record keeps the same ones.
+  const words = data.countersign_words;
   return (
     <Card title="Countersign for SkyRun" tone="current">
       {data.address_changed && <Banner kind="warn">The owner changed the address: you
@@ -240,7 +241,7 @@ function Countersign({ data, onDone, onError }: { data: Detail; onDone: (d: Deta
             setBusy(false);
           }
         }}>{busy ? "Countersigning…" : signer ? "Countersign"
-          : `Apply ${data.signer_name}'s signature`}</button>
+          : "Apply SkyRun's signature"}</button>
     </Card>
   );
 }

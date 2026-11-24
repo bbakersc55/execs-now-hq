@@ -13,5 +13,6 @@ urlpatterns = [
     path("agreements/companies/<str:company_id>/documents", views.DocumentsView.as_view()),
     path("agreements/<str:agreement_id>", views.AgreementView.as_view()),
     path("agreements/<str:agreement_id>/pdf", views.PdfView.as_view()),
+    path("agreements/<str:agreement_id>/signed-text", views.SignedTextView.as_view()),
     path("agreements/<str:agreement_id>/<str:action>", views.ActionView.as_view()),
 ]

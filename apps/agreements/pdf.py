@@ -31,6 +31,24 @@ from .models import AgreementSignature
 
 SCRIPT_FONT = (texts.HERE.parent.parent / "esign" / "fonts" / "DancingScript-Medium.ttf")
 
+#: Under the two fingerprints on the signing record (owner, 2026-11-24, as written).
+FINGERPRINTS = (
+    "Words signed is the fingerprint of the full text of the agreement as the Owner saw and "
+    "signed it: every section, the terms set for this Owner, the property address and the "
+    "Owner's answers. In that text the agreement date read 'on the date of Manager's "
+    "signature below', and it contains no signatures.",
+    "Agreement pages is the fingerprint of the finished pages above, which add the agreement "
+    "date and both signatures. The agreement date was filled in when SkyRun Park City signed.",
+    "SkyRun Park City keeps the exact text the Owner signed and can provide it on request.",
+)
+#: The owner's copy, before SkyRun signs: the second sentence would not be true yet.
+FINGERPRINTS_AWAITING = (
+    FINGERPRINTS[0],
+    "Agreement pages is the fingerprint of the pages above, signed by the Owner. SkyRun Park "
+    "City has not signed yet; its signature and the agreement date are added when it does.",
+    FINGERPRINTS[2],
+)
+
 
 def sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
@@ -73,11 +91,16 @@ def _signature_block(agreement, sig, *, owner: bool) -> dict:
            "date": _date(sig.signed_at.astimezone(ZoneInfo(
                getattr(agreement.company.tenant, "timezone", "") or "UTC")).date()
                if owner else agreement.agreement_date)}
-    if not owner and sig.authority_id:
+    if not owner:
+        from .services import authority_by
+
         tz = ZoneInfo(getattr(agreement.company.tenant, "timezone", "") or "UTC")
-        out["applied"] = (f"Applied by {sig.applied_by_name} under {sig.printed_name}’s "
-                          f"authorization of "
-                          f"{_date(sig.authority.recorded_at.astimezone(tz).date())}")
+        # Owner, 2026-11-24: the account that did it, by its own name.
+        out["applied"] = (
+            f"Applied by {sig.applied_by_name} under the authorization "
+            f"{authority_by(sig.authority)} recorded on "
+            f"{_date(sig.authority.recorded_at.astimezone(tz).date())}"
+            if sig.authority_id else f"Signed personally by {sig.applied_by_name}")
     return out
 
 
@@ -116,6 +139,7 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
             ("Template", f"{tpl.version}; template SHA-256 {tpl.sha256}"),
             ("Sent", _when(agreement.sent_at, company)),
             ("Opened", _when(agreement.opened_at, company))]
+    from .services import authority_by
     signers = []
     if owner_sig:
         signers.append({
@@ -126,19 +150,22 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
                      ("Signed", _when(owner_sig.signed_at, company)),
                      ("IP address", owner_sig.ip_address or "not recorded"),
                      ("Device", owner_sig.user_agent or "not recorded"),
-                     ("Signature", "Typed" if owner_sig.method == "typed" else "Drawn"),
-                     ("Words signed (SHA-256)", owner_sig.text_sha256)],
+                     ("Signature", "Typed" if owner_sig.method == "typed" else "Drawn")],
             "consent": owner_sig.consent_text,
             "consent_label": f"Consent to sign electronically (version "
                              f"{owner_sig.consent_version}), ticked before signing"})
     if manager_sig:
         authority = manager_sig.authority
-        how = ([("Signed by", f"{manager_sig.printed_name}, personally")]
+        block = (f"{manager_sig.printed_name}, {manager_sig.printed_title} "
+                 "(as printed in the agreement)")
+        # Owner, 2026-11-24: who did it is the signed-in account's own name.
+        how = ([("Signature block", block),
+                ("Signed personally by", manager_sig.applied_by_name)]
                if authority is None else
-               [("Signature of", f"{manager_sig.printed_name}, {manager_sig.printed_title}"),
+               [("Signature block", block),
                 ("Applied by", manager_sig.applied_by_name),
-                ("Under", f"{authority.principal_name}'s standing authorization recorded "
-                          f"{_when(authority.recorded_at, company)} from IP address "
+                ("Under", f"the standing authorization recorded by {authority_by(authority)} "
+                          f"on {_when(authority.recorded_at, company)} from IP address "
                           f"{authority.ip_address or 'not recorded'}")])
         signers.append({
             "role": "Manager, SkyRun Park City", "png": _png(manager_sig),
@@ -154,6 +181,8 @@ def record(agreement, *, final: bool, pages_sha256: str) -> bytes:
             "authorization": authority.wording if authority else ""})
     html = render_to_string("agreements/record_pdf.html", {
         "rows": rows, "signers": signers, "pages_sha256": pages_sha256, "final": final,
+        "words_sha256": owner_sig.text_sha256 if owner_sig else "",
+        "explain": FINGERPRINTS if final else FINGERPRINTS_AWAITING,
         "script_font": SCRIPT_FONT.as_uri()})
     return _write(html)
 

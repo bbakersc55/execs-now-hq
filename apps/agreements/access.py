@@ -182,3 +182,47 @@ def companies_for(membership):
 
 def has_agreements(membership) -> bool:
     return companies_for(membership).exists()
+
+
+def ticked_or_owner(membership, company, flag: str) -> bool:
+    """Ticked for `flag` on the permissions screen, the practice owner's own
+    row included (the practice owner ticks "signed PDFs" like anyone)."""
+    if membership is None or company is None:
+        return False
+    if is_practice_owner(membership, company):
+        return StaffAccess.all_objects.filter(company=company, user_id=membership.user_id,
+                                              **{flag: True}).exists()
+    return ticked(membership, company, flag)
+
+
+def columns_on(company) -> dict:
+    """Which ticks the permissions screen shows: agreements and signed PDFs
+    while owner agreements are on, intake while intake forms are on."""
+    agreements_on = is_on(company)
+    return {"agreements": agreements_on, "signed_pdfs": agreements_on,
+            "intake": bool(company.intake_forms_enabled)}
+
+
+def permissions_company_or_404(request, company_id):
+    """The company, for its permissions screen: intake forms or owner
+    agreements on, and the person may edit it (practice owner, Client owner)."""
+    import uuid
+
+    from django.http import Http404
+
+    from apps.crm.models import Company
+
+    membership = getattr(request, "membership", None)
+    try:
+        uuid.UUID(str(company_id))
+    except (TypeError, ValueError):
+        raise Http404 from None
+    if membership is None:
+        raise Http404
+    company = Company.all_objects.filter(pk=company_id, tenant_id=membership.tenant_id,
+                                         deleted_at__isnull=True,
+                                         is_client_company=True).first()
+    if company is None or not (company.intake_forms_enabled or is_on(company)) \
+            or not may_edit_access(membership, company):
+        raise Http404
+    return company, membership

@@ -151,13 +151,21 @@ def _detail(a, membership, user) -> dict:
         "countersign_as": ("signer" if access.is_signer(user, company) else
                            "authorized" if may_cs else ""),
         "authority": _authority_payload(authority, company) if authority else None,
+        "countersign_words": (services.countersign_words(
+            a, user, signer_self=access.is_signer(user, company), authority=authority)
+            if may_cs and (authority or access.is_signer(user, company)) else ""),
         "signer_name": texts.get(a.template_key).signer_name,
+        "signer_block": (f"{texts.get(a.template_key).signer_name}, "
+                         f"{texts.get(a.template_key).signer_title}"),
+        "may_download_text": bool(owner) and access.ticked_or_owner(membership, company,
+                                                                     "signed_pdfs"),
         "owner_signature": ({"name": owner.printed_name, "at": owner.signed_at.isoformat(),
                              "ip": owner.ip_address, "method": owner.method}
                             if owner else None),
         "manager_signature": ({"name": manager.printed_name,
                                "applied_by": manager.applied_by_name,
                                "under_authority": manager.authority_id is not None,
+                               "authority_by": services.authority_by(manager.authority),
                                "at": manager.signed_at.isoformat(), "ip": manager.ip_address}
                               if manager else None),
         "agreement_date": a.agreement_date.isoformat() if a.agreement_date else None,
@@ -180,6 +188,7 @@ def _detail(a, membership, user) -> dict:
 
 def _authority_payload(row, company) -> dict:
     return {"id": str(row.pk), "principal": row.principal_name,
+            "recorded_by": services.authority_by(row),
             "recorded_at": row.recorded_at.isoformat(),
             "recorded_on": services._day(row.recorded_at, company),
             "people": row.people, "method": row.method, "typed": row.typed_text,
@@ -217,6 +226,7 @@ class CompanyView(Base):
 
 class CreateView(Base):
     def post(self, request, company_id):
+        services.not_while_acting()
         company, membership = _company(request, company_id)
         _may_work(membership, company)
         d = request.data
@@ -246,6 +256,7 @@ class AgreementView(Base):
         return Response(_detail(a, membership, request.user))
 
     def patch(self, request, agreement_id):
+        services.not_while_acting()
         a, membership = _agreement(request, agreement_id)
         _may_work(membership, a.company)
         d = request.data
@@ -257,6 +268,7 @@ class AgreementView(Base):
 
 class ActionView(Base):
     def post(self, request, agreement_id, action):
+        services.not_while_acting()
         a, membership = _agreement(request, agreement_id)
         if action == "countersign":
             d = request.data
@@ -278,6 +290,26 @@ class ActionView(Base):
             raise Http404
         a.refresh_from_db()
         return Response({**_detail(a, membership, request.user), **out})
+
+
+class SignedTextView(Base):
+    """The exact words the owner signed, as plain text (owner, 2026-11-24):
+    for people ticked "Receives signed agreement PDFs". Its SHA-256 is the
+    signing record's "Words signed"."""
+
+    def get(self, request, agreement_id):
+        a, membership = _agreement(request, agreement_id)
+        if not access.ticked_or_owner(membership, a.company, "signed_pdfs"):
+            raise Http404
+        sig = AgreementSignature.all_objects.filter(agreement=a, role="owner").first()
+        if sig is None or not sig.signed_text:
+            raise Http404
+        response = HttpResponse(sig.signed_text.encode("utf-8"),
+                                content_type="text/plain; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="Rental Management Agreement #{a.number} - '
+            'words the owner signed.txt"')
+        return response
 
 
 class PdfView(Base):
@@ -307,16 +339,18 @@ class PdfView(Base):
 # ------------------------------------------------------------ permissions
 
 class AccessView(Base):
+    """People and permissions (owner, 2026-11-24): reachable whenever intake
+    forms or owner agreements are on for the company, by the practice owner
+    and the Client owner; it shows only the columns for what is on."""
+
     def get(self, request, company_id):
-        company, membership = _company(request, company_id)
-        if not access.may_edit_access(membership, company):
-            raise Http404
+        company, membership = access.permissions_company_or_404(request, company_id)
         return Response(_access_payload(company))
 
     def put(self, request, company_id):
-        company, membership = _company(request, company_id)
-        if not access.may_edit_access(membership, company):
-            raise Http404
+        services.not_while_acting()
+        company, membership = access.permissions_company_or_404(request, company_id)
+        columns = access.columns_on(company)
         allowed = {str(m.user_id): (m, owner) for m, owner in access.company_users(company)}
         changed = []
         for row in request.data.get("rows") or []:
@@ -324,17 +358,18 @@ class AccessView(Base):
             if user_id not in allowed:
                 continue
             m, is_owner = allowed[user_id]
-            values = {f: row.get(f) is True for f in access.FLAGS}
-            if is_owner:                       # the practice owner always has a and c
-                values["agreements"] = values["intake"] = False
             obj, _ = StaffAccess.all_objects.get_or_create(
                 tenant_id=company.tenant_id, company=company, user_id=m.user_id)
+            values = {f: row.get(f) is True for f in access.FLAGS if columns[f]}
+            if is_owner:                       # the practice owner always has a and c
+                values = {f: v for f, v in values.items() if f == "signed_pdfs"}
             if any(getattr(obj, f) != v for f, v in values.items()):
+                before = {f: getattr(obj, f) for f in values}
                 for f, v in values.items():
                     setattr(obj, f, v)
                 obj.updated_by = request.user
                 obj.save()
-                changed.append({"user": _name(m.user), **values})
+                changed.append({"user": _name(m.user), "from": before, "to": values})
         if changed:
             services._audit(company, request.user, "agreements.access_changed",
                             {"changed": changed})
@@ -342,18 +377,23 @@ class AccessView(Base):
 
 
 def _access_payload(company) -> dict:
+    columns = access.columns_on(company)
     ticks = {str(s.user_id): s for s in StaffAccess.all_objects.filter(company=company)}
     rows = []
     for m, is_owner in access.company_users(company):
         t = ticks.get(str(m.user_id))
-        rows.append({"user_id": str(m.user_id), "name": _name(m.user),
-                     "role": "Practice owner" if is_owner else
-                     ("Client owner" if m.role == "FCC" else "Client team member"),
-                     "practice_owner": is_owner,
-                     "agreements": True if is_owner else bool(t and t.agreements),
-                     "signed_pdfs": bool(t and t.signed_pdfs),
-                     "intake": True if is_owner else bool(t and t.intake)})
-    return {"rows": rows}
+        row = {"user_id": str(m.user_id), "name": _name(m.user),
+               "role": "Practice owner" if is_owner else
+               ("Client owner" if m.role == "FCC" else "Client team member"),
+               "practice_owner": is_owner}
+        if columns["agreements"]:
+            row["agreements"] = True if is_owner else bool(t and t.agreements)
+            row["signed_pdfs"] = bool(t and t.signed_pdfs)
+        if columns["intake"]:
+            row["intake"] = True if is_owner else bool(t and t.intake)
+        rows.append(row)
+    return {"company": {"id": str(company.pk), "name": company.name},
+            "columns": columns, "rows": rows}
 
 
 # ------------------------------------------------------------ the sender
@@ -365,6 +405,7 @@ class SettingsView(Base):
         return Response(_program_payload(program, company, membership))
 
     def put(self, request, company_id):
+        services.not_while_acting()
         company, membership = _company(request, company_id)
         if not access.may_edit_access(membership, company):
             raise services.Refused("Only the practice owner or the Client owner can change "
@@ -409,6 +450,7 @@ class SettingsView(Base):
         return Response(_program_payload(program, company, membership))
 
     def post(self, request, company_id):
+        services.not_while_acting()
         company, membership = _company(request, company_id)
         if not (access.may_edit_access(membership, company)
                 or access.may_agreements(membership, company)):
@@ -452,6 +494,7 @@ class AuthorityView(Base):
                                              title=tpl.signer_title)})
 
     def post(self, request, company_id):
+        services.not_while_acting()
         company, membership = _company(request, company_id)
         d = request.data
         services.record_authority(company, request.user, method=d.get("method", ""),
@@ -461,6 +504,7 @@ class AuthorityView(Base):
         return self.get(request, company_id)
 
     def delete(self, request, company_id):
+        services.not_while_acting()
         company, membership = _company(request, company_id)
         services.withdraw_authority(company, request.user, ip=client_ip(request),
                                     user_agent=_ua(request))
@@ -486,9 +530,12 @@ class DocumentsView(Base):
             return Response({"documents": []})
         rows = OwnerAgreement.all_objects.filter(company=company, final_pdf__isnull=False) \
             .order_by("-countersigned_at")
+        text_ok = access.ticked_or_owner(membership, company, "signed_pdfs")
         return Response({"documents": [
             {"id": str(a.pk), "title": f"Rental Management Agreement #{a.number}",
              "owner": a.owner_name,
              "property": render.one_line(services.terms_for(a).get("property_address")),
              "date": a.agreement_date.isoformat() if a.agreement_date else None,
-             "pdf": f"/api/agreements/{a.pk}/pdf?which=final"} for a in rows]})
+             "pdf": f"/api/agreements/{a.pk}/pdf?which=final",
+             "text": f"/api/agreements/{a.pk}/signed-text" if text_ok else ""}
+            for a in rows]})

@@ -192,7 +192,8 @@ def test_staff_send_owner_signs_jackie_countersigns_under_michaels_authorization
     # Truthful: Michael's signature, applied by Jackie under his authorization.
     assert sig.printed_name == "Michael LeClerc" and sig.applied_by_id == aw["jackie"].user_id
     assert sig.authority_id == authority.pk and sig.ip_address == "198.51.100.20"
-    assert sig.consent_text.startswith("I am applying Michael LeClerc's signature")
+    assert sig.consent_text.startswith("I am applying Mountain Stays's signature, the one "
+                                       f"{aw['michael'].user.full_name} adopted")
     assert a.agreement_date == services.practice_today(aw["company"])
 
     final = pdf_text(a.final_pdf)
@@ -252,7 +253,7 @@ def test_the_intake_is_made_prefilled_and_held_until_countersigned(aw, fake):
     a.refresh_from_db()
     sig = AgreementSignature.all_objects.get(agreement=a, role="manager")
     assert sig.applied_by_id == aw["michael"].user_id and sig.authority_id is None
-    assert flat("Michael LeClerc, personally") in pdf_text(a.final_pdf)
+    assert flat(f"Signed personally by {aw['michael'].user.full_name}") in pdf_text(a.final_pdf)
     sub.refresh_from_db()
     assert sub.staff["contract_effective_date"] == a.agreement_date.isoformat()
     review = as_(aw["jackie"]).get(f"/api/intake/submissions/{sub.pk}").json()

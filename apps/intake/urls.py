@@ -7,6 +7,7 @@ urlpatterns = [
     path("intake/companies/<str:company_id>/form", views.FormView.as_view()),
     path("intake/companies/<str:company_id>/form/image", views.FormImageView.as_view()),
     path("intake/companies/<str:company_id>/refresh", views.RefreshView.as_view()),
+    path("intake/companies/<str:company_id>/test-mode", views.TestModeView.as_view()),
     path("intake/companies/<str:company_id>/submissions", views.SubmissionsView.as_view()),
     path("intake/submissions/<str:submission_id>", views.SubmissionView.as_view()),
     path("intake/submissions/<str:submission_id>/answers", views.AnswersView.as_view()),

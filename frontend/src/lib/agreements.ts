@@ -31,7 +31,7 @@ export interface CompanyPage {
   program: Program; defaults: Terms; agreements: AgreementRow[];
 }
 export interface Authority {
-  id: string; principal: string; recorded_at: string; recorded_on: string;
+  id: string; principal: string; recorded_by: string; recorded_at: string; recorded_on: string;
   people: { user_id: string; name: string }[]; method: "typed" | "drawn"; typed: string;
   wording: string;
 }
@@ -41,10 +41,14 @@ export interface AgreementDetail extends AgreementRow {
   address_changed: boolean; staff_address: string; owner_address: string;
   editable: boolean; may_work: boolean; may_countersign: boolean;
   countersign_as: "" | "signer" | "authorized"; authority: Authority | null;
-  signer_name: string;
+  /** The exact words agreed when countersigning, from the server. */
+  countersign_words: string;
+  signer_name: string; signer_block: string;
+  /** Ticked "Receives signed PDFs": may download the words the owner signed. */
+  may_download_text: boolean;
   owner_signature: { name: string; at: string; ip: string | null; method: string } | null;
-  manager_signature: { name: string; applied_by: string; under_authority: boolean; at: string;
-                       ip: string | null } | null;
+  manager_signature: { name: string; applied_by: string; under_authority: boolean;
+                       authority_by: string; at: string; ip: string | null } | null;
   agreement_date: string | null; has_owner_pdf: boolean; has_final_pdf: boolean;
   contract: { contract_id: number | null; name: string; flag: string };
   intake: { id: string; number: number; status: string; may_open: boolean } | null;
@@ -56,7 +60,13 @@ export interface AgreementDetail extends AgreementRow {
 }
 export interface AccessRow {
   user_id: string; name: string; role: string; practice_owner: boolean;
-  agreements: boolean; signed_pdfs: boolean; intake: boolean;
+  agreements?: boolean; signed_pdfs?: boolean; intake?: boolean;
+}
+export interface AccessPage {
+  company: { id: string; name: string };
+  /** Which ticks are shown: what is switched on for the company. */
+  columns: { agreements: boolean; signed_pdfs: boolean; intake: boolean };
+  rows: AccessRow[];
 }
 export interface AuthorityPage {
   is_signer: boolean; signer_name: string; signer_title: string;
@@ -66,6 +76,8 @@ export interface AuthorityPage {
 }
 export interface AgreementDocument {
   id: string; title: string; owner: string; property: string; date: string | null; pdf: string;
+  /** The words the owner signed, as text; "" unless ticked for signed PDFs. */
+  text: string;
 }
 
 const base = "/api/agreements";
@@ -84,9 +96,10 @@ export const agreements = {
   countersign: (id: string, body: { agreed: boolean; method?: string; typed?: string;
     drawn?: string }) => api.post<AgreementDetail>(`${base}/${id}/countersign`, body),
   pdfUrl: (id: string, which: "owner" | "final" | "preview") => `${base}/${id}/pdf?which=${which}`,
-  access: (id: string) => api.get<{ rows: AccessRow[] }>(`${base}/companies/${id}/access`),
+  access: (id: string) => api.get<AccessPage>(`${base}/companies/${id}/access`),
   saveAccess: (id: string, rows: AccessRow[]) =>
-    api.put<{ rows: AccessRow[] }>(`${base}/companies/${id}/access`, { rows }),
+    api.put<AccessPage>(`${base}/companies/${id}/access`, { rows }),
+  signedTextUrl: (id: string) => `${base}/${id}/signed-text`,
   settings: (id: string) => api.get<Program>(`${base}/companies/${id}/settings`),
   saveSettings: (id: string, body: Record<string, unknown>) =>
     api.put<Program>(`${base}/companies/${id}/settings`, body),

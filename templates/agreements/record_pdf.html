@@ -14,12 +14,12 @@ td.v { word-break: break-all; }
 h2 { font-size: 11pt; margin: 16pt 0 6pt; }
 .sig img { max-height: 40pt; max-width: 2.6in; }
 .sig .typed { font-family: "Signature Script", cursive; font-size: 20pt; }
+.explain { margin: 0 0 6pt; }
 .words { font-size: 8.5pt; color: #333; border-left: 2pt solid #ccc; padding-left: 8pt; margin: 4pt 0 10pt; }
 </style></head><body>
 <h1>Signing record</h1>
 <p class="lead">How this agreement was signed. This page is not part of the agreement’s terms.{% if not final %} SkyRun Park City has not signed yet.{% endif %}</p>
-<table>{% for k, v in rows %}<tr><td class="k">{{ k }}</td><td class="v">{{ v|default:"—" }}</td></tr>{% endfor %}
-<tr><td class="k">Agreement pages (SHA-256)</td><td class="v">{{ pages_sha256 }}</td></tr></table>
+<table>{% for k, v in rows %}<tr><td class="k">{{ k }}</td><td class="v">{{ v|default:"—" }}</td></tr>{% endfor %}</table>
 {% for s in signers %}
 <h2>{{ s.role }}</h2>
 <div class="sig">{% if s.png %}<img src="{{ s.png }}" alt="">{% else %}<span class="typed">{{ s.typed }}</span>{% endif %}</div>
@@ -27,4 +27,10 @@ h2 { font-size: 11pt; margin: 16pt 0 6pt; }
 <p><b>{{ s.consent_label }}:</b></p><p class="words">{{ s.consent }}</p>
 {% if s.authorization %}<p><b>The authorization it was applied under:</b></p><p class="words">{{ s.authorization }}</p>{% endif %}
 {% endfor %}
+<h2>Fingerprints</h2>
+<table>
+<tr><td class="k">Words signed (SHA-256)</td><td class="v">{{ words_sha256|default:"—" }}</td></tr>
+<tr><td class="k">Agreement pages (SHA-256)</td><td class="v">{{ pages_sha256 }}</td></tr>
+</table>
+{% for sentence in explain %}<p class="explain">{{ sentence }}</p>{% endfor %}
 </body></html>

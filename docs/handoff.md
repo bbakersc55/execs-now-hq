@@ -85,11 +85,82 @@ accounts (Bryan has two: FF and SkyRun FCC).
    `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
    chosen (p14 "Adding a domain", p15 "The form's address").
 
+### Fixes before merging (Bryan, 2026-11-24), same branch
+
+- Nothing that signs, authorizes or changes anything while acting as someone
+  ("You're acting as [name]. Stop acting as them to do this.").
+- The signing record names the signed-in account (applied by, signed
+  personally by, the authorization's recorder), never the template's name.
+- The two fingerprints explained on the record; the exact signed text kept and
+  downloadable by people ticked for signed PDFs.
+- People and permissions at `/permissions/<company id>`, whenever intake or
+  agreements is on, showing only the columns for what is on.
+- Test mode: only the practice owner and the Client owner change it; each
+  change audited with from/to; the latest shown on Form settings.
+- New tests: `tests/test_agreements_fixes.py`, `tests/test_agreements_ai_sweep.py`
+  (no leak found), and more in `frontend/src/screens/Agreements.test.tsx`.
+- Migration `agreements 0003` (two columns with defaults).
+
 ### Not proven
 
 - Against SkyRun's real Track: `area` (its unit isn't in Track's reference;
   read a unit back after the first real send), the two new fields.
 - Postmark end to end. A real phone's drawing pad.
+
+### Walking it on the demo (after `dev` is pushed; not run)
+
+The demo deploys from `dev` and applies its own migrations at start; its Track
+client always refuses, so no Track is involved. Wait for SUCCESS:
+`railway deployment list -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production --service execs-now-hq`.
+Then, from the laptop (it switches intake **and** owner agreements on for the
+first demo client company with a Client owner, makes that Client owner "Who
+signs", ticks them, and prints a 20-minute sign-in link for them):
+
+```sh
+cd ~/projects/execs-now-hq
+cat > /tmp/demo_agreements_setup.py <<'PY'
+from django.conf import settings
+from django.core.management import call_command
+from apps.accounts.models import MagicLinkToken
+from apps.agreements.models import Program, StaffAccess
+from apps.crm.services import secrets as cipher
+from apps.scorecard.models import TrackConnection
+from apps.tenancy.models import Membership
+from config import environment
+assert environment.is_demo(), "Not the demo: stopping."
+ff = (Membership.all_objects.select_related("tenant").filter(role="FF", revoked_at__isnull=True,
+      user__email="bryan.baker@getexecutivesnow.com").order_by("created_at").first())
+fcc = (Membership.all_objects.select_related("user", "client_company").filter(tenant=ff.tenant,
+       role="FCC", revoked_at__isnull=True, client_company__deleted_at__isnull=True)
+       .order_by("client_company__name").first())
+company = fcc.client_company
+TrackConnection.all_objects.get_or_create(tenant=ff.tenant, company=company, defaults={
+    "domain": "demo-no-track.invalid", "key_ciphertext": cipher.encrypt("demo"),
+    "secret_ciphertext": cipher.encrypt("demo"), "key_last4": "demo"})
+call_command("intake_forms", str(company.pk), "on")
+call_command("owner_agreements", str(company.pk), "on")
+program = Program.all_objects.get(company=company)
+program.signer = fcc.user
+program.save()
+StaffAccess.all_objects.update_or_create(tenant=ff.tenant, company=company, user=fcc.user,
+    defaults={"agreements": True, "signed_pdfs": True, "intake": True})
+_, raw = MagicLinkToken.issue(tenant=ff.tenant, user=fcc.user)
+print("Company:", company.name, company.pk)
+print("Signer (stands in for Michael):", fcc.user.full_name)
+print("Sign in as the signer (20 minutes):", f"{settings.PUBLIC_BASE_URL.rstrip('/')}/auth/magic/{raw}")
+PY
+B=$(base64 -w0 < /tmp/demo_agreements_setup.py)
+railway ssh -p 792ddb0f-a2fb-45a0-9034-fafca1d4d81f -e production -s execs-now-hq -- \
+  sh -c "python manage.py shell -c \"\$(echo $B | base64 -d)\""
+```
+
+Walk: as yourself, Owner agreements → New owner → Copy the link → open it on
+your phone, sign, choose Now. Open the printed sign-in link in a private window
+(you are now the signer), record the authorization ticking yourself, then
+apply SkyRun's signature from your own window. Don't use "act as" for the
+signer: it is refused now. People and permissions is at
+`/permissions/<company id>`. Demo email goes only to the demo's redirect, if
+set. No worker in the demo: no reminders. Intake's Track lists are empty there.
 
 ## 2026-11-23: Release 50, and the intake read
 

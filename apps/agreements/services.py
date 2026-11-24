@@ -7,6 +7,7 @@ the usual way, after the agreement is countersigned.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
@@ -39,6 +40,24 @@ class Refused(Exception):
     def __init__(self, message, status=400):
         super().__init__(message)
         self.status = status
+
+
+ACTING = "You're acting as {name}. Stop acting as them to do this."
+
+
+def not_while_acting():
+    """Owner, 2026-11-24: while someone acts as another person, nothing that
+    signs, authorizes or changes anything here goes through. Viewing does."""
+    from django.contrib.auth import get_user_model
+
+    from apps.tenancy.context import get_acting
+
+    acting = get_acting()
+    if acting is None:
+        return
+    person = get_user_model().objects.filter(pk=acting[1]).first()
+    name = ((person.full_name or "").strip() or person.email) if person else "someone"
+    raise Refused(ACTING.format(name=name), 403)
 
 
 # ------------------------------------------------------------ the program
@@ -149,6 +168,7 @@ def current(agreement) -> AgreementVersion:
 def create(company, *, name, email="", phone="", terms=None, actor=None,
            template_key=texts.DEFAULT) -> OwnerAgreement:
     from apps.crm.models import Company
+    not_while_acting()
 
     if not access.is_on(company):
         raise Refused("Owner agreements aren't on for this company.", 404)
@@ -187,6 +207,7 @@ def update(agreement, *, name=None, email=None, phone=None, terms=None, actor=No
     """Staff correct an agreement the owner hasn't signed. A change to the
     terms after it was sent replaces it with a new version: the owner's link
     opens the corrected one."""
+    not_while_acting()
     _editable(agreement)
     if name is not None or email is not None or phone is not None:
         n, e, p = _contact(agreement.owner_name if name is None else name,
@@ -218,6 +239,7 @@ def update(agreement, *, name=None, email=None, phone=None, terms=None, actor=No
 
 
 def cancel(agreement, actor):
+    not_while_acting()
     _editable(agreement)
     agreement.voided_at = timezone.now()
     agreement.link_hash = ""
@@ -236,6 +258,7 @@ def owner_link(agreement) -> str:
 def send_email(agreement, actor):
     """Email the owner their link (the program's sender)."""
     from . import mail
+    not_while_acting()
 
     _editable(agreement)
     if not agreement.owner_email:
@@ -251,6 +274,7 @@ def send_email(agreement, actor):
 
 def copy_link(agreement, actor) -> str:
     """Staff send the link themselves. Counts as sent."""
+    not_while_acting()
     _editable(agreement)
     url = owner_link(agreement)
     if agreement.sent_at is None:
@@ -466,6 +490,8 @@ def owner_sign(agreement, *, method, typed="", drawn="", agreed=False, ip=None,
     version = current(agreement)
     terms = terms_for(agreement)
     company = agreement.company
+    # The words as the owner signed them, kept exactly (owner, 2026-11-24).
+    words = render.signed_text(agreement.template_key, terms, details)
     with transaction.atomic():
         locked = OwnerAgreement.all_objects.select_for_update().get(pk=agreement.pk)
         if locked.owner_signed_at is not None:
@@ -480,7 +506,7 @@ def owner_sign(agreement, *, method, typed="", drawn="", agreed=False, ip=None,
             consent_version=consent.CURRENT,
             consent_text=consent.owner(company=_brand(company), email=details.get("email", "")),
             signed_at=now, ip_address=ip or None, user_agent=(user_agent or "")[:500],
-            text_sha256=render.signed_sha256(agreement.template_key, terms, details))
+            text_sha256=hashlib.sha256(words.encode("utf-8")).hexdigest(), signed_text=words)
         agreement.owner_signed_at = now
         agreement.last_activity_at = now
         agreement.save(update_fields=["owner_signed_at", "last_activity_at"])
@@ -631,6 +657,7 @@ def record_authority(company, user, *, method, typed="", drawn="", people=(), ag
                      ip=None, user_agent=""):
     """The signer, signed in as themselves, adopts their signature and names
     who may apply it to new-owner agreements. A new row each time."""
+    not_while_acting()
     if not access.is_signer(user, company):
         raise Refused("Only the company's signer can record this.", 403)
     if agreed is not True:
@@ -646,20 +673,24 @@ def record_authority(company, user, *, method, typed="", drawn="", people=(), ag
             ended_at=now, ended_ip=ip or None, ended_user_agent=(user_agent or "")[:500])
         row = CountersignAuthority.all_objects.create(
             tenant_id=company.tenant_id, company=company, principal=user,
-            principal_name=tpl.signer_name or user.full_name, principal_title=tpl.signer_title,
+            recorded_by_name=account_name(user),
+            principal_name=tpl.signer_name, principal_title=tpl.signer_title,
             method=method, typed_text=typed, drawn_png=png,
             people=[{"user_id": u, "name": allowed[u]} for u in chosen],
             wording_version=consent.CURRENT,
-            wording=consent.authorization(company=_brand(company),
-                                          principal=tpl.signer_name or user.full_name,
-                                          title=tpl.signer_title),
+            wording=consent.authorization(company=_brand(company), principal=tpl.signer_name,
+                                          title=tpl.signer_title,
+                                          recorded_by=account_name(user)),
             recorded_at=now, ip_address=ip or None, user_agent=(user_agent or "")[:500])
+    # The event log keeps the account's id and email; the PDF prints names only.
     _audit(company, user, "agreements.authority_recorded",
-           {"people": [p["name"] for p in row.people]})
+           {"authority_id": str(row.pk), "user_id": str(user.pk), "email": user.email,
+            "name": row.recorded_by_name, "people": [p["name"] for p in row.people]})
     return row
 
 
 def withdraw_authority(company, user, *, ip=None, user_agent=""):
+    not_while_acting()
     if not access.is_signer(user, company):
         raise Refused("Only the company's signer can withdraw this.", 403)
     row = access.authority_in_force(company)
@@ -668,7 +699,8 @@ def withdraw_authority(company, user, *, ip=None, user_agent=""):
     row.ended_at, row.withdrawn = timezone.now(), True
     row.ended_ip, row.ended_user_agent = ip or None, (user_agent or "")[:500]
     row.save(update_fields=["ended_at", "withdrawn", "ended_ip", "ended_user_agent"])
-    _audit(company, user, "agreements.authority_withdrawn", {})
+    _audit(company, user, "agreements.authority_withdrawn",
+           {"authority_id": str(row.pk), "user_id": str(user.pk), "email": user.email})
     return row
 
 
@@ -687,6 +719,7 @@ def countersign(agreement, user, *, agreed=False, method="", typed="", drawn="",
     signature, or one made now). Anyone else on the authorization applies the
     signer's adopted signature, and the record says they did, under which
     authorization: never as if the signer pressed the button."""
+    not_while_acting()
     company = agreement.company
     if agreement.owner_signed_at is None:
         raise Refused("The owner hasn't signed yet.", 409)
@@ -719,14 +752,13 @@ def countersign(agreement, user, *, agreed=False, method="", typed="", drawn="",
                       "countersigned; tell the practice owner.", 409)
     now = timezone.now()
     day = practice_today(company)
-    applied_by_name = (user.full_name or "").strip() or "a SkyRun team member"
+    applied_by_name = account_name(user)
     with transaction.atomic():
         locked = OwnerAgreement.all_objects.select_for_update().get(pk=agreement.pk)
         if locked.countersigned_at is not None:
             raise Refused("This agreement is countersigned already.", 409)
-        words = (consent.signer(company=_brand(company)) if signer_self else
-                 consent.apply(company=_brand(company), principal=tpl.signer_name,
-                               authorized_on=_day(authority.recorded_at, company)))
+        words = countersign_words(agreement, user, signer_self=signer_self,
+                                  authority=authority)
         AgreementSignature.all_objects.create(
             tenant_id=agreement.tenant_id, agreement=agreement, version=owner_sig.version,
             role=AgreementSignature.Role.MANAGER, printed_name=tpl.signer_name,
@@ -739,11 +771,42 @@ def countersign(agreement, user, *, agreed=False, method="", typed="", drawn="",
         agreement.countersigned_at, agreement.agreement_date = now, day
         agreement.save(update_fields=["countersigned_at", "agreement_date"])
         _event(agreement, "countersigned", actor=user, ip=ip, user_agent=user_agent,
-               detail=(f"Countersigned by {tpl.signer_name}" if signer_self else
-                       f"{tpl.signer_name}'s signature applied by {applied_by_name}, under the "
-                       f"authorization of {_day(authority.recorded_at, company)}"))
+               detail=(f"Signed personally by {applied_by_name}" if signer_self else
+                       f"SkyRun's signature applied by {applied_by_name}, under the "
+                       f"authorization {authority_by(authority)} recorded on "
+                       f"{_day(authority.recorded_at, company)}"))
+    _audit(company, user, "agreements.countersigned",
+           {"agreement_id": str(agreement.pk), "number": agreement.number,
+            "user_id": str(user.pk), "email": user.email, "name": applied_by_name,
+            "how": "personally" if signer_self else "under_authorization",
+            "authority_id": str(authority.pk) if authority and not signer_self else None})
     _after_countersigned(agreement)
     return agreement
+
+
+def account_name(user) -> str:
+    """The signed-in account's full name, as the record prints it (owner,
+    2026-11-24): from the account, never from the template, never an email."""
+    return (getattr(user, "full_name", "") or "").strip() or "(an account with no name)"
+
+
+def authority_by(authority) -> str:
+    """Who recorded an authorization: the account's name as it was that day."""
+    if authority is None:
+        return ""
+    return authority.recorded_by_name or account_name(authority.principal)
+
+
+def countersign_words(agreement, user, *, signer_self, authority) -> str:
+    """The words the person agrees to when they countersign."""
+    tpl = texts.get(agreement.template_key)
+    company = agreement.company
+    if signer_self:
+        return consent.signer(company=_brand(company))
+    return consent.apply(company=_brand(company),
+                         principal=f"{tpl.signer_name}, {tpl.signer_title}",
+                         authorized_on=_day(authority.recorded_at, company),
+                         recorded_by=authority_by(authority))
 
 
 def _day(dt, company) -> str:

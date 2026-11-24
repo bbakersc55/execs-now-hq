@@ -6,7 +6,7 @@ never the product or the practice (white label)."""
 
 from __future__ import annotations
 
-CURRENT = "2026-11-23"
+CURRENT = "2026-11-24"
 
 OWNER = {
     "2026-11-23": (
@@ -20,6 +20,7 @@ OWNER = {
         "will be emailed to {email}; and that I should tell {company} if that email address "
         "changes."),
 }
+OWNER["2026-11-24"] = OWNER["2026-11-23"]
 
 #: The signer countersigning themselves.
 SIGNER = {
@@ -28,6 +29,7 @@ SIGNER = {
         "equivalent of my handwritten signature on this agreement, and that it records my "
         "signature for {company}."),
 }
+SIGNER["2026-11-24"] = SIGNER["2026-11-23"]
 
 #: Someone applying the signer's signature under the standing authorization.
 APPLY = {
@@ -35,6 +37,13 @@ APPLY = {
         "I am applying {principal}'s signature to this agreement for {company}, under "
         "{principal}'s authorization of {authorized_on}. The signing record will show that I "
         "applied it, with my name, the time and my IP address."),
+    # Owner, 2026-11-24: name the account that recorded the authorization, not
+    # the name in the signature block.
+    "2026-11-24": (
+        "I am applying {company}'s signature, the one {recorded_by} adopted for the block that "
+        "reads \u201c{principal}\u201d, to this agreement, under the authorization {recorded_by} "
+        "recorded on {authorized_on}. The signing record will show that I applied it, with my "
+        "name, the time and my IP address."),
 }
 
 #: The signer's standing authorization.
@@ -47,6 +56,15 @@ AUTHORIZATION = {
         "that it was applied under this authorization. It covers new-owner agreements only. I "
         "may withdraw it at any time; withdrawing it does not undo an agreement already "
         "countersigned."),
+    # Owner, 2026-11-24: the account that records it speaks for itself.
+    "2026-11-24": (
+        "I, {recorded_by}, adopt the signature shown here as {company}'s signature in the block "
+        "that reads \u201c{principal}, {title}\u201d. I authorize the people named here to apply "
+        "it, on my behalf and for {company}, to new-owner rental management agreements once the "
+        "owner has signed. Each time it is applied, the signing record will show who applied "
+        "it, when, from what IP address, and that it was applied under this authorization. It "
+        "covers new-owner agreements only. I may withdraw it at any time; withdrawing it does "
+        "not undo an agreement already countersigned."),
 }
 
 
@@ -58,10 +76,13 @@ def signer(*, company: str, version: str = CURRENT) -> str:
     return SIGNER[version].format(company=company)
 
 
-def apply(*, company: str, principal: str, authorized_on: str, version: str = CURRENT) -> str:
+def apply(*, company: str, principal: str, authorized_on: str, recorded_by: str = "",
+          version: str = CURRENT) -> str:
     return APPLY[version].format(company=company, principal=principal,
-                                 authorized_on=authorized_on)
+                                 authorized_on=authorized_on, recorded_by=recorded_by)
 
 
-def authorization(*, company: str, principal: str, title: str, version: str = CURRENT) -> str:
-    return AUTHORIZATION[version].format(company=company, principal=principal, title=title)
+def authorization(*, company: str, principal: str, title: str, recorded_by: str = "",
+                  version: str = CURRENT) -> str:
+    return AUTHORIZATION[version].format(company=company, principal=principal, title=title,
+                                         recorded_by=recorded_by)
