@@ -129,11 +129,12 @@ def test_the_form_says_why_and_how_in_the_approved_words(world, settings):
     assert form["tax_wording"] == {
         "why": "Mountain Stays needs this number once, to file your property's rental permit. "
                "It's also kept on your owner account with us, for your year-end tax forms.",
-        # Owner, after the demo walk (2026-11-24), word for word.
+        # Owner, after the demo walk (2026-11-24), word for word; the third
+        # sentence as he changed it that night.
         "how": "Your number is encrypted the moment you save it. Only the few people who file "
-               "your rental permit can view it, and each viewing is recorded. Once your permit "
-               "is filed, our team sees only the last four digits. Entering it here means no "
-               "one has to take it down by phone or on paper."}
+               "your rental permit can view it, and each viewing is recorded. Once it's saved "
+               "to your owner account, our team sees only the last four digits. Entering it "
+               "here means no one has to take it down by phone or on paper."}
     # The backups' days are no longer shown to owners, and the setting is gone.
     assert not hasattr(settings, "INTAKE_TAX_BACKUP_DAYS")
     assert "backup" not in json.dumps(form["tax_wording"]).lower()

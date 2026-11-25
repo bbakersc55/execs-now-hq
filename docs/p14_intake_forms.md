@@ -410,7 +410,12 @@ this is on the agreement. Code: `apps/intake/taxnumbers.py`.
   with the send (marked as having none).
 - **The words on the form** (as approved, from the server: `taxnumbers.wording`):
   why we ask, and how it is protected. "How it's protected" was rewritten by
-  Bryan after the demo walk (2026-11-24) and is used word for word; it no
+  Bryan after the demo walk (2026-11-24) and is used word for word (its third
+  sentence, "Once it's saved to your owner account, our team sees only the
+  last four digits.", as he changed it that night: Track's screens show staff
+  only the last four, by his own knowledge of them). **Operating rule:** tick
+  "See full tax numbers" only for the people who file rental permits, because
+  the owner's wording promises that. It no
   longer mentions backups, and the setting that put their days in it
   (`INTAKE_TAX_BACKUP_DAYS`) was removed. The fact stands, for anyone who asks:
   the encrypted backups can hold a tax number for up to 37 days after ENHQ

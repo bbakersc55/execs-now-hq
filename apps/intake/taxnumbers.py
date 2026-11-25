@@ -105,16 +105,19 @@ def check(kind: str, value: str) -> str:
 
 def wording(brand: str) -> dict:
     """Why we ask, and how it is protected, word for word as the owner wrote
-    them: "why" on 2026-11-24, "how" after the demo walk (2026-11-24). The
-    backup sentence went with the old "how"; nothing shows the backups' days
-    to owners any more (docs/p14_intake_forms.md keeps the fact)."""
+    them: "why" on 2026-11-24, "how" after the demo walk (2026-11-24), with
+    its third sentence ("Once it's saved to your owner account…") changed by
+    him the same night: Track shows staff only the last four, by his own
+    knowledge of Track's screens. The backup sentence went with the old
+    "how"; nothing shows the backups' days to owners any more
+    (docs/p14_intake_forms.md keeps the fact)."""
     return {
         "why": (f"{brand} needs this number once, to file your property's rental permit. It's "
                 "also kept on your owner account with us, for your year-end tax forms."),
         "how": ("Your number is encrypted the moment you save it. Only the few people who file "
-                "your rental permit can view it, and each viewing is recorded. Once your permit "
-                "is filed, our team sees only the last four digits. Entering it here means no "
-                "one has to take it down by phone or on paper."),
+                "your rental permit can view it, and each viewing is recorded. Once it's saved "
+                "to your owner account, our team sees only the last four digits. Entering it "
+                "here means no one has to take it down by phone or on paper."),
     }
 
 
