@@ -655,7 +655,10 @@ def test_ac_2_9_the_retention_job_is_scheduled(seeded_tenant):
     # and the hourly pass that keeps daily jobs on practice time (2026-11-17),
     # and intake forms' hourly owner dates and daily purge (2026-11-19),
     # and owner agreements' hourly reminders (2026-11-23).
-    assert Schedule.objects.count() == 23
+    assert Schedule.objects.exclude(name__startswith="platform.").count() == 23
+    # P16 (2026-11-25): one platform job besides, the card pages' daily check.
+    assert list(Schedule.objects.filter(name__startswith="platform.")
+                .values_list("name", flat=True)) == ["platform.card_pages_check"]
     assert Schedule.objects.filter(name=f"scorecard.read_feeds:{seeded_tenant.slug}",
                                    schedule_type=Schedule.HOURLY).exists()
     assert Schedule.objects.filter(

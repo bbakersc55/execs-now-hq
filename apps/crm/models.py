@@ -1376,6 +1376,9 @@ class OutboxMessage(TenantScopedModel):
         OWNER_AGREEMENT = "owner_agreement", "Owner agreement email"
         OWNER_AGREEMENT_NOTICE = "owner_agreement_notice", "Owner agreement notice"
         TAX_NUMBER_CODE = "tax_number_code", "Tax number code"
+        # P16: the card pages changed, or a browser blocked a script on one; to
+        # the platform owner, through platform mail (apps/cardpages/alerts.py).
+        CARD_PAGE_ALERT = "card_page_alert", "Card page alert"
 
     #: FR-1.15b. `manual` and `precall_invite` are role-dependent and resolved
     #: at creation time, not listed here.
@@ -1410,6 +1413,8 @@ class OutboxMessage(TenantScopedModel):
         # A one-time code to see a tax number, to the person's own sign-in
         # address; the code is put in at delivery and never stored.
         Producer.TAX_NUMBER_CODE,
+        # P16: fixed wording to the platform owner about the card pages.
+        Producer.CARD_PAGE_ALERT,
     }
 
     #: Never real mail from a laptop, whatever the allow-list says (owner,

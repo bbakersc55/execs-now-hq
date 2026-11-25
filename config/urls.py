@@ -7,6 +7,7 @@ from apps.accounts import google_external, microsoft_signin
 from apps.accounts import views as account_views
 from apps.billing import views_pay as billing_pay
 from apps.billing import views_proof as billing_proof
+from apps.cardpages import views as cardpages_views
 from apps.crm import views_gmail, views_microsoft
 from apps.crm import views_site_leads as crm_site_leads
 from apps.esign import views_sign as esign_sign
@@ -139,6 +140,9 @@ urlpatterns = [
     # P4 part 1: the token proof, laptop and sandbox only (404 elsewhere).
     path("dev/nmi-proof", billing_proof.proof_page, name="nmi-proof"),
     path("dev/nmi-proof/run", billing_proof.proof_run, name="nmi-proof-run"),
+    # P16: where browsers report the app pages' policy violations. Outside
+    # /api/ so no gate of the app's stands in the way (docs/p16_card_page_scripts.md).
+    path("csp-report", cardpages_views.csp_report, name="csp-report"),
     # Last: every other path is the React app's (production; Phase 7). The
     # server's own prefixes are excluded so a mistyped API URL is a 404, not
     # a page of HTML.

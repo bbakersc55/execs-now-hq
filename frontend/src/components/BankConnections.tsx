@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Banner, Card, Empty, Pill, when } from "./ui";
 import { BankConnection, BankOverview, FinanceAccount, PersonalAccount, api } from "../lib/api";
 import { dollars, longDate } from "../lib/money";
+import { plaidRefusal } from "../lib/pagePolicy";
 
 /**
  * Bank feeds (docs/p6_bank_feeds.md): the practice owner's own bank accounts,
@@ -40,6 +41,10 @@ const LINK_SRC = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
 let loading: Promise<PlaidLink> | null = null;
 
 export function loadPlaidLink(): Promise<PlaidLink> {
+  // P16: never on a card page (docs/p16_card_page_scripts.md); its policy
+  // would block the script anyway.
+  const refused = plaidRefusal();
+  if (refused) return Promise.reject(new Error(refused));
   if (window.Plaid) return Promise.resolve(window.Plaid);
   if (!loading) {
     loading = new Promise((resolve, reject) => {

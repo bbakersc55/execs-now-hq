@@ -26,6 +26,7 @@ import { makeWords, Words, WordsProvider } from "./lib/words";
 import { api, Me, SIGNED_OUT_EVENT } from "./lib/api";
 import { PRODUCT_ART, PRODUCT_FAVICON, PRODUCT_NAME, setFavicon, useBranding } from "./lib/branding";
 import { applyPortalTokens } from "./lib/palette";
+import { usePagePolicy } from "./lib/pagePolicy";
 import { LinkBranded } from "./components/LinkBranded";
 import { AreaSwitch } from "./components/AreaSwitch";
 import { AgreementGate } from "./components/AgreementGate";
@@ -274,6 +275,9 @@ function captureDefaults(pathname: string) {
 
 export function App() {
   const location = useLocation();
+  // P16: the page's content security policy follows the address: moving to
+  // or from a bank page reloads it (docs/p16_card_page_scripts.md).
+  usePagePolicy(location.pathname);
   // The pages reachable with **no session at all**: the cadence link in
   // every digest footer (FR-3.33a), the pre-call form (FR-4.6, matrix
   // 10.13), unsubscribe, and an invoice's pay link (P4 part 3). They render

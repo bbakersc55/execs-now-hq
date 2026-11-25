@@ -131,7 +131,7 @@ def _shown_size(tenant, field) -> Logo | None:
 
 #: Mail only the practice's own staff receive: no client-facing footer (P1).
 INTERNAL_PRODUCERS = frozenset({"client_activity", "precall_complete", "note_pin_reset",
-                                "practice_invite", "feedback_notice"})
+                                "practice_invite", "feedback_notice", "card_page_alert"})
 
 
 def footer_html(text: str, *, link_color: str) -> str:

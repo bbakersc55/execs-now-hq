@@ -93,3 +93,61 @@ describe("NMI's card fields come ready, or are shown anyway (finding B3)", () =>
     expect(widget.heard.size).toBe(0);
   });
 });
+
+describe("the card form only on a card page (P16)", () => {
+  function served(kind: "card" | "bank" | null) {
+    document.querySelector('meta[name="enhq-page-policy"]')?.remove();
+    if (!kind) return;
+    const meta = document.createElement("meta");
+    meta.name = "enhq-page-policy";
+    meta.content = kind;
+    document.head.appendChild(meta);
+  }
+  afterEach(() => {
+    served(null);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    document.querySelectorAll("script[data-test]").forEach((s) => s.remove());
+  });
+
+  it("on a bank page, reloads as a card page and never draws the fields", async () => {
+    const { navigation } = await import("../lib/pagePolicy");
+    const went: string[] = [];
+    vi.spyOn(navigation, "assign").mockImplementation((url) => { went.push(url); });
+    window.history.pushState({}, "", "/settings/finance");
+    served("bank");
+    const { findByText } = render(<NmiCardForm publicKey="pub" amountCents={5000}
+      payPath="/api/x/pay/" onDone={() => {}} />);
+    await findByText("Opening the card form…");
+    expect(went).toEqual(["/"]);
+    expect(document.querySelector("nmi-pay-widget")).toBeNull();
+  });
+
+  it("with a script from elsewhere on the page, refuses and reports it", async () => {
+    served("card");
+    const other = document.createElement("script");
+    other.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+    other.dataset.test = "1";
+    document.head.appendChild(other);
+    const posted: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      posted.push(JSON.parse(String(init?.body ?? "{}")));
+      return new Response(JSON.stringify({}), { status: 200,
+        headers: { "Content-Type": "application/json" } });
+    }));
+    const { findByRole } = render(<NmiCardForm publicKey="pub" amountCents={5000}
+      payPath="/api/x/pay/" failurePath="/api/x/form-failed/" onDone={() => {}} />);
+    expect((await findByRole("alert")).textContent).toMatch(/nothing was charged or saved/);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ form: "component", host: "secure.nmi.com" });
+    expect(String((posted[0] as { reason: string }).reason))
+      .toMatch(/card page check refused: A script from elsewhere.*plaid/);
+    expect(document.querySelector("nmi-pay-widget")).toBeNull();
+  });
+
+  it("on a card page with nothing else on it, draws the fields", async () => {
+    served("card");
+    await mounted();
+  });
+});

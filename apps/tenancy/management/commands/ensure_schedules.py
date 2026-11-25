@@ -125,6 +125,35 @@ SCHEDULES = [
 ]
 
 
+#: The platform's own jobs, one each, not one per practice:
+#: (name, function, schedule_type, minutes, first run at this UTC hour).
+PLATFORM_SCHEDULES = [
+    # P16: the card pages' daily change and tamper check, at 13:00 UTC (6:00 in
+    # Utah in winter). Production only; elsewhere it says so and reads nothing.
+    ("platform.card_pages_check", "apps.cardpages.tasks.daily_check", Schedule.DAILY, None, 13),
+]
+
+
+def ensure_platform(write=None) -> None:
+    """Create or update the platform's own schedules (P16)."""
+    for name, func, schedule_type, minutes, utc_hour in PLATFORM_SCHEDULES:
+        fields = {"func": func, "args": None, "schedule_type": schedule_type,
+                  "minutes": minutes, "repeats": -1}
+        row = Schedule.objects.filter(name=name).first()
+        if row is None:
+            now = timezone.now()
+            first = datetime.combine(now.date(), time(utc_hour), tzinfo=UTC)
+            row = Schedule.objects.create(name=name, next_run=first if first > now
+                                          else first + timedelta(days=1), **fields)
+            verb = "created"
+        else:
+            Schedule.objects.filter(pk=row.pk).update(**fields)
+            verb = "updated"
+            row.refresh_from_db()
+        if write:
+            write(f"{verb:8} {name:45} next run {row.next_run:%Y-%m-%d %H:%M %Z}")
+
+
 #: What a suspended practice still runs (P4 part 5).
 SUSPENDED_RUNS = ("billing.charge_subscription",)
 
@@ -265,3 +294,4 @@ class Command(BaseCommand):
                 ensure_for(tenant, self.stdout.write, only=SUSPENDED_RUNS)
                 continue
             ensure_for(tenant, self.stdout.write)
+        ensure_platform(self.stdout.write)

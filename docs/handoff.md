@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-24**, after the demo walk's fix round. **The next session starts at
-"2026-11-24, night: the demo walk's fixes, merged into `dev`, start here" just
-below**; then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
+2026-11-25**, after the card pages' script controls. **The next session
+starts at "2026-11-25: script controls on the card pages (P16), on a branch,
+start here" just below**; then "2026-11-24, night: the demo walk's fixes,
+merged into `dev`"; then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
 the one to use); then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
@@ -38,7 +39,30 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24, night: the demo walk's fixes, merged into `dev`, start here
+## 2026-11-25: script controls on the card pages (P16), on a branch, start here
+
+Why (Bryan): the card processor's PCI questionnaire asks whether the payment
+page scripts are monitored and protected (PCI DSS 6.4.3 and 11.6.1); until
+now nothing limited them. Branch `card-page-scripts`, cut from `dev` at
+`4c7562f`, one commit after a green gate. **Not pushed, not merged, not
+released.** Spec, with the plan and every default taken:
+`docs/p16_card_page_scripts.md`. Inventory: `docs/card_page_scripts.md`. The
+one-page record for Bryan's files: `docs/pci_card_page_scripts.md`.
+
+- Every page of the app is served with an enforced policy allowing scripts
+  only from ENHQ and the gateway's Collect.js address; the three bank pages add
+  Plaid and never show a card form; moving between the two reloads the page.
+- The daily check (13:00 UTC, production) and browsers' violation reports
+  alert the platform owner (Notice and email). `card_pages approve` after every
+  release (runbook R6b). The switch: `card_pages mode report-only`.
+- Proved on the laptop sandbox: both forms, all five screens, a token each,
+  nothing charged (`~/enhq-walks/card-page-scripts/`).
+- Migrations `cardpages 0001` (four new tables), `crm 0064` (no SQL); applied
+  to `execsnowhq_local` after the green gate. At release: those two, then
+  `ensure_schedules`, then check the live headers, then the first approval
+  (p16 "At release").
+
+## 2026-11-24, night: the demo walk's fixes, merged into `dev`
 
 Bryan walked round 3 on the demo with his real phone (two owners signing in
 order, cancel and start again, the tax number's code): it passed. His fix

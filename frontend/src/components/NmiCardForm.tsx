@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { CardForm, PayResult, api } from "../lib/api";
 import { dollars } from "../lib/money";
+import {
+  cardFormRefusal, cardPageAddress, documentPolicy, navigation, reloadForPolicy,
+} from "../lib/pagePolicy";
 import { Banner } from "./ui";
 
 const FIELDS = ["ccnumber", "ccexp", "cvv"] as const;
@@ -118,9 +121,44 @@ async function postToken(payPath: string, token: string, amountCents: number): P
  * white-label host, as the server says (`form`).
  */
 export function NmiCardForm(props: CardFormProps) {
-  return props.form?.kind === "collect"
-    ? <CollectCardForm {...props} scriptUrl={props.form.script_url} />
-    : <ComponentCardForm {...props} />;
+  return (
+    <CardPageOnly failurePath={props.failurePath} form={props.form}>
+      {props.form?.kind === "collect"
+        ? <CollectCardForm {...props} scriptUrl={props.form.script_url} />
+        : <ComponentCardForm {...props} />}
+    </CardPageOnly>
+  );
+}
+
+/**
+ * The card fields show only on a page served with the card policy and with
+ * no script from anywhere else on it (P16, docs/p16_card_page_scripts.md).
+ * On a bank page the page is reloaded as a card page, once; otherwise the
+ * payer is told, nothing is charged or saved, and whoever can fix it is told
+ * (the form-failed report).
+ */
+function CardPageOnly({ failurePath, form, children }: {
+  failurePath?: string; form?: CardForm; children: ReactNode;
+}) {
+  const [refusal] = useState(() => cardFormRefusal());
+  const [reloading, setReloading] = useState(false);
+  useEffect(() => {
+    if (!refusal) return;
+    if (documentPolicy() === "bank" && reloadForPolicy(window.location.pathname,
+      () => navigation.assign(cardPageAddress()))) {
+      setReloading(true);
+      return;
+    }
+    if (failurePath) {
+      const host = form?.kind === "collect" ? new URL(form.script_url).host : "secure.nmi.com";
+      api.post(failurePath, { form: form?.kind ?? "component", host,
+                              reason: `The card page check refused: ${refusal}`.slice(0, 300) })
+        .catch(() => { /* the payer is told below either way */ });
+    }
+  }, [refusal, failurePath, form]);
+  if (!refusal) return <>{children}</>;
+  if (reloading) return <p className="small muted">Opening the card form…</p>;
+  return <div role="alert"><Banner kind="bad">{FORM_FAILED}</Banner></div>;
 }
 
 function ComponentCardForm({ publicKey, amountCents, payPath, onDone, buttonText, onToken,
