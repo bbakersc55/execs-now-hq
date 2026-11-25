@@ -2,7 +2,7 @@
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-24**, after the demo walk's fix round. **The next session starts at
-"2026-11-24, night: the demo walk's fixes, on a branch, start here" just
+"2026-11-24, night: the demo walk's fixes, merged into `dev`, start here" just
 below**; then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
@@ -38,13 +38,15 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24, night: the demo walk's fixes, on a branch, start here
+## 2026-11-24, night: the demo walk's fixes, merged into `dev`, start here
 
 Bryan walked round 3 on the demo with his real phone (two owners signing in
 order, cancel and start again, the tax number's code): it passed. His fix
-round is on branch `owner-agreements-walk-fixes`, cut from `dev` at `2b0e315`,
-one commit after a green gate (TZ=UTC). **Not pushed, not merged, not
-released.**
+round was built on branch `owner-agreements-walk-fixes` (cut from `dev` at
+`2b0e315`): `da32b66` (the fixes below) and `804b6b3` (the tax wording's third
+sentence), each after a green gate (TZ=UTC). **Merged into `dev` at `804b6b3`
+(a fast-forward) and pushed. Not released.** `intake 0004` is on the release
+list (item 7 of "Releasing it" below).
 
 1. "Your details" on a desktop screen (≥560px; the phone is unchanged, by
    measurement): Bedrooms/Bathrooms and Square footage/Sleeps line up label to
@@ -52,7 +54,10 @@ released.**
    200px cards, so "A company or trust" takes two lines; "Correct it" sits at
    the left. Screenshots: `~/enhq-walks/owner-agreements/15a`–`15c` (and `16a`–`16d`,
    the owner's form with no Track lists).
-2. "How it's protected" on the tax number is Bryan's wording, word for word.
+2. "How it's protected" on the tax number is Bryan's wording, word for word,
+   its third sentence as he changed it that night: "Once it's saved to your
+   owner account, our team sees only the last four digits." (Track's screens
+   show staff only the last four, by his own knowledge of them.)
    `INTAKE_TAX_BACKUP_DAYS` is gone (nothing showed it any more); the 37 days
    are kept as a fact in p14.
 3. Owner agreement, intake and code mail shows in the send log only with the
@@ -243,7 +248,9 @@ accounts (Bryan has two: FF and SkyRun FCC).
    need no SQL), `crm 0063` (a new Outbox producer, no SQL) and, from the walk's
    fixes, `intake 0004` (the history's `lists_missing` kind, no SQL). Nobody is
    ticked to see full numbers until the practice owner or the Client owner
-   ticks someone. **Before real owners use it:** one proof on SkyRun's real
+   ticks someone. **Operating rule: tick "See full tax numbers" only for the
+   people who file rental permits**, because the owner's wording promises it
+   ("Only the few people who file your rental permit can view it"). **Before real owners use it:** one proof on SkyRun's real
    Track with a made-up number shaped like a Social Security number, on a ZZ
    TEST owner, to see what Track stores and shows (not run). And check
    SkyRun's Form settings: an invite or reminder message someone edited may
