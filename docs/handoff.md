@@ -1,5 +1,27 @@
 # Execs NOW HQ — handoff to the next chat
 
+> **Read this first.** The card pages' script controls (P16, for PCI DSS
+> 6.4.3 and 11.6.1) are committed on branch `card-page-scripts` as `9cfef94`,
+> after a green gate. **Not merged, not pushed, not released**: `dev` doesn't
+> have them yet. Next, in order:
+>
+> 1. Merge `card-page-scripts` into `dev` (gate first) and push. The demo
+>    redeploys with the policy enforced and applies `cardpages 0001` itself.
+> 2. Click through the whole app on the demo with the browser's console open,
+>    looking for anything the policy blocks ("Refused to load", "Refused to
+>    frame", "Content Security Policy", or a panel that stays blank). One
+>    block is expected: Collect.js reaching for Apple's Apple Pay script.
+>    `manage.py card_pages status` in the demo's web service lists what
+>    browsers reported, and a new kind of block alerts the platform owner.
+> 3. Release by "At release" in `docs/p16_card_page_scripts.md` (on the
+>    branch): the two migrations (`cardpages 0001`, `crm 0064`) by the
+>    runbook; `ensure_schedules`; check the live headers; open a card form
+>    without paying; the first `card_pages approve`, then `card_pages check`.
+>    From then on, runbook R6b at every release.
+>
+> Delete this note at the merge: the branch's own section, "2026-11-25: script
+> controls on the card pages (P16), on a branch", takes its place.
+
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
 2026-11-24**, after the demo walk's fix round. **The next session starts at
 "2026-11-24, night: the demo walk's fixes, merged into `dev`, start here" just
