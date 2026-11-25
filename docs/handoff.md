@@ -3,7 +3,8 @@
 > **Read this first.** The card pages' script controls (P16, for PCI DSS
 > 6.4.3 and 11.6.1) are committed on branch `card-page-scripts` as `9cfef94`,
 > after a green gate. **Not merged, not pushed, not released**: `dev` doesn't
-> have them yet. Next, in order:
+> have them yet, and Release 51 (2026-11-25, below) went out without them.
+> Next, in order:
 >
 > 1. Merge `card-page-scripts` into `dev` (gate first) and push. The demo
 >    redeploys with the policy enforced and applies `cardpages 0001` itself.
@@ -23,9 +24,10 @@
 > controls on the card pages (P16), on a branch", takes its place.
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-24**, after the demo walk's fix round. **The next session starts at
-"2026-11-24, night: the demo walk's fixes, merged into `dev`, start here" just
-below**; then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
+2026-11-25**, after Release 51. **The next session starts at
+"2026-11-25: Release 51, owner agreements and tax numbers, start here" just
+below**; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
+then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
 the one to use); then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
@@ -60,7 +62,64 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24, night: the demo walk's fixes, merged into `dev`, start here
+## 2026-11-25: Release 51, owner agreements and tax numbers, start here
+
+### Release 51 is live
+
+- **`main` at `49e2d75`**, pushed at 22:13:09 UTC on Bryan's "release",
+  after his run-now backup (`execsnowhq_prod_20261125_215652.sql.gz`, 20.8 MB).
+- **Ten migrations**, applied by me in the waiting worker 22:14:52–22:15:06,
+  each `OK`: `crm 0062`, `intake 0002`, `agreements 0001`–`0004`, `crm 0063`,
+  `intake 0003`, `intake 0004`, `notify 0008`. Their SQL is in
+  `~/enhq-walks/owner-agreements/` (`migrations.sql` for five,
+  `migrations_later.sql`, written before the push, for the other five).
+- Worker, web and `mcp` up by themselves by 22:15:40. `/healthz` 200, `mcp`
+  `ok`, `/api/agreements/companies` 403 unsigned (404 before). Push to serving
+  about 2 min 19 s.
+- R5b: Bryan ran `ensure_schedules` (about 22:20): the hourly
+  `agreements.tick` created for both practices, the rest updated. The worker
+  ran it for both at 22:20:10, each `Processed`.
+- Recorded in the runbook ("Observed at Release 51").
+- **It carried** the three sections below: owner agreements (P15) with the
+  fixes before merging; several owners, Exhibit A from Sleeps and tax numbers
+  on the intake form; the demo walk's fixes. **Not P16**: `card-page-scripts`
+  (`9cfef94`) is still on its branch (the note at the top).
+
+### What changed for SkyRun when it went live
+
+- Intake's Send to Track is in **test mode** (no setting yet means on): it
+  checks everything and writes nothing to Track, until the practice owner or
+  the Client owner turns it off in Form settings.
+- The intake form asks for a tax number (EIN, SSN or ITIN, or by phone).
+  Nobody sees full numbers until the practice owner or the Client owner
+  ticks someone.
+- `agreements 0002` gave the intake tick to everyone the old rule let in (on
+  SkyRun: Jackie, Kendra, Michael and Bryan's Client owner account, by the
+  P15 section's list). Not read back on production; People and permissions
+  (`/permissions/c4e5ca2a-bee1-4b11-976b-838d63544de1`) shows it.
+- Owner agreements stay off until switched on (item 2 below).
+
+### Next, in order ("Releasing it" in the P15 section below)
+
+1. Before a real owner gets an intake link: the one proof on SkyRun's real
+   Track with a made-up number shaped like a Social Security number, on a ZZ
+   TEST owner (test mode writes nothing, so it has to be off for this). And
+   Form settings: an invite or reminder message someone edited may still say
+   the form never asks for a Social Security number.
+2. `python manage.py owner_agreements c4e5ca2a-bee1-4b11-976b-838d63544de1 on`
+   in a production Railway shell.
+3. Bryan: Owner agreements → Settings → "Who signs for the company" =
+   Michael; People and permissions: a for Sandra, Jackie, Kendra, Michael,
+   Bryan; b for Jackie.
+4. Michael, signed in as himself, records his authorization (Jackie and
+   Bryan). Acting as him is refused.
+5. Tick "See full tax numbers" only for the people who file rental permits.
+6. Later, apart from any release: Postmark and its DNS, then
+   `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
+   chosen.
+7. P16, by the note at the top.
+
+## 2026-11-24, night: the demo walk's fixes, merged into `dev`
 
 Bryan walked round 3 on the demo with his real phone (two owners signing in
 order, cancel and start again, the tax number's code): it passed. His fix

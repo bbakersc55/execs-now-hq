@@ -1048,6 +1048,35 @@ about 1 min 7 s.** A watcher polling `railway deployment list` with `-p`/`-e`
 for the three services, and the new worker's log for `WAITING`, saw the new
 ids on its first read.
 
+**Observed at Release 51 (2026-11-25 UTC, ten migrations: `crm 0062` and
+`0063`, `intake 0002`–`0004`, `agreements 0001`–`0004` and `notify 0008`;
+nothing dropped from an existing table: `agreements 0002` adds intake ticks
+from the old rule and `0004` swaps a constraint and fills a date, both on
+tables new in the release; `49e2d75`: owner agreements (P15), tax numbers on
+the intake form, the demo walk's fixes):** the full gate had passed on that
+exact tree (`5f1c339`, 06:20 UTC, in `.git/green-trees`; its counts weren't
+kept). Before the push, the SQL of the five migrations missing from
+`~/enhq-walks/owner-agreements/migrations.sql` was written beside it as
+`migrations_later.sql`. R1: the owner's run-now:
+`execsnowhq_prod_20261125_215652.sql.gz`, 20.8 MB, landed 21:56:58. R2:
+`main` fast-forwarded `e010c77..49e2d75` without a checkout (`git fetch .
+dev:main`, then `git push origin main`), pushed 22:13:09; the worker, web and
+`mcp` deployments (`346825c5`, `16a971e8`, `a7a5b729`) appeared at
+22:13:14–15. R3: the worker waited at 22:14:24 for exactly the ten, all shown
+(in another order than the laptop's plan); web's own line at 22:14:28 named
+the same ten. R4: applied by me 22:14:52–22:15:06, each `OK`. R5:
+`migrations current` 22:15:34, "real calls to the card processor on", the
+cluster running 22:15:40. R5b: `ensure_schedules` for `agreements.tick`
+(hourly), run by the owner from a copy-paste block, as at Release 49: created
+for both practices, the rest updated; the worker ran it for both at 22:20:10,
+each `Processed`. R6: web and
+`mcp` SUCCESS by themselves at 22:15:28; `/healthz` 200 and `mcp` `ok`;
+`/api/agreements/companies` answers 403 unsigned (404 before). **Push to
+serving: about 2 min 19 s.** No R6b: P16 (`card-page-scripts`) is not in this
+release. Release 50's watcher caught every step; reading the worker's log by
+hand the moment its deployment showed SUCCESS found `WAITING` 15 s after it
+was logged.
+
 ---
 
 ## Part A — the owner's steps, in order
