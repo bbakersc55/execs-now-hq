@@ -29,7 +29,6 @@ import re
 import secrets as pysecrets
 from datetime import timedelta
 
-from django.conf import settings
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 
@@ -105,19 +104,17 @@ def check(kind: str, value: str) -> str:
 
 
 def wording(brand: str) -> dict:
-    """Why we ask, and how it is protected (owner, 2026-11-24, as written).
-    Every word is meant to be true: see the module's docstring."""
-    days = settings.INTAKE_TAX_BACKUP_DAYS
+    """Why we ask, and how it is protected, word for word as the owner wrote
+    them: "why" on 2026-11-24, "how" after the demo walk (2026-11-24). The
+    backup sentence went with the old "how"; nothing shows the backups' days
+    to owners any more (docs/p14_intake_forms.md keeps the fact)."""
     return {
         "why": (f"{brand} needs this number once, to file your property's rental permit. It's "
                 "also kept on your owner account with us, for your year-end tax forms."),
-        "how": (f"It's encrypted as soon as you save it, and from then on this form shows only "
-                f"its last four digits. Most of our team sees only the last four. The few "
-                f"people {brand} authorizes can see the full number, and only after entering a "
-                f"one-time code sent to their own email. Every viewing is recorded. It's never "
-                f"emailed. It's deleted from our onboarding system as soon as it's on your "
-                f"owner account, or 30 days after you submit if it isn't by then. Our "
-                f"encrypted backups keep a copy for up to {days} days more."),
+        "how": ("Your number is encrypted the moment you save it. Only the few people who file "
+                "your rental permit can view it, and each viewing is recorded. Once your permit "
+                "is filed, our team sees only the last four digits. Entering it here means no "
+                "one has to take it down by phone or on paper."),
     }
 
 

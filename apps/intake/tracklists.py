@@ -30,12 +30,44 @@ def stored(company) -> tuple[dict, object]:
 
 
 def save(company, lists: dict):
+    """Keep what Track sent. A list that comes back empty never replaces a
+    copy that has rows (owner, 2026-11-24: the last good copy of each list):
+    that copy stays, with the time it was read, so its age still shows."""
     now = timezone.now()
+    kept = {s.kind: s for s in TrackListSnapshot.all_objects.filter(company=company)}
     for kind in KINDS:
+        rows = lists.get(kind) or []
+        if not rows and kind in kept and kept[kind].payload:
+            continue
         TrackListSnapshot.all_objects.update_or_create(
             company=company, kind=kind,
-            defaults={"tenant_id": company.tenant_id, "payload": lists.get(kind) or [],
-                      "fetched_at": now})
+            defaults={"tenant_id": company.tenant_id, "payload": rows, "fetched_at": now})
+
+
+#: The lists an owner chooses from on the form, by the form's name for each,
+#: with the copy's kind and what people call it (owner, 2026-11-24).
+OWNER_CHOICES = {
+    "bed_types": ("bed_types", "bed types"),
+    "bathroom_fixtures": ("bathroom_amenities", "bathroom features"),
+    "lodging_types": ("lodging_types", "kinds of property"),
+    "code_types": ("code_types", "kinds of code (garage, gate, pool…)"),
+    "amenity_groups": ("amenities", "amenities"),
+}
+
+
+def missing_for_owners(lists: dict) -> list[str]:
+    """The owner's lists this company has no copy of (Track never read for
+    it, or read empty), by the form's names, in the form's order."""
+    return [name for name, (kind, _) in OWNER_CHOICES.items()
+            if not any(row.get("isActive", True) for row in lists.get(kind) or [])]
+
+
+def said(names) -> str:
+    """"bed types, bathroom features and amenities"."""
+    words = [OWNER_CHOICES[n][1] for n in names if n in OWNER_CHOICES]
+    if len(words) <= 1:
+        return "".join(words)
+    return ", ".join(words[:-1]) + " and " + words[-1]
 
 
 def lists_for(company, *, refresh=False, client_factory=None) -> tuple[dict, dict]:
@@ -50,10 +82,13 @@ def lists_for(company, *, refresh=False, client_factory=None) -> tuple[dict, dic
     if due:
         try:
             client = (client_factory or feeds.track_client)(company)
-            lists = fetch(client)
-            save(company, lists)
+            save(company, fetch(client))
             fetched_at = timezone.now()
         except track.TrackUnavailable as exc:
             error = str(exc)
+        else:
+            # What was kept, not what came back: a list Track sent back empty
+            # is the last good copy here too (`save`).
+            lists, _ = stored(company)
     return lists, {"fetched_at": fetched_at.isoformat() if fetched_at else None,
                    "stale": bool(error) or fetched_at is None, "error": error}

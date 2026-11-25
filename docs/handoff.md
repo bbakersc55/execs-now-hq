@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-24**, after the owner agreements' third round and tax numbers. **The
-next session starts at "2026-11-24, later: several owners, Exhibit A from
-Sleeps, and tax numbers, merged into `dev`, start here" just below**; then
+2026-11-24**, after the demo walk's fix round. **The next session starts at
+"2026-11-24, night: the demo walk's fixes, on a branch, start here" just
+below**; then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
+tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
 the one to use); then "2026-11-23: Release 50, and the intake read"; then "2026-11-21:
 stopping until Monday"; then "2026-11-20: intake forms are SkyRun's alone"; then "2026-11-19, evening: intake forms (P14), on `dev`"; then "2026-11-19: Release 48, priority, company order, connectors in setup"; then "2026-11-18: Release 47, KPIs from a sheet"; then "2026-11-17, evening: Release 46, and INV-0005"; then "2026-11-17: Release 45, automatic recurring billing"; then "2026-11-16, later: no card fee on invoices"; then
@@ -37,7 +38,38 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-24, later: several owners, Exhibit A from Sleeps, and tax numbers, merged into `dev`, start here
+## 2026-11-24, night: the demo walk's fixes, on a branch, start here
+
+Bryan walked round 3 on the demo with his real phone (two owners signing in
+order, cancel and start again, the tax number's code): it passed. His fix
+round is on branch `owner-agreements-walk-fixes`, cut from `dev` at `2b0e315`,
+one commit after a green gate (TZ=UTC). **Not pushed, not merged, not
+released.**
+
+1. "Your details" on a desktop screen (≥560px; the phone is unchanged, by
+   measurement): Bedrooms/Bathrooms and Square footage/Sleeps line up label to
+   label and box to box (a CSS subgrid); "Who owns the property?" has two
+   200px cards, so "A company or trust" takes two lines; "Correct it" sits at
+   the left. Screenshots: `~/enhq-walks/owner-agreements/15a`–`15c` (and `16a`–`16d`,
+   the owner's form with no Track lists).
+2. "How it's protected" on the tax number is Bryan's wording, word for word.
+   `INTAKE_TAX_BACKUP_DAYS` is gone (nothing showed it any more); the 37 days
+   are kept as a fact in p14.
+3. Owner agreement, intake and code mail shows in the send log only with the
+   matching tick (p15 "People and permissions", "The send log"); also in the
+   Sending queue, Activity and the email history.
+4. The demo visitor gate opens whole paths only: `/api/agreement` no longer
+   lets `/api/agreements/...` through (nor `/api/me/profile`).
+5. Track's lists on the owner's form: last good copy kept per list; with none,
+   plain words and the owner's own words, flagged on the review (p14, "Track's
+   lists on the owner's form"). Migration `intake 0004` (an event kind, no SQL),
+   applied to `execsnowhq_local`; add it to the release (item 7 below).
+
+The demo teardown script's line "the practice owner and Assistants see these"
+(send log) stays true until this branch reaches the demo; after it, only the
+practice owner sees them.
+
+## 2026-11-24, later: several owners, Exhibit A from Sleeps, and tax numbers, merged into `dev`
 
 Bryan's line-by-line read of the agreement (2026-11-24). Branch
 `owner-agreements-2`, cut from `dev` at `685ffb9`: A `62c0ef1` (the
@@ -208,7 +240,8 @@ accounts (Bryan has two: FF and SkyRun FCC).
 7. **Tax numbers on the intake form** (2026-11-24, its own commit; p14 "Tax
    numbers on the form"): migrations `intake 0003` (two new tables, the "See
    full tax numbers" tick and the one-time codes; the history's two new kinds
-   need no SQL) and `crm 0063` (a new Outbox producer, no SQL). Nobody is
+   need no SQL), `crm 0063` (a new Outbox producer, no SQL) and, from the walk's
+   fixes, `intake 0004` (the history's `lists_missing` kind, no SQL). Nobody is
    ticked to see full numbers until the practice owner or the Client owner
    ticks someone. **Before real owners use it:** one proof on SkyRun's real
    Track with a made-up number shaped like a Social Security number, on a ZZ

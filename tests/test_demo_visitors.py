@@ -250,6 +250,50 @@ def test_once_it_has_ended_it_is_read_only(copy, api):
     assert me["read_only"] and me["ai_stop"]
 
 
+@pytest.mark.django_db
+def test_the_gate_opens_whole_paths_never_what_starts_with_them(copy, api):
+    """Owner, 2026-11-24: "/api/agreement" (the beta agreement) is open before
+    the tick, while the copy is set up and once it has ended. The owner
+    agreements' requests under "/api/agreements/..." are not, nor anything
+    else that merely starts with an open path."""
+    from apps.tenancy.middleware import demo_open
+    from apps.tenancy.models import DemoVisitor
+
+    assert demo_open("/api/agreement") and demo_open("/api/agreement/")
+    assert demo_open("/api/me") and demo_open("/api/branding/logo")
+    for path in ("/api/agreements", "/api/agreements/companies", "/api/agreementx",
+                 "/api/agreement/x", "/api/me/profile", "/api/meetings/", "/api/brandingx"):
+        assert not demo_open(path), path
+    closed = ("/api/agreements/companies", f"/api/agreements/companies/{copy.tenant.pk}",
+              "/api/agreements/x/pdf", "/api/me/profile")
+    client = api.as_(copy.owner)
+
+    # Before the tick: the agreement to read, and nothing of the owner agreements.
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(agreed_at=None)
+    assert client.get("/api/agreement").status_code == 200
+    for path in closed:
+        refused = client.get(path)
+        assert refused.status_code == 403 and refused.json()["demo_agreement_required"], path
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(agreed_at=timezone.now())
+
+    # While it is set up.
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(
+        state="setting_up", setup_started_at=timezone.now())
+    for path in closed:
+        refused = client.get(path)
+        assert refused.status_code == 409 and refused.json()["demo_setting_up"], path
+    assert client.get("/api/agreement").status_code == 200
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(state="ready")
+
+    # Ended: read-only, owner agreements included.
+    DemoVisitor.objects.filter(pk=copy.visitor.pk).update(
+        expires_at=timezone.now() - timedelta(days=1))
+    for path in (f"/api/agreements/companies/{copy.tenant.pk}/agreements",
+                 "/api/agreements/x/cancel", "/api/me/profile"):
+        refused = client.post(path, "{}", content_type="application/json")
+        assert refused.status_code == 403 and refused.json()["demo_read_only"], path
+
+
 # ======================================================================= AI
 
 @pytest.fixture

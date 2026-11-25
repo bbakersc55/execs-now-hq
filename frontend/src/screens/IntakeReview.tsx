@@ -77,6 +77,7 @@ export function IntakeReview({ me }: { me: Me }) {
           {r.status_label}</Pill>
       </div>
       {problem && <Banner kind="warn">{problem}</Banner>}
+      <ListsFlags r={r} />
       {r.locked && <LockedBanner r={r} />}
       <div className="intake-grid">
         <div className="intake-main">
@@ -115,6 +116,15 @@ export function IntakeReview({ me }: { me: Me }) {
     </div>
     </PendingContext.Provider>
   );
+}
+
+/** Owner, 2026-11-24: the owner's form lacked some of Track's lists (it said
+ *  so, and took their own words), or ENHQ still has no copy of them. Until
+ *  the intake is sent. */
+export function ListsFlags({ r }: { r: Review }) {
+  if (r.locked) return null;
+  return <>{(r.lists_flags ?? []).map((text, i) => (
+    <Banner key={i} kind="warn">{text}</Banner>))}</>;
 }
 
 // ------------------------------------------------------------ the link

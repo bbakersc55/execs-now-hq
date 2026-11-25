@@ -83,8 +83,38 @@ function Block({ title, summary, children, onRemove, removeLabel }: {
   );
 }
 
+/** A list to choose from that isn't here (owner, 2026-11-24): never an empty
+ *  dropdown. One plain sentence, and the owner's own words instead; they can
+ *  carry on, and the review flags it for staff. On the review, staff read
+ *  the owner's words and can change them. */
+function NoList({ ctx, what, label, hint, value, onChange, area }: {
+  ctx: Ctx; what: string; label: string; hint?: string; value: string | undefined;
+  onChange: (v: string) => void; area?: boolean;
+}) {
+  return (
+    <div className="ix-nolist">
+      <Note>{ctx.mode === "owner"
+        ? `We can't show the list of ${what} right now. Tell us in your own words instead, and carry on.`
+        : `There's no list of ${what} from Track to choose from here yet. The owner's own words:`}</Note>
+      {area ? <Area label={label} hint={hint} value={value} rows={2} onChange={onChange} />
+        : <Text label={label} hint={hint} value={value} onChange={onChange} />}
+    </div>
+  );
+}
+
+/** The review only: what the owner wrote where they had no list, kept in view
+ *  once the list is there, so staff can choose from it. */
+function OwnerWords({ ctx, note }: { ctx: Ctx; note: string | undefined }) {
+  if (ctx.mode !== "staff" || !note) return null;
+  return <p className="ix-hint ix-owner-words">The owner wrote, with no list to choose from:
+    {" "}<strong>“{note}”</strong></p>;
+}
+
 function GenericFields({ ctx, section }: { ctx: Ctx; section: string }) {
-  const fields = ctx.form.custom_fields.filter((f) => f.section === section);
+  // A choice from Track with no choices in it isn't asked (2026-11-24): Track
+  // takes only its own values for it, so the owner's words couldn't go there.
+  const fields = ctx.form.custom_fields.filter((f) => f.section === section
+    && !((f.type === "select" || f.type === "multiselect") && !f.options.length));
   if (!fields.length) return null;
   const values = ctx.answers.custom ?? {};
   const set = (ref: string, v: string | string[]) =>
@@ -290,9 +320,18 @@ export function PropertySection({ ctx }: { ctx: Ctx }) {
         value={p.square_feet ? String(p.square_feet) : ""}
         onChange={(v) => set({ square_feet: v.replace(/[^\d]/g, "")
           ? Number(v.replace(/[^\d]/g, "")) : null })} />
-      <Select label="What kind of property is it?" value={p.lodging_type_id ?? ""}
-        options={ctx.form.lodging_types.map((t) => ({ value: String(t.id), label: t.name }))}
-        onChange={(v) => set({ lodging_type_id: v ? Number(v) : null })} />
+      {ctx.form.lodging_types.length ? (
+        <>
+          <Select label="What kind of property is it?" value={p.lodging_type_id ?? ""}
+            options={ctx.form.lodging_types.map((t) => ({ value: String(t.id), label: t.name }))}
+            onChange={(v) => set({ lodging_type_id: v ? Number(v) : null })} />
+          <OwnerWords ctx={ctx} note={p.lodging_note} />
+        </>
+      ) : (
+        <NoList ctx={ctx} what="kinds of property" label="What kind of property is it?"
+          hint="For example: a condo, a townhome, a cabin." value={p.lodging_note}
+          onChange={(v) => set({ lodging_note: v })} />
+      )}
       <Choice label="When will it be ready for our team to start onboarding?"
         hint="Ready means furnished, ready for photos, with no major repairs to do."
         options={opts(ctx.form, "ready")} value={p.ready}
@@ -314,12 +353,17 @@ export function PropertySection({ ctx }: { ctx: Ctx }) {
 
 // ------------------------------------------------------------ beds
 
-function Beds({ ctx, beds, onChange, otherPlaces }: {
+function Beds({ ctx, beds, onChange, otherPlaces, note, onNote }: {
   ctx: Ctx; beds: Bed[]; onChange: (b: Bed[]) => void; otherPlaces?: boolean;
+  note: string | undefined; onNote: (v: string) => void;
 }) {
   const types = ctx.form.bed_types.filter((t) => !otherPlaces || t.other_places);
+  if (!types.length)
+    return <NoList ctx={ctx} what="beds" label={otherPlaces ? "Beds here" : "Beds in this room"}
+      hint="For example: one king, two twins." value={note} onChange={onNote} />;
   return (
     <div className="ix-beds">
+      <OwnerWords ctx={ctx} note={note} />
       {beds.map((b, i) => (
         <div key={i} className="ix-bed">
           <select className="ix-input ix-select" aria-label={`Bed ${i + 1} type`}
@@ -349,10 +393,12 @@ export function BedroomsSection({ ctx }: { ctx: Ctx }) {
     <>
       {rooms.map((room, i) => (
         <Block key={i} title={`Bedroom ${i + 1}`}
-          summary={roomSummary(ctx.form, `Bedroom ${i + 1}`, room.beds.filter((b) => b.type))}
+          summary={roomSummary(ctx.form, `Bedroom ${i + 1}`, room.beds.filter((b) => b.type),
+            room.beds_note)}
           onRemove={() => set(rooms.filter((_, j) => j !== i))} removeLabel="Remove bedroom">
-          <Beds ctx={ctx} beds={room.beds}
-            onChange={(beds) => set(rooms.map((x, j) => (j === i ? { ...x, beds } : x)))} />
+          <Beds ctx={ctx} beds={room.beds} note={room.beds_note}
+            onChange={(beds) => set(rooms.map((x, j) => (j === i ? { ...x, beds } : x)))}
+            onNote={(v) => set(rooms.map((x, j) => (j === i ? { ...x, beds_note: v } : x)))} />
           <label className={`ix-card ix-check ix-wide${room.own_bath ? " ix-on" : ""}`}>
             <input type="checkbox" checked={room.own_bath} onChange={() =>
               set(rooms.map((x, j) => (j === i ? { ...x, own_bath: !x.own_bath } : x)))} />
@@ -386,7 +432,7 @@ export function OtherSleepingSection({ ctx }: { ctx: Ctx }) {
           {places.map((place, i) => (
             <Block key={i} title={`Sleeping place ${i + 1}`}
               summary={roomSummary(ctx.form, label(ctx.form, "where", place.where) || "Where",
-                place.beds.filter((b) => b.type))}
+                place.beds.filter((b) => b.type), place.beds_note)}
               onRemove={() => set({ places: places.filter((_, j) => j !== i) })}>
               <Select label="Where is it?" options={opts(ctx.form, "where")} value={place.where}
                 onChange={(v) => setPlace(i, { where: v })} />
@@ -394,8 +440,9 @@ export function OtherSleepingSection({ ctx }: { ctx: Ctx }) {
                 <Text label="Which room?" value={place.label}
                   onChange={(v) => setPlace(i, { label: v })} />
               )}
-              <Beds ctx={ctx} beds={place.beds} otherPlaces
-                onChange={(beds) => setPlace(i, { beds })} />
+              <Beds ctx={ctx} beds={place.beds} otherPlaces note={place.beds_note}
+                onChange={(beds) => setPlace(i, { beds })}
+                onNote={(v) => setPlace(i, { beds_note: v })} />
             </Block>
           ))}
           <button type="button" className="ix-btn ix-btn-ghost" onClick={() => set({
@@ -425,7 +472,7 @@ export function BathroomsSection({ ctx }: { ctx: Ctx }) {
       if (j !== i) return b;
       const next = { ...b.fixtures };
       if (n > 0) next[String(f.id)] = n; else delete next[String(f.id)];
-      return { fixtures: next };
+      return { ...b, fixtures: next };
     }));
     return (
       <div key={f.id} className={`ix-fixture${count ? " ix-on" : ""}`}>
@@ -440,17 +487,27 @@ export function BathroomsSection({ ctx }: { ctx: Ctx }) {
   };
   return (
     <>
-      <p className="ix-lead">Tick what's in each bathroom. Two sinks? Set Sink to 2.</p>
+      {fixtures.length > 0 && <p className="ix-lead">Tick what's in each bathroom. Two sinks?
+        Set Sink to 2.</p>}
       {baths.map((b, i) => (
         <Block key={i} title={`Bathroom ${i + 1}`}
-          summary={bathSummary(ctx.form, `Bathroom ${i + 1}`, b.fixtures)}
+          summary={bathSummary(ctx.form, `Bathroom ${i + 1}`, b.fixtures, b.note)}
           onRemove={() => set(baths.filter((_, j) => j !== i))} removeLabel="Remove bathroom">
-          <div className="ix-fixtures">{main.map((f) => row(i, f))}</div>
-          {access.length > 0 && (
-            <details className="ix-more">
-              <summary>Accessibility features</summary>
-              <div className="ix-fixtures">{access.map((f) => row(i, f))}</div>
-            </details>
+          {fixtures.length ? (
+            <>
+              <OwnerWords ctx={ctx} note={b.note} />
+              <div className="ix-fixtures">{main.map((f) => row(i, f))}</div>
+              {access.length > 0 && (
+                <details className="ix-more">
+                  <summary>Accessibility features</summary>
+                  <div className="ix-fixtures">{access.map((f) => row(i, f))}</div>
+                </details>
+              )}
+            </>
+          ) : (
+            <NoList ctx={ctx} what="bathroom features" label="What's in this bathroom?"
+              hint="For example: a toilet, two sinks and a walk-in shower." value={b.note}
+              onChange={(v) => set(baths.map((x, j) => (j === i ? { ...x, note: v } : x)))} />
           )}
         </Block>
       ))}
@@ -475,9 +532,16 @@ export function AmenitiesSection({ ctx }: { ctx: Ctx }) {
         values={a.common} onChange={(v) => set({ common: v })} />
       <YesNo label="Gondola or lift access?" value={a.gondola}
         onChange={(v) => set({ gondola: v })} />
-      {!open ? (
-        <button type="button" className="ix-btn ix-btn-ghost" onClick={() => setOpen(true)}>
-          Anything more? See every amenity</button>
+      {!ctx.form.amenity_groups.length ? (
+        <NoList ctx={ctx} what="every amenity" label="Anything more? (optional)" area
+          hint="Anything else the home has for guests." value={a.more_note}
+          onChange={(v) => set({ more_note: v })} />
+      ) : !open ? (
+        <>
+          <OwnerWords ctx={ctx} note={a.more_note} />
+          <button type="button" className="ix-btn ix-btn-ghost" onClick={() => setOpen(true)}>
+            Anything more? See every amenity</button>
+        </>
       ) : (
         <div className="ix-groups">
           <p className="ix-label">Anything more?</p>
@@ -705,12 +769,23 @@ export function AccessSection({ ctx }: { ctx: Ctx }) {
             ctx.setSecrets(await ctx.api.clearSecret("code", `extra-${i}`));
             set({ extra_codes: extras.slice(0, -1) });
           } : undefined}>
-          <Select label="What is it for?" value={x.type || ""}
-            options={ctx.form.code_types.map((t) => ({ value: String(t.id), label: t.name }))}
-            onChange={(v) => set({ extra_codes: extras.map((e, j) => (j === i ? { type:
-              Number(v) } : e)) })} />
-          {x.type > 0 && code(`extra-${i}`, "Code", ctx.form.code_types.find((t) =>
-            t.id === x.type)?.name ?? "Code")}
+          {ctx.form.code_types.length ? (
+            <>
+              <Select label="What is it for?" value={x.type || ""}
+                options={ctx.form.code_types.map((t) => ({ value: String(t.id), label: t.name }))}
+                onChange={(v) => set({ extra_codes: extras.map((e, j) => (j === i ? { ...e,
+                  type: Number(v) } : e)) })} />
+              <OwnerWords ctx={ctx} note={x.note} />
+            </>
+          ) : (
+            <NoList ctx={ctx} what="kinds of code" label="What is it for?"
+              hint="For example: the garage, a gate, the pool." value={x.note}
+              onChange={(v) => set({ extra_codes: extras.map((e, j) => (j === i ? { ...e,
+                note: v } : e)) })} />
+          )}
+          {(x.type > 0 || (!ctx.form.code_types.length && !!x.note?.trim()))
+            && code(`extra-${i}`, "Code", ctx.form.code_types.find((t) =>
+              t.id === x.type)?.name ?? (x.note?.trim() || "Code"))}
         </Block>
       ))}
       <button type="button" className="ix-btn ix-btn-ghost"
@@ -850,27 +925,31 @@ export function summarize(ctx: Ctx, key: string): string[] {
       const type = f.lodging_types.find((t) => t.id === p.lodging_type_id)?.name;
       return [[p.street, p.street2, p.city, p.state, p.postal].filter(Boolean).join(", "),
         p.square_feet ? `${p.square_feet.toLocaleString("en-US")} sq ft` : "",
-        type ? `Type: ${type}` : "",
+        type ? `Type: ${type}` : p.lodging_note ? `Type, in the owner's words: “${p.lodging_note}”`
+          : "",
         p.ready ? `Ready: ${p.ready === "date" ? p.ready_date : label(f, "ready", p.ready)}` : "",
         p.has_bookings === "yes" ? `${(p.bookings ?? []).length} booked date range(s)` : "",
       ].filter(Boolean);
     }
     case "bedrooms":
       return [...(a.bedrooms ?? []).map((r, i) => roomSummary(f, `Bedroom ${i + 1}`,
-        r.beds.filter((b) => b.type)) + (r.own_bath ? ", own bathroom" : "")),
+        r.beds.filter((b) => b.type), r.beds_note) + (r.own_bath ? ", own bathroom" : "")),
         `Sleeps ${totalSleeps(f, a)} in all`];
     case "other_sleeping":
       return a.other_sleeping?.has === "yes" ? (a.other_sleeping.places ?? []).map((p) =>
         roomSummary(f, label(f, "where", p.where) || "Sleeping place",
-          p.beds.filter((b) => b.type))) : ["None"];
+          p.beds.filter((b) => b.type), p.beds_note)) : ["None"];
     case "bathrooms":
-      return (a.bathrooms ?? []).map((b, i) => bathSummary(f, `Bathroom ${i + 1}`, b.fixtures));
+      return (a.bathrooms ?? []).map((b, i) => bathSummary(f, `Bathroom ${i + 1}`, b.fixtures,
+        b.note));
     case "amenities": {
       const common = labels({ ...f, options: { c: f.common_amenities.map((c) => ({
         value: c.key, label: c.label })) } }, "c", a.amenities?.common);
       const more = (a.amenities?.more ?? []).length;
       return [common, more ? `${more} more` : "",
-        a.amenities?.gondola === "yes" ? "Gondola or lift access" : ""].filter(Boolean);
+        a.amenities?.gondola === "yes" ? "Gondola or lift access" : "",
+        a.amenities?.more_note ? `In the owner's words: “${a.amenities.more_note}”` : "",
+      ].filter(Boolean);
     }
     case "home": {
       const h = a.home ?? {};

@@ -173,6 +173,16 @@ def _beds(value) -> list:
     return out
 
 
+def _words(out: dict, key: str, value, most=MEDIUM) -> dict:
+    """`out` with the owner's own words under `key`, only when there are some:
+    what they wrote where the form had no list from Track to choose from
+    (owner, 2026-11-24). Answers without any keep their shape."""
+    text = _text(value, most)
+    if text:
+        out[key] = text
+    return out
+
+
 def email_ok(value: str) -> bool:
     return bool(_EMAIL.match(value or ""))
 
@@ -222,7 +232,7 @@ def clean_tax(data) -> dict:
 
 def clean_property(data) -> dict:
     data = data if isinstance(data, dict) else {}
-    return {
+    return _words({
         "street": _text(data.get("street")), "street2": _text(data.get("street2")),
         "city": _text(data.get("city"), 80), "state": _text(data.get("state"), 40),
         "postal": _text(data.get("postal"), 16),
@@ -234,14 +244,16 @@ def clean_property(data) -> dict:
         "ready_date": _date(data.get("ready_date")),
         "has_bookings": _choice(data.get("has_bookings"), "yes_no"),
         "bookings": _ranges(data.get("bookings")),
-    }
+    }, "lodging_note", data.get("lodging_note"), SHORT)
 
 
 def clean_bedrooms(data) -> list:
     out = []
     for item in (data or [])[:MOST_ROOMS]:
         if isinstance(item, dict):
-            out.append({"beds": _beds(item.get("beds")), "own_bath": item.get("own_bath") is True})
+            out.append(_words({"beds": _beds(item.get("beds")),
+                               "own_bath": item.get("own_bath") is True},
+                              "beds_note", item.get("beds_note")))
     return out
 
 
@@ -250,9 +262,10 @@ def clean_other_sleeping(data) -> dict:
     places = []
     for item in (data.get("places") or [])[:MOST_ROOMS]:
         if isinstance(item, dict):
-            places.append({"where": _choice(item.get("where"), "where"),
-                           "label": _text(item.get("label"), 60),
-                           "beds": _beds(item.get("beds"))})
+            places.append(_words({"where": _choice(item.get("where"), "where"),
+                                  "label": _text(item.get("label"), 60),
+                                  "beds": _beds(item.get("beds"))},
+                                 "beds_note", item.get("beds_note")))
     return {"has": _choice(data.get("has"), "yes_no"), "places": places}
 
 
@@ -266,7 +279,7 @@ def clean_bathrooms(data) -> list:
             fixture, number = _int(key, 0, 10**9), _int(count, 0, 9)
             if fixture and number:
                 fixtures[str(fixture)] = number
-        out.append({"fixtures": fixtures})
+        out.append(_words({"fixtures": fixtures}, "note", item.get("note")))
     return out
 
 
@@ -274,8 +287,9 @@ def clean_amenities(data) -> dict:
     data = data if isinstance(data, dict) else {}
     common = [k for k in dict.fromkeys(data.get("common") or []) if isinstance(k, str)][:60]
     more = [i for i in (_int(v, 0, 10**9) for v in (data.get("more") or [])[:200]) if i]
-    return {"common": common, "more": list(dict.fromkeys(more)),
-            "gondola": _choice(data.get("gondola"), "yes_no")}
+    return _words({"common": common, "more": list(dict.fromkeys(more)),
+                   "gondola": _choice(data.get("gondola"), "yes_no")},
+                  "more_note", data.get("more_note"), LONG)
 
 
 def clean_home(data) -> dict:
@@ -330,7 +344,8 @@ def clean_access(data) -> dict:
     extras = []
     for item in (d.get("extra_codes") or [])[:MOST_EXTRA_CODES]:
         if isinstance(item, dict):
-            extras.append({"type": _int(item.get("type"), 0, 10**9) or 0})
+            extras.append(_words({"type": _int(item.get("type"), 0, 10**9) or 0},
+                                 "note", item.get("note"), 60))
     return {"door": _choice(d.get("door"), "door"),
             "owner_closet": _choice(_was_yes(d.get("owner_closet")), "owner_closet"),
             "alarm": _choice(_was_yes(d.get("alarm")), "alarm"),

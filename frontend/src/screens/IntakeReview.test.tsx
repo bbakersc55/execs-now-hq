@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Review } from "../lib/intake";
 import type { Me } from "../lib/api";
 import { mockApi, renderRoute } from "../test/render";
-import { LockedBanner, SendCard, StaffCard, TaxShow } from "./IntakeReview";
+import { ListsFlags, LockedBanner, SendCard, StaffCard, TaxShow } from "./IntakeReview";
 
 // The owner-to-unit link's start date, made plain (owner, 2026-11-23).
 const NOTE = "Owner linked in Track. The link takes effect on December 1, 2026. Until then "
@@ -119,5 +119,19 @@ describe("IntakeReview: the full tax number (owner, 2026-11-24)", () => {
     fireEvent.click(send);
     await waitFor(() => expect(api.calls.find((c) => c.url.endsWith("/send"))?.body)
       .toEqual({ tax_ack: true }));
+  });
+});
+
+describe("IntakeReview: Track's lists the owner's form lacked (owner, 2026-11-24)", () => {
+  it("tells staff, until the intake is sent", () => {
+    const flags = ["The owner's form had no list from Track of bed types, so the owner could "
+      + "only carry on and describe them in their own words (on November 24).",
+      "ENHQ has no copy of Track's list of bed types for Mountain Stays."];
+    const { rerender } = render(<ListsFlags r={aReview({ lists_flags: flags })} />);
+    for (const text of flags) expect(screen.getByText(text)).toBeInTheDocument();
+    rerender(<ListsFlags r={aReview({ lists_flags: flags, locked: true })} />);
+    expect(screen.queryByText(flags[0])).toBeNull();
+    rerender(<ListsFlags r={aReview()} />);
+    expect(screen.queryByText(/no list from Track/)).toBeNull();
   });
 });

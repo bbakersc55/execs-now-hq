@@ -129,17 +129,14 @@ def test_the_form_says_why_and_how_in_the_approved_words(world, settings):
     assert form["tax_wording"] == {
         "why": "Mountain Stays needs this number once, to file your property's rental permit. "
                "It's also kept on your owner account with us, for your year-end tax forms.",
-        "how": "It's encrypted as soon as you save it, and from then on this form shows only "
-               "its last four digits. Most of our team sees only the last four. The few people "
-               "Mountain Stays authorizes can see the full number, and only after entering a "
-               "one-time code sent to their own email. Every viewing is recorded. It's never "
-               "emailed. It's deleted from our onboarding system as soon as it's on your owner "
-               "account, or 30 days after you submit if it isn't by then. Our encrypted "
-               "backups keep a copy for up to 37 days more."}
-    assert settings.INTAKE_TAX_BACKUP_DAYS == 37            # one setting (owner, 2026-11-24)
-    settings.INTAKE_TAX_BACKUP_DAYS = 40
-    assert "up to 40 days more" in Client().get(f"/api/f/{token}").json()["form"][
-        "tax_wording"]["how"]
+        # Owner, after the demo walk (2026-11-24), word for word.
+        "how": "Your number is encrypted the moment you save it. Only the few people who file "
+               "your rental permit can view it, and each viewing is recorded. Once your permit "
+               "is filed, our team sees only the last four digits. Entering it here means no "
+               "one has to take it down by phone or on paper."}
+    # The backups' days are no longer shown to owners, and the setting is gone.
+    assert not hasattr(settings, "INTAKE_TAX_BACKUP_DAYS")
+    assert "backup" not in json.dumps(form["tax_wording"]).lower()
 
 
 def test_nothing_still_promises_the_social_security_number_isnt_asked(world):

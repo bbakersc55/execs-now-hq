@@ -11,7 +11,10 @@ export function sleeps(form: OwnerForm, beds: Bed[]): number {
     * b.count, 0);
 }
 
-export function roomSummary(form: OwnerForm, title: string, beds: Bed[]): string {
+export function roomSummary(form: OwnerForm, title: string, beds: Bed[],
+  note?: string): string {
+  // Owner, 2026-11-24: no list of beds to choose from, so their own words.
+  if (!beds.length && note) return `${title}: “${note}”`;
   const parts = beds.map((b) => `${bedLabel(form, b.type)} x${b.count}`);
   return `${title}: ${parts.length ? parts.join(", ") : "no beds yet"}, sleeps ${sleeps(form, beds)}`;
 }
@@ -25,7 +28,9 @@ export function bathType(form: OwnerForm, fixtures: Record<string, number>): str
 }
 
 export function bathSummary(form: OwnerForm, title: string,
-  fixtures: Record<string, number>): string {
+  fixtures: Record<string, number>, note?: string): string {
+  if (!Object.values(fixtures).some((n) => n > 0) && note)
+    return `${title}: “${note}”`;
   const parts = Object.entries(fixtures).filter(([, n]) => n > 0).map(([id, n]) => {
     const name = form.bathroom_fixtures.find((f) => String(f.id) === id)?.name ?? "Fixture";
     return n > 1 ? `${name} x${n}` : name;

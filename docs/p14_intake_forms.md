@@ -76,6 +76,26 @@ blocks. Running summaries on each room ("Bedroom 2: Queen x1, Twin x2, sleeps
 4"). A bathroom's type is worked out from its fixtures: any tub makes it full,
 a shower without a tub three-quarter, neither half.
 
+**Track's lists on the owner's form** (owner, 2026-11-24, after the demo walk).
+The choices that come from Track (bed types, bathroom features, kinds of
+property, kinds of code, the full amenity list) are read from ENHQ's copy
+(`TrackListSnapshot`), never from Track while the owner waits: staff screens
+refresh the copy about hourly, or with "Refresh from Track now", and if Track
+can't be read the copy stays as it was. So Track being down when an owner opens
+the form changes nothing for them. The last good copy of each list is kept: a
+list Track sends back empty never replaces one that has rows. The only way an
+owner meets an empty list is when ENHQ has never read it for the company (the
+demo, whose Track connection is a stand-in), or staff offer none of it. Then
+the form never shows an empty dropdown: it says "We can't show the list of …
+right now. Tell us in your own words instead, and carry on." and takes the
+owner's words (`beds_note` on a room or sleeping place, `note` on a bathroom
+or another code, `lodging_note`, `more_note`; kept only when filled in).
+Nothing of it is needed to submit. The first time an owner's form opens without
+a list, the intake's history says so (event `lists_missing`, intake 0004, no
+SQL); the review shows that as a banner until the intake is sent, with a second
+one while ENHQ still has no copy, and keeps the owner's words in view beside
+the choices. A Track custom field with no choices in it isn't asked.
+
 **Tax** (changed 2026-11-24, see "Tax numbers on the form" below): the owner
 chooses which number goes on the rental permit (EIN, or Social Security number
 or ITIN) and enters it, or asks to give it by phone. Shown afterwards as its
@@ -389,10 +409,14 @@ this is on the agreement. Code: `apps/intake/taxnumbers.py`.
   number: they asked to give it by phone" when the number didn't go to Track
   with the send (marked as having none).
 - **The words on the form** (as approved, from the server: `taxnumbers.wording`):
-  why we ask, and how it is protected. The backup sentence's number is one
-  setting, `INTAKE_TAX_BACKUP_DAYS` (37: the 30 days the backup script keeps
-  dumps, and the backup bucket's 7-day soft delete; Railway's Postgres keeps no
-  backups of its own; both checked by Bryan on 2026-11-24).
+  why we ask, and how it is protected. "How it's protected" was rewritten by
+  Bryan after the demo walk (2026-11-24) and is used word for word; it no
+  longer mentions backups, and the setting that put their days in it
+  (`INTAKE_TAX_BACKUP_DAYS`) was removed. The fact stands, for anyone who asks:
+  the encrypted backups can hold a tax number for up to 37 days after ENHQ
+  deletes it (the 30 days the backup script keeps dumps, and the backup
+  bucket's 7-day soft delete; Railway's Postgres keeps no backups of its own;
+  both checked by Bryan on 2026-11-24).
 - **Kept:** Fernet-encrypted in `intake_submission_secret`, like the Tax ID
   always was. Everyone sees the last four only, everywhere. The old Reveal on
   the review no longer shows a tax number to anyone (before this, anyone with

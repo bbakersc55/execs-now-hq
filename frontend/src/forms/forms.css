@@ -315,6 +315,30 @@ html { scroll-padding-bottom: 104px; }
   .ix-grid3 { grid-template-columns: 2fr 1fr 1fr; }
 }
 .ix-confirm { display: grid; gap: 4px; }
+/* "Your details" on a desktop screen (owner, 2026-11-24, after the demo
+   walk); the phone layout above is left as it was.
+   - Bedrooms, Bathrooms, Square footage, Sleeps: in each row of two the labels
+     line up and the boxes line up, whichever of the two has a hint. Each field
+     is a subgrid of four rows (label, hint, box, error), so a hint makes room
+     on both sides of its row.
+   - "Who owns the property?": two cards of 200px, so "A company or trust"
+     takes two lines (it took three at the grid's 151px).
+   - "Correct it" sits at the left, under the address, like everything else. */
+@media (min-width: 560px) {
+  .ix-aligned { row-gap: 0; }
+  .ix-aligned > .ix-field { display: grid; grid-row: span 4; grid-template-rows: subgrid;
+    row-gap: 0; align-content: start; }
+  .ix-aligned > .ix-field:nth-child(n + 3) { margin-top: 14px; }
+  .ix-aligned > .ix-field > .ix-label { grid-row: 1; }
+  .ix-aligned > .ix-field > .ix-hint { grid-row: 2; margin: 4px 0 2px; }
+  .ix-aligned > .ix-field > .ix-input { grid-row: 3; margin-top: 6px; }
+  .ix-aligned > .ix-field > .ix-error { grid-row: 4; }
+  .ix-owner-type .ix-cards { grid-template-columns: repeat(2, 200px); }
+  .ix-confirm .ix-link { justify-self: start; }
+}
+/* No list to choose from (2026-11-24): the plain words, then the box. */
+.ix-nolist { display: grid; gap: 10px; }
+.ix-owner-words { margin: 0; }
 .ix-sig { display: grid; gap: 14px; }
 .ix-sig-tabs { display: flex; gap: 8px; }
 .ix-sig-typed { font-family: "Signature Script", cursive; font-size: 2.2rem; line-height: 1.3;

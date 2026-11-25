@@ -40,8 +40,10 @@ def visible_threads(request, queryset=None):
     nobody has yet decided whose it is.
     """
     queryset = EmailThread.objects.all() if queryset is None else queryset
-    # An invoice and the replies to it are not shared history (matrix 13.4a).
-    queryset = crm_perms.threads_without_money(request, queryset)
+    # An invoice and the replies to it are not shared history (matrix 13.4a),
+    # nor owner agreement, intake or code mail without the tick (2026-11-24).
+    queryset = crm_perms.threads_without_owner_mail(
+        request, crm_perms.threads_without_money(request, queryset))
     role = crm_perms.role_of(request)
     if role in (Role.FF, Role.VA):
         return queryset

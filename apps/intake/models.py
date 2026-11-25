@@ -225,6 +225,9 @@ class SubmissionEvent(TenantScopedModel):
         DATES = "dates", "Owner dates"
         TAX_CODE_SENT = "tax_code_sent", "Code sent to see the tax number"
         TAX_SHOWN = "tax_shown", "Full tax number shown"
+        # Owner, 2026-11-24: the owner's form opened without one of Track's
+        # lists (never read for the company), so the owner wrote in words.
+        LISTS_MISSING = "lists_missing", "Form opened without Track's lists"
 
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="events")
     kind = models.CharField(max_length=16, choices=Kind.choices)

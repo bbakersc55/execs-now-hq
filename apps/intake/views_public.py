@@ -132,6 +132,9 @@ def owner_form(submission) -> dict:
         "trash_days": [{"value": v["handle"], "label": v["name"]}
                        for v in trash_days.get("values") or []],
         "custom_fields": owner_fields,
+        # Owner, 2026-11-24: lists of Track's this company has no copy of. The
+        # form says so in plain words and lets the owner write instead.
+        "lists_missing": tracklists.missing_for_owners(lists),
         # Why the tax number is asked and how it is protected (owner, 2026-11-24).
         "tax_wording": taxnumbers.wording(submission.form.brand_name),
     }
@@ -166,7 +169,10 @@ def form_page(request, token):
         return error
     with tenant_context(submission.tenant_id):
         services.touch(submission)
-        return JsonResponse(owner_payload(submission))
+        payload = owner_payload(submission)
+        if payload["form"]:
+            services.note_lists_missing(submission, payload["form"]["lists_missing"])
+        return JsonResponse(payload)
 
 
 @csrf_exempt

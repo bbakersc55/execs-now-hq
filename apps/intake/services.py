@@ -144,6 +144,43 @@ def touch(submission):
     submission.save(update_fields=["last_activity_at"])
 
 
+LISTS_MISSING = ("The owner's form had no list from Track of {what}, so the owner could only "
+                 "carry on and describe them in their own words")
+
+
+def note_lists_missing(submission, names) -> None:
+    """The owner opened the form while ENHQ had no copy of some of Track's
+    lists (owner, 2026-11-24): said once in the intake's history, and on the
+    review until staff have chosen (`lists_flags`)."""
+    if not names:
+        return
+    detail = LISTS_MISSING.format(what=tracklists.said(names))[:300]
+    if not SubmissionEvent.all_objects.filter(
+            submission=submission, kind=SubmissionEvent.Kind.LISTS_MISSING,
+            detail=detail).exists():
+        _event(submission, SubmissionEvent.Kind.LISTS_MISSING, None, detail)
+
+
+def lists_flags(submission, lists) -> list[str]:
+    """What the review tells staff about Track's lists: when the owner's form
+    lacked some, and whether ENHQ still has no copy of them."""
+    from zoneinfo import ZoneInfo
+
+    zone = ZoneInfo(getattr(submission.tenant, "timezone", "") or "UTC")
+    out = []
+    for event in SubmissionEvent.all_objects.filter(
+            submission=submission, kind=SubmissionEvent.Kind.LISTS_MISSING).order_by("created_at"):
+        day = timezone.localtime(event.created_at, zone)
+        out.append(f"{event.detail} (on {day:%B} {day.day}). Their words are in their answers "
+                   "below: choose from Track's lists there before you send.")
+    now = tracklists.missing_for_owners(lists)
+    if now:
+        out.append(f"ENHQ has no copy of Track's list of {tracklists.said(now)} for "
+                   f"{submission.company.name}, so owners can't choose them on the form. Open the "
+                   "form's settings and use Refresh from Track now.")
+    return out
+
+
 def missing_for_submit(submission) -> list[str]:
     a = submission.answers or {}
     about, prop = a.get("about") or {}, a.get("property") or {}

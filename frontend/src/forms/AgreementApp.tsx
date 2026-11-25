@@ -355,7 +355,7 @@ function DetailsForm({ page, details, update }: { page: AgreementPage; details: 
             </div>
           </>
         )}
-        <div className="ix-grid2">
+        <div className="ix-grid2 ix-aligned">
           <Text label="Bedrooms" inputMode="numeric" value={String(d.bedrooms ?? "")}
             onChange={(v) => set({ bedrooms: v })} />
           <Text label="Bathrooms" inputMode="text" hint="Halves are fine: 2.5"
@@ -369,10 +369,12 @@ function DetailsForm({ page, details, update }: { page: AgreementPage; details: 
       </fieldset>
       <fieldset className="ix-fieldset">
         <legend className="ix-label">Owner information</legend>
-        <Choice label="Who owns the property?" value={d.owner_type ?? "person"}
-          onChange={(v) => set({ owner_type: v as "person" | "entity" })}
-          options={[{ value: "person", label: alone ? "I do (a person)" : "We do (people)" },
-                    { value: "entity", label: "A company or trust" }]} />
+        <div className="ix-owner-type">
+          <Choice label="Who owns the property?" value={d.owner_type ?? "person"}
+            onChange={(v) => set({ owner_type: v as "person" | "entity" })}
+            options={[{ value: "person", label: alone ? "I do (a person)" : "We do (people)" },
+                      { value: "entity", label: "A company or trust" }]} />
+        </div>
         {d.owner_type === "entity" && (
           <>
             <Text label="Owner of record (the company or trust's name)" value={d.entity_name}

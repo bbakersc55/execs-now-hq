@@ -154,6 +154,78 @@ def without_money(request, queryset, *, thread="thread"):
     return queryset.exclude(invoices)
 
 
+#: Owner agreements and owner intake (SkyRun only; owner, 2026-11-24): their
+#: mail shows only to someone with the matching tick for that company on
+#: People and permissions, the practice owner always. A code to see a tax
+#: number shows only to the person it went to, and the practice owner.
+AGREEMENT_MAIL = ("owner_agreement", "owner_agreement_notice")
+INTAKE_MAIL = ("intake_notice",)
+CODE_MAIL = ("tax_number_code",)
+OWNER_MAIL = AGREEMENT_MAIL + INTAKE_MAIL + CODE_MAIL
+
+
+def _owner_mail_allowed(request) -> Q:
+    """The owner agreement, intake and code mail a requester other than the
+    practice owner may see, as a condition on Outbox rows: only what their
+    ticks allow, and nothing that can't be traced to a company they are ticked
+    for (shut, not open, when in doubt)."""
+    from apps.agreements import access
+    from apps.agreements.models import OwnerAgreement, Program, StaffAccess
+    from apps.crm.models import Company
+    from apps.intake.models import Submission
+
+    membership = getattr(request, "membership", None)
+    user = getattr(request, "user", None)
+    companies = []
+    if membership is not None:
+        companies = list(Company.all_objects.filter(
+            tenant_id=membership.tenant_id, pk__in=StaffAccess.all_objects.filter(
+                tenant_id=membership.tenant_id, user_id=membership.user_id)
+            .values("company_id")))
+    agreements = [c.pk for c in companies if access.may_agreements(membership, c)]
+    intake = [c.pk for c in companies if access.may_intake(membership, c)]
+    allowed = Q(pk__in=[])
+    if agreements:
+        allowed |= Q(producer__in=AGREEMENT_MAIL, source_type="owner_agreement",
+                     source_id__in=OwnerAgreement.all_objects.filter(
+                         company_id__in=agreements).values("pk"))
+        allowed |= Q(producer__in=AGREEMENT_MAIL, source_type="owner_agreement_program",
+                     source_id__in=Program.all_objects.filter(
+                         company_id__in=agreements).values("pk"))
+    if intake:
+        allowed |= Q(producer__in=INTAKE_MAIL, source_type="intake_submission",
+                     source_id__in=Submission.all_objects.filter(
+                         company_id__in=intake).values("pk"))
+    email = (getattr(user, "email", "") or "").strip()
+    if email:
+        allowed |= Q(producer__in=CODE_MAIL, to_address__iexact=email)
+    return allowed
+
+
+def without_owner_mail(request, queryset):
+    """An Outbox queryset without the owner agreement, intake and code mail
+    the requester may not see (see `OWNER_MAIL`)."""
+    if role_of(request) == Role.FF:
+        return queryset
+    return queryset.filter(~Q(producer__in=OWNER_MAIL) | _owner_mail_allowed(request))
+
+
+def threads_without_owner_mail(request, queryset):
+    """The same rule for mail threads: every message the Outbox sends is on a
+    thread, so a thread holding owner agreement, intake or code mail the
+    requester may not see is not theirs to read (nor any reply to it)."""
+    if role_of(request) == Role.FF:
+        return queryset
+    from apps.crm.models import OutboxMessage
+
+    membership = getattr(request, "membership", None)
+    mine = OutboxMessage.all_objects.filter(
+        tenant_id=getattr(membership, "tenant_id", None), producer__in=OWNER_MAIL)
+    hidden = mine.exclude(pk__in=mine.filter(_owner_mail_allowed(request)).values("pk")) \
+        .filter(thread__isnull=False).values("thread_id")
+    return queryset.exclude(pk__in=hidden)
+
+
 def threads_without_money(request, queryset):
     """The same rule for threads: a financial thread holds an invoice and the
     replies to it, and is not part of the history an assistant shares."""
@@ -168,11 +240,13 @@ def threads_without_money(request, queryset):
 
 def outbox_queryset_for(request, queryset):
     """Matrix 5.1 — CF sees messages to contacts on assigned companies.
-    Matrix 13.4a — and nobody sees an invoice they may not (`without_money`)."""
+    Matrix 13.4a — and nobody sees an invoice they may not (`without_money`).
+    Owner agreements and intake — nor that mail without the tick for its
+    company, nor someone else's tax number code (`without_owner_mail`)."""
     role = role_of(request)
     if role in (Role.FF, Role.VA):
-        return without_money(request, queryset)
+        return without_owner_mail(request, without_money(request, queryset))
     if role == Role.CF:
-        return without_money(request, queryset.filter(
-            to_contact__company_id__in=assigned_company_ids(request)))
+        return without_owner_mail(request, without_money(request, queryset.filter(
+            to_contact__company_id__in=assigned_company_ids(request))))
     return queryset.none()

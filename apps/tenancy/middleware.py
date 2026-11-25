@@ -99,8 +99,16 @@ class TenantMiddleware:
 
 
 #: What a visitor's copy answers while it is being set up, or once it has
-#: ended: who is signed in, and how the page looks.
-DEMO_OPEN = ("/api/me", "/api/branding", "/api/agreement", "/api/demo/agree")
+#: ended: who is signed in, and how the page looks. Whole paths, never
+#: prefixes (owner, 2026-11-24): "/api/agreement" is the beta agreement, and
+#: must not open "/api/agreements/..." (owner agreements) along with it.
+DEMO_OPEN = frozenset({"/api/me", "/api/branding", "/api/branding/logo", "/api/branding/mark",
+                       "/api/agreement", "/api/demo/agree"})
+
+
+def demo_open(path: str) -> bool:
+    """`path` is one of `DEMO_OPEN`, with or without a closing slash."""
+    return path in DEMO_OPEN or (path.endswith("/") and path[:-1] in DEMO_OPEN)
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 
@@ -124,7 +132,7 @@ class DemoVisitorGate:
         tenant = getattr(request, "tenant", None)
         visitor = visitors.of(tenant)
         path = request.path
-        if visitor is not None and path.startswith("/api/") and not path.startswith(DEMO_OPEN):
+        if visitor is not None and path.startswith("/api/") and not demo_open(path):
             from django.http import JsonResponse
 
             # First, the visitor's one tick: nothing else until it is given.

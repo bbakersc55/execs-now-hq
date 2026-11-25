@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { bathType, roomSummary } from "./derive";
 import { FormApp } from "./FormApp";
 import { Pending, PendingContext } from "./pending";
-import { AccessSection, BathroomsSection, BedroomsSection, TaxSection } from "./sections";
+import {
+  AccessSection, BathroomsSection, BedroomsSection, PropertySection, TaxSection,
+} from "./sections";
 import type { Answers, Brand, Ctx, OwnerForm, Secrets, SecretState } from "./types";
 
 const sources = import.meta.glob(["./**/*.{ts,tsx,css,html}", "!./**/*.test.tsx"], {
@@ -32,7 +34,7 @@ const FORM: OwnerForm = {
                      { value: "ssn", label: "Their Social Security number or ITIN" }],
   }, builtin: {},
   tax_wording: { why: "Mountain Stays needs this number once, to file your property's rental "
-    + "permit.", how: "It's encrypted as soon as you save it." },
+    + "permit.", how: "Your number is encrypted the moment you save it." },
   bed_types: [{ id: 1, label: "King", sleeps: 2, other_places: false },
               { id: 3, label: "Queen", sleeps: 2, other_places: false },
               { id: 5, label: "Twin", sleeps: 1, other_places: false },
@@ -64,14 +66,14 @@ function fakeApi(refuse = "") {
 }
 
 function Harness({ Section, initial, api = fakeApi(), pending = new Pending(), mode = "owner",
-  needs, markNone }: {
+  needs, markNone, form = FORM }: {
   Section: (p: { ctx: Ctx }) => ReactElement; initial: Answers;
   api?: ReturnType<typeof fakeApi>; pending?: Pending; mode?: "owner" | "staff";
-  needs?: Record<string, SecretState>; markNone?: Ctx["markNone"];
+  needs?: Record<string, SecretState>; markNone?: Ctx["markNone"]; form?: OwnerForm;
 }) {
   const [answers, setAnswers] = useState<Answers>(initial);
   const [secrets, setSecrets] = useState<Secrets>(NONE);
-  const ctx: Ctx = { form: FORM, answers, update: (s, v) => setAnswers((a) => ({ ...a, [s]: v })),
+  const ctx: Ctx = { form, answers, update: (s, v) => setAnswers((a) => ({ ...a, [s]: v })),
                      secrets, setSecrets, files: [], setFiles: () => {}, api, brand: "Mountain Stays",
                      mode, needs, markNone };
   return <PendingContext.Provider value={pending}>
@@ -215,7 +217,7 @@ describe("a sensitive value saves like every other answer", () => {
     expect(screen.getByText("Which number should go on your rental permit?")).toBeInTheDocument();
     expect(screen.getByText(/needs this number once, to file your property's rental permit/))
       .toBeInTheDocument();
-    expect(screen.getByText(/encrypted as soon as you save it/)).toBeInTheDocument();
+    expect(screen.getByText(/encrypted the moment you save it/)).toBeInTheDocument();
     expect(screen.getByLabelText("Social Security number or ITIN")).toBeInTheDocument();
     expect(screen.queryByText(/you'll add it yourself in your owner portal/i)).toBeNull();
   });
@@ -325,5 +327,58 @@ describe("on the review screen", () => {
     render(<Harness Section={AccessSection} initial={{ access: { door: "keypad" } }}
       needs={{ "code:door": "missing" }} markNone={vi.fn()} />);
     expect(document.querySelector("[data-needed]")).toBeNull();
+  });
+});
+
+describe("with no list from Track to choose from (owner, 2026-11-24)", () => {
+  const BARE: OwnerForm = { ...FORM, bed_types: [], bathroom_fixtures: [], lodging_types: [],
+                            code_types: [], amenity_groups: [] };
+
+  it("never shows an empty dropdown: it says so and takes the owner's words for the beds", () => {
+    render(<Harness Section={BedroomsSection} form={BARE}
+      initial={{ bedrooms: [{ beds: [], own_bath: false }] }} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText(/We can't show the list of beds right now. Tell us in your own words/))
+      .toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Beds in this room" }),
+      { target: { value: "One king, two twins" } });
+    expect(screen.getByText("Bedroom 1: “One king, two twins”")).toBeInTheDocument();
+  });
+
+  it("does the same for a bathroom, the kind of property and another code", () => {
+    render(<Harness Section={BathroomsSection} form={BARE}
+      initial={{ bathrooms: [{ fixtures: {} }] }} />);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByText(/Tick what's in each bathroom/)).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "What's in this bathroom?" }),
+      { target: { value: "Toilet, two sinks" } });
+    expect(screen.getByText("Bathroom 1: “Toilet, two sinks”")).toBeInTheDocument();
+  });
+
+  it("asks the kind of property in words", () => {
+    render(<Harness Section={PropertySection} form={BARE} initial={{ property: {} }} />);
+    expect(screen.queryByRole("combobox", { name: "What kind of property is it?" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "What kind of property is it?" }))
+      .toBeInTheDocument();
+    expect(screen.getByText(/can't show the list of kinds of property/)).toBeInTheDocument();
+  });
+
+  it("lets another code be entered once the owner says what it is for", () => {
+    render(<Harness Section={AccessSection} form={BARE}
+      initial={{ access: { door: "key", extra_codes: [{ type: 0 }] } }} />);
+    expect(screen.queryByRole("combobox", { name: "What is it for?" })).toBeNull();
+    expect(screen.queryByLabelText("Garage")).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "What is it for?" }),
+      { target: { value: "Garage" } });
+    expect(screen.getByLabelText("Code")).toBeInTheDocument();
+  });
+
+  it("on the review, keeps the owner's words in view once the list is there", () => {
+    render(<Harness Section={BedroomsSection} mode="staff"
+      initial={{ bedrooms: [{ beds: [], own_bath: false, beds_note: "One king" }] }} />);
+    expect(screen.getByText(/The owner wrote, with no list to choose from/))
+      .toBeInTheDocument();
+    expect(screen.getByText("“One king”")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Add a bed" })).toBeInTheDocument();
   });
 });

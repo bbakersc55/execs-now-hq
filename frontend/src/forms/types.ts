@@ -28,6 +28,10 @@ export interface OwnerForm {
   trash_days: Option[];
   /** Why the tax number is asked and how it is protected (owner, 2026-11-24). */
   tax_wording?: { why: string; how: string };
+  /** Owner, 2026-11-24: which of the lists above ENHQ has no copy of from
+   *  Track. Each empty list says so in plain words and takes the owner's own
+   *  words instead (`NoList`), whatever the reason it is empty. */
+  lists_missing?: string[];
   custom_fields: {
     reference: string; label: string; help: string; type: string; section: string;
     options: Option[];
@@ -54,9 +58,12 @@ export interface Property {
   square_feet?: number | null;
   lodging_type_id?: number | null; ready?: string; ready_date?: string;
   has_bookings?: string; bookings?: Range[];
+  /** The owner's own words where there was no list to choose from (2026-11-24),
+   *  here and on the rooms, bathrooms, amenities and codes below. */
+  lodging_note?: string;
 }
-export interface Bedroom { beds: Bed[]; own_bath: boolean }
-export interface Place { where: string; label: string; beds: Bed[] }
+export interface Bedroom { beds: Bed[]; own_bath: boolean; beds_note?: string }
+export interface Place { where: string; label: string; beds: Bed[]; beds_note?: string }
 export interface Home {
   heating?: string[]; cooling?: string[]; hvac_note?: string;
   parking?: string[]; parking_pass?: string; parking_note?: string;
@@ -72,7 +79,8 @@ export interface Home {
   permit?: string; permit_number?: string;
 }
 export interface Access {
-  door?: string; owner_closet?: string; alarm?: string; extra_codes?: { type: number }[];
+  door?: string; owner_closet?: string; alarm?: string;
+  extra_codes?: { type: number; note?: string }[];
 }
 
 export interface Answers {
@@ -81,8 +89,8 @@ export interface Answers {
   property?: Property;
   bedrooms?: Bedroom[];
   other_sleeping?: { has?: string; places?: Place[] };
-  bathrooms?: { fixtures: Record<string, number> }[];
-  amenities?: { common?: string[]; more?: number[]; gondola?: string };
+  bathrooms?: { fixtures: Record<string, number>; note?: string }[];
+  amenities?: { common?: string[]; more?: number[]; gondola?: string; more_note?: string };
   home?: Home;
   access?: Access;
   stays?: { has?: string; ranges?: Range[] };

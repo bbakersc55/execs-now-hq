@@ -67,6 +67,9 @@ export interface Review extends IntakeRow {
   staff_fields: { reference: string; name: string; type: string;
                   values: { value: string; label: string }[] }[];
   lists_status: { fetched_at: string | null };
+  /** Owner, 2026-11-24: the owner's form lacked some of Track's lists (when,
+   *  and which), and whether ENHQ still has no copy of them. Sentences. */
+  lists_flags?: string[];
   staff: Staff;
   derived: {
     rooms: Room[]; counts: Record<string, number>; sleeps_worked_out: number;

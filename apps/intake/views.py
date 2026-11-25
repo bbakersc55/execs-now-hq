@@ -332,6 +332,8 @@ def review_payload(sub, request) -> dict:
                          if ((settings.get("custom_fields") or {}).get(f["reference"]) or {})
                          .get("state") == "staff"],
         "lists_status": {"fetched_at": status.isoformat() if status else None},
+        # Owner, 2026-11-24: the owner's form lacked some of Track's lists.
+        "lists_flags": services.lists_flags(sub, lists),
         "staff": staff,
         "derived": {
             "rooms": [{**r, "summary": derive.room_summary(r["name"], r.get("beds"), settings,

@@ -285,6 +285,19 @@ in (adds rows only). Final agreements in Documents: a or b, plus the practice
 owner and the Client owner. Starting ticks to set at release: a for Sandra,
 Jackie, Kendra, Michael and Bryan; b for Jackie (c comes from the migration).
 
+**The send log** (owner, 2026-11-24, after the demo walk): owner agreement mail
+(producers `owner_agreement`, `owner_agreement_notice`) shows only to someone
+ticked a for that company, intake notices (`intake_notice`) only to someone
+ticked c, and a code to see a tax number (`tax_number_code`) only to the person
+it went to; the practice owner sees all of it. The same rule
+(`crm.permissions.without_owner_mail`) holds wherever those rows show: the
+Outbox send log, the Sending queue (and the AI apps' sending_queue tool), the
+Activity feed, and the shared email history (the thread each message is on,
+with any reply). Mail that can't be traced to a company is shown to nobody but
+the practice owner. Today only company users can be ticked and only the
+practice's staff have a send log, so in practice the practice owner is the one
+who sees it; an Assistant or an Associate sees none of it.
+
 ## Owner email
 
 Settings → Owner email, two values:
