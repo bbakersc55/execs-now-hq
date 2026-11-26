@@ -11,6 +11,7 @@ import { StaffCreate } from "../components/StaffCreate";
 import { ClientFacingLinePrompt } from "../components/StatusChange";
 import { STATUSES, STATUS_LABELS, StatusPill } from "../components/StatusPill";
 import { Avatar, Chip, PageHead, useRemembered, useRowLink } from "../components/shell";
+import { apart, roleByCode } from "../lib/people";
 import { useRemembered as useRememberedValue } from "../lib/remembered";
 import { Banner, toast, when } from "../components/ui";
 import { TaskSheet } from "./TaskDetail";
@@ -93,6 +94,9 @@ export function Tasks({ me }: { me: Me }) {
   const peopleOptions = (people.data ?? []).filter((p) => !company
     || TENANT.includes(p.role)
     || (company !== INTERNAL && p.company === company));
+  // One person's two accounts (practice and client) both show here: their roles tell them apart.
+  const nameOf = apart(peopleOptions, roleByCode);
+  const assigneePerson = peopleOptions.find((p) => p.id === assignee);
 
   // A project or a person belonging to the company just left would otherwise
   // stay set and silently filter the list to nothing.
@@ -159,7 +163,7 @@ export function Tasks({ me }: { me: Me }) {
             style={{ width: "auto", minWidth: 150 }}
             onChange={(e) => setAssignee(e.target.value)}>
             <option value="">Anyone</option>
-            {peopleOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {peopleOptions.map((p) => <option key={p.id} value={p.id}>{nameOf(p)}</option>)}
           </select>
           <select aria-label="Filter by status" value={status}
             style={{ width: "auto", minWidth: 150 }}
@@ -182,7 +186,7 @@ export function Tasks({ me }: { me: Me }) {
           </select>
           {project && <Chip label={`${w.Project}: ${projectOptions.find((p) => p.id === project)?.title ?? "—"}`}
             onClear={() => setProject("")} />}
-          {assignee && <Chip label={`Assignee: ${peopleOptions.find((p) => p.id === assignee)?.name ?? "—"}`}
+          {assignee && <Chip label={`Assignee: ${assigneePerson ? nameOf(assigneePerson) : "—"}`}
             onClear={() => setAssignee("")} />}
           {status && <Chip label={`Status: ${STATUS_LABELS[status as WorkStatus]}`}
             onClear={() => setStatus("")} />}

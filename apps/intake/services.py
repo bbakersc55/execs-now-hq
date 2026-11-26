@@ -462,19 +462,45 @@ def start_send(submission, actor, *, tax_ack=False):
     return run
 
 
+#: What a test send says each step would do, in plain words (owner,
+#: 2026-11-25): by the step's key, else by its kind. Track's calls stay out of
+#: sight, in the saved run's `request`.
+WOULD = {"contact": "Would be created in Track", "owner": "Would be created in Track",
+         "link": "Would be linked in Track", "unit": "Would be created in Track",
+         "room": "Would be added to the unit in Track",
+         "details": "Would be set on the unit in Track",
+         "count": "Would be set on the unit in Track",
+         "code": "Would be added to the unit in Track; the code itself isn't shown",
+         "ownership": "Would be linked in Track"}
+WOULD_BY_KIND = {"create": "Would be created in Track", "link": "Would be linked in Track",
+                 "update": "Would be set in Track", "amenity_count": "Would be set in Track"}
+
+
+def would(step) -> str:
+    return (WOULD.get(step["key"].split(":", 1)[0])
+            or WOULD_BY_KIND.get(step.get("kind", ""), "Would be done in Track"))
+
+
+def would_request(step) -> str:
+    """The call the step would make, for the saved run only."""
+    if step.get("kind") == "amenity_count":
+        return (f"PATCH /pms/units/{{unit}}/amenities/{{row}} (or POST /pms/units/{{unit}}/"
+                f"amenities): amenity {step.get('amenity_id')}, count {step.get('count')}")
+    return f"{step.get('method', '')} {step.get('path', '')}".strip()
+
+
 def test_send(submission, actor, the_plan, *, client=None):
-    """Test mode: every check a send makes, each step shown as "would send",
-    nothing written to Track and nothing changed in ENHQ (no tasks, no dates
-    held, nothing deleted, not locked). The run and the intake are marked as
-    a test. Track is only read: the same look for an owner, contact or unit
-    like this one that the review's check makes."""
+    """Test mode: every check a send makes, each step shown as what it would
+    create or set, nothing written to Track and nothing changed in ENHQ (no
+    tasks, no dates held, nothing deleted, not locked). The run and the intake
+    are marked as a test. Track is only read: the same look for an owner,
+    contact or unit like this one that the review's check makes."""
     from apps.scorecard import feeds, track
 
     steps = []
     for step in the_plan["steps"]:
-        target = step.get("path", "")
         steps.append({"key": step["key"], "label": step["label"], "state": "would",
-                      "detail": f"Would send {step.get('method', '')} {target}".strip()})
+                      "detail": would(step), "request": would_request(step)})
     found = ""
     try:
         client = client or feeds.track_client(submission.company)

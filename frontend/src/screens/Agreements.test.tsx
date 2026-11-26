@@ -8,7 +8,7 @@ import { mockApi, renderRoute } from "../test/render";
 import { NAV } from "../App";
 import { AgreementDetail } from "./AgreementDetail";
 import { AgreementNew, AgreementsScreen } from "./Agreements";
-import { AgreementSettings } from "./AgreementSettings";
+import { AgreementAuthority, AgreementSettings } from "./AgreementSettings";
 import { PeoplePermissions } from "./PeoplePermissions";
 
 const ME = { role: "ECC", full_name: "Jackie Doe" } as unknown as Me;
@@ -269,5 +269,56 @@ describe("more than one owner (owner, 2026-11-24)", () => {
     renderRoute(<AgreementDetail me={ME} />, { path: "/a/:id", route: `/a/${ID}` });
     expect(await screen.findByText(/Exhibit A's quantities were changed/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Apply SkyRun's signature" })).toBeNull();
+  });
+});
+
+describe("the fix round before Michael's test drive (owner, 2026-11-25)", () => {
+  const WORDING = "I, Michael LeClerc, adopt the signature shown here as SkyRun Park City's "
+    + "signature in the block that reads “Michael LeClerc, President”. I authorize the people "
+    + "named here to apply it.";
+  const PEOPLE = [
+    { user_id: "b1", name: "Bryan Baker", role: "Practice owner" },
+    { user_id: "b2", name: "Bryan Baker", role: "Client owner" },
+    { user_id: "j1", name: "Jackie Doe", role: "Client team member" },
+    { user_id: "m1", name: "Michael LeClerc", role: "Client owner" },
+  ];
+
+  it("shows the consent exactly as the server words it, the signer named", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`/api/agreements/companies/${CO}/authority`]: {
+      is_signer: true, signer_name: "Michael LeClerc", signer_title: "President",
+      people: PEOPLE, authority: null, wording: WORDING } }));
+    renderRoute(<AgreementAuthority me={ME} />, { path: "/a/:companyId", route: `/a/${CO}` });
+    expect(await screen.findByText(WORDING)).toBeInTheDocument();
+    expect(screen.queryByText(/I, , adopt/)).toBeNull();
+  });
+
+  it("names each Bryan with their role in the authorization in force", async () => {
+    vi.stubGlobal("fetch", mockApi({ [`/api/agreements/companies/${CO}/authority`]: {
+      is_signer: true, signer_name: "Michael LeClerc", signer_title: "President",
+      people: PEOPLE, wording: WORDING,
+      authority: { id: "a1", principal: "Michael LeClerc", recorded_by: "Michael LeClerc",
+        recorded_at: "", recorded_on: "November 25, 2026", method: "typed",
+        typed: "Michael LeClerc", wording: WORDING,
+        people: [PEOPLE[2], PEOPLE[0], PEOPLE[1]] } } }));
+    renderRoute(<AgreementAuthority me={ME} />, { path: "/a/:companyId", route: `/a/${CO}` });
+    expect(await screen.findByText(
+      "Jackie Doe, Bryan Baker (Practice owner), Bryan Baker (Client owner)")).toBeInTheDocument();
+  });
+
+  it("names two people of one name apart in the signer picker", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      [`/api/agreements/companies/${CO}/authority`]: { people: [
+        ...PEOPLE, { user_id: "s1", name: "Michael LeClerc", role: "Client team member" }],
+        authority: null },
+      [`/api/agreements/companies/${CO}`]: company({ may_edit_access: true,
+        program: { ...PROGRAM, may_set_signer: true } as CompanyPage["program"] }),
+    }));
+    renderRoute(<AgreementSettings me={ME} />, { path: "/s/:companyId", route: `/s/${CO}` });
+    expect(await screen.findByRole("option", { name: "Michael LeClerc (Client owner)" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Michael LeClerc (Client team member)" }))
+      .toBeInTheDocument();
+    // The practice owner can't be the signer, so the one Bryan Baker left is plain.
+    expect(screen.getByRole("option", { name: "Bryan Baker" })).toBeInTheDocument();
   });
 });

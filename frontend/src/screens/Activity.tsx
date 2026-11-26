@@ -9,6 +9,7 @@ import {
 } from "../lib/api";
 import { useWords } from "../lib/words";
 import { CompanyOptions, companyName, isClientCompany } from "../lib/companies";
+import { apart, roleByCode } from "../lib/people";
 
 const LINK: Record<string, string> = {
   task: "/tasks", project: "/work/projects", goal: "/work/goals",
@@ -78,6 +79,7 @@ export function Activity({ me }: { me: Me }) {
 
   const rows = log.data ?? [];
   const staff = (people.data ?? []).filter((p) => TENANT.includes(p.role));
+  const nameOf = apart(staff, roleByCode);
   const filtered = !!(company || contact || actor || category || since || until);
   const clear = () => {
     setCompany(""); setContact(""); setActor(""); setCategory(""); setSince(""); setUntil("");
@@ -112,7 +114,7 @@ export function Activity({ me }: { me: Me }) {
             <select aria-label="Filter by who acted" value={actor}
               onChange={(e) => setActor(e.target.value)}>
               <option value="">Anyone</option>
-              {staff.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {staff.map((p) => <option key={p.id} value={p.id}>{nameOf(p)}</option>)}
             </select>
           </Field>
           <Field label="Type">

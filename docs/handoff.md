@@ -24,9 +24,10 @@
 > controls on the card pages (P16), on a branch", takes its place.
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-25**, after Release 51. **The next session starts at
-"2026-11-25: Release 51, owner agreements and tax numbers, start here" just
-below**; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
+2026-11-25**, after the fix round before Michael's test drive. **The next
+session starts at "2026-11-25, evening: the fix round before Michael's test
+drive, start here" just below**; then "2026-11-25: Release 51, owner
+agreements and tax numbers"; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
 then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
@@ -62,7 +63,50 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-25: Release 51, owner agreements and tax numbers, start here
+## 2026-11-25, evening: the fix round before Michael's test drive, start here
+
+Bryan's five fixes from the guide walk (branch `michael-fix-round`, cut from
+`dev` at `03ac1e8`), gated and **merged into `dev` and pushed. Not
+released** (no migration). Production still runs Release 51.
+
+1. **The authorization's consent names the signer**, and the screen shows
+   exactly the words recorded: one function for both,
+   `services.authorization_words` ("I, Michael LeClerc, adopt…"). Until now
+   the screen showed "I, , adopt…".
+2. **`.sr-only` has a rule** (`frontend/src/theme.css`), so the tax number's
+   "ending 4321" is no longer on screen beside "Show full number", the code
+   box or the shown number. Its only use in the app is that one. The
+   marketing site's `sr-only` is Tailwind's own and unaffected.
+3. **Two people of one name show their roles**: "Bryan Baker (Practice
+   owner), Bryan Baker (Client owner)". This covers the authorization in
+   force, the signer picker, and the people pickers in Tasks, new tasks
+   (staff and client), Meetings and Activity (`frontend/src/lib/people.ts`).
+   Everyone else keeps their plain name.
+4. **The agreement's welcome**: "This agreement doesn't ask for your Social
+   Security number or bank details. The onboarding form that follows asks for
+   one tax number, for your rental permit."
+5. **A test send reads in plain words**: "Would be created in Track", "Would
+   be set on the unit in Track". No API path on screen, and no bare "Would
+   send" (the TVs line had one). The call each step would make stays in the
+   saved run's `request`. The two test-mode banners now say "shows what each
+   step would create or set".
+
+Tests: `tests/test_agreements_authority_words.py`,
+`tests/test_intake_test_send_words.py`, `test_intake_p15_changes.py`
+(updated); `frontend/src/lib/people.test.ts`, `src/test/srOnly.test.ts`, and
+more in `Agreements.test.tsx` and `forms/agreement.test.tsx`. Spec:
+`docs/p15_owner_agreements.md`, "Countersigning" and the test mode passage.
+
+Michael's guide (`~/enhq-walks/michael-guide/`, not in the repo) was remade on
+this code: 57 screenshots, `click_path.md` and `screenshots.md`.
+
+### Next, in order
+
+1. Release when Bryan says "release" (no migration).
+2. The release steps in "Releasing it" (P15 section below), then Michael's
+   test drive by `~/enhq-walks/michael-guide/click_path.md`.
+
+## 2026-11-25: Release 51, owner agreements and tax numbers
 
 ### Release 51 is live
 

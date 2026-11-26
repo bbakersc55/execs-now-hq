@@ -8,6 +8,7 @@ import { SignatureCapture, hasSignature } from "../components/SignatureCapture";
 import { Banner, Card, when } from "../components/ui";
 import type { CapturedSignature, Me } from "../lib/api";
 import { agreements, type Program } from "../lib/agreements";
+import { apart, roleByName } from "../lib/people";
 import { Labeled } from "./Agreements";
 
 export function AgreementSettings({ me: _me }: { me: Me }) {
@@ -63,6 +64,7 @@ function SignerPicker({ program, companyId, onSaved, onError }: { program: Progr
   const { data } = useQuery({ queryKey: ["agreement-authority", companyId],
                               queryFn: () => agreements.authority(companyId) });
   const people = (data?.people ?? []).filter((p) => p.role !== "Practice owner");
+  const nameOf = apart(people, roleByName);
   return (
     <Labeled label="The signer in ENHQ">
       <select value={program.signer_id ?? ""} onChange={async (e) => {
@@ -70,7 +72,7 @@ function SignerPicker({ program, companyId, onSaved, onError }: { program: Progr
         catch (err) { onError((err as Error).message); }
       }}>
         <option value="">Nobody yet</option>
-        {people.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
+        {people.map((p) => <option key={p.user_id} value={p.user_id}>{nameOf(p)}</option>)}
       </select>
     </Labeled>
   );
@@ -182,8 +184,8 @@ export function AgreementAuthority({ me: _me }: { me: Me }) {
       {current ? (
         <Card title={`In force since ${current.recorded_on}`}>
           <p style={{ marginTop: 0 }}>{current.principal}'s signature may be applied to new-owner
-            agreements by: <strong>{current.people.map((p) => p.name).join(", ")
-              || "nobody else"}</strong>.</p>
+            agreements by: <strong>{current.people.map(apart(current.people, roleByName))
+              .join(", ") || "nobody else"}</strong>.</p>
           {current.method === "typed" && <p className="sig-typed">{current.typed}</p>}
           {data.is_signer && <button type="button" className="ghost danger"
             onClick={async () => {

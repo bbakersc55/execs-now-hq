@@ -40,7 +40,9 @@ def test_test_mode_checks_everything_and_writes_nothing(world, fake):
     assert run.test and run.state == SendRun.State.SUCCEEDED
     assert run.steps[0]["key"] == "test:check" and run.steps[0]["state"] == "done"
     assert all(s["state"] == "would" for s in run.steps[1:])
-    assert any(s["detail"].startswith("Would send POST /pms/units") for s in run.steps)
+    # Plain words on the screen; the call kept in the saved run (owner, 2026-11-25).
+    assert any(s.get("request", "").startswith("POST /pms/units") for s in run.steps)
+    assert not any("/pms/" in s["detail"] for s in run.steps)
     assert len(fake.writes()) == writes                       # nothing written to Track
     sub.refresh_from_db()
     assert sub.locked_at is None and sub.project_id is None and sub.status == "submitted"

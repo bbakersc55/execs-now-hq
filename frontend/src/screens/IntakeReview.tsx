@@ -613,8 +613,8 @@ export function SendCard({ r, onDone }: { r: Review; me: Me; onDone: () => void 
   return (
     <Card title={r.locked ? "Sent to Track" : "What will be sent"} tone="current">
       {r.test_mode && !r.locked && <Banner kind="warn"><strong>Test mode is on.</strong> Send to
-        Track runs every check and shows each step as "would send"; it writes nothing to Track
-        and changes nothing here. Turn it off in Form settings to send for real.</Banner>}
+        Track runs every check and shows what each step would create or set; it writes nothing
+        to Track and changes nothing here. Turn it off in Form settings to send for real.</Banner>}
       {r.agreement && <AgreementLine a={r.agreement} />}
       {!r.locked && (
         <>

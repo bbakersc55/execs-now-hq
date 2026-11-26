@@ -6,6 +6,7 @@ import { ClientTeamName, Me, PortalPerson, Task, WorkParent, api } from "../lib/
 import { usePracticeName } from "../lib/branding";
 import { useWords } from "../lib/words";
 import { Banner, Card, Field } from "./ui";
+import { apart, roleByCode } from "../lib/people";
 
 type Outcome = { kind: string; text: string; link: string };
 
@@ -119,6 +120,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
     : form.team;
   const people = usePeopleFor(team);
   const colleagues = (people.data ?? []).filter((p) => p.company === me.client_company);
+  const nameOf = apart(colleagues, roleByCode);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -185,7 +187,7 @@ function NewTaskForm({ me, onClose }: { me: Me; onClose: (o: Outcome | null) => 
             <select aria-label={`Assign the new ${w.task} to`} value={form.assignee}
               onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
               <option value="">Unassigned</option>
-              {colleagues.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {colleagues.map((p) => <option key={p.id} value={p.id}>{nameOf(p)}</option>)}
             </select>
           </Field>
           <Field label="Due">

@@ -8,6 +8,7 @@ import { HOW_A_COMPANY_BECOMES_A_CLIENT } from "./ClientStatus";
 import { TeamField } from "./ClientTeams";
 import { Banner, Card, Field } from "./ui";
 import { CompanyOptions, companyName, sortCompanies } from "../lib/companies";
+import { apart, roleByCode } from "../lib/people";
 
 const TENANT_ROLES = ["FF", "CF", "VA"];
 
@@ -122,6 +123,8 @@ function useScopedLists(company: string) {
 
   // "" is internal: a goal or project with no client company of its own.
   const ours = (rows: WorkParent[]) => rows.filter((r) => (r.client_company ?? "") === company);
+  const staff = (people.data ?? []).filter((p) => TENANT_ROLES.includes(p.role));
+  const theirPeople = company ? (people.data ?? []).filter((p) => p.company === company) : [];
   return {
     // Clients only, so simply alphabetical (2026-11-18).
     clientCompanies: sortCompanies((companies.data ?? []).filter((c) => c.is_client_company),
@@ -129,8 +132,10 @@ function useScopedLists(company: string) {
     otherCompanies: (companies.data ?? []).filter((c) => !c.is_client_company).length,
     goals: ours(goals.data ?? []),
     projects: ours(projects.data ?? []),
-    staff: (people.data ?? []).filter((p) => TENANT_ROLES.includes(p.role)),
-    theirPeople: company ? (people.data ?? []).filter((p) => p.company === company) : [],
+    staff,
+    theirPeople,
+    // One picker holds both: a name in each says its role (owner, 2026-11-25).
+    nameOf: apart([...staff, ...theirPeople], roleByCode),
     theirContacts: company ? (contacts.data ?? []).filter((c) => c.company === company) : [],
   };
 }
@@ -328,11 +333,11 @@ function NewTaskForm({ onClose }: { onClose: (o: Outcome | null) => void }) {
               onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
               <option value="">Unassigned</option>
               <optgroup label="The practice">
-                {lists.staff.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {lists.staff.map((p) => <option key={p.id} value={p.id}>{lists.nameOf(p)}</option>)}
               </optgroup>
               {lists.theirPeople.length > 0 && (
                 <optgroup label="The client">
-                  {lists.theirPeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {lists.theirPeople.map((p) => <option key={p.id} value={p.id}>{lists.nameOf(p)}</option>)}
                 </optgroup>
               )}
             </select>

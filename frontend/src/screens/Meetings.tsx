@@ -17,6 +17,7 @@ import { usePracticeName } from "../lib/branding";
 import { useWords } from "../lib/words";
 import { AiGate } from "../components/DemoVisitor";
 import { CompanyOptions } from "../lib/companies";
+import { apart, roleByCode } from "../lib/people";
 
 /**
  * Module 5 — the review queue (PRD §7).
@@ -1373,6 +1374,8 @@ function ItemRow({ item, onChanged, setNote }: {
     queryKey: ["portal-people"], queryFn: () => api.get("/api/portal-people/"),
     enabled: item.state === "pending" && item.kind === "action_item",
   });
+  const staffTeam = (team.data ?? []).filter((p) => ["FF", "CF", "VA"].includes(p.role));
+  const staffName = apart(staffTeam, roleByCode);
   const [outcome, setOutcome] = useState<string>(payload.proposed_outcome
     || (hasSeat ? "portal" : ["prospect", "third_party"].includes(kind) ? "follow_up"
         : "record_only"));
@@ -1490,8 +1493,7 @@ function ItemRow({ item, onChanged, setNote }: {
               <select aria-label={`Assign the ${w.task} to`} value={assignee}
                 style={{ width: "auto" }} onChange={(e) => setAssignee(e.target.value)}>
                 <option value="">Assigned to nobody yet</option>
-                {(team.data ?? []).filter((p) => ["FF", "CF", "VA"].includes(p.role))
-                  .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {staffTeam.map((p) => <option key={p.id} value={p.id}>{staffName(p)}</option>)}
               </select>
             )}
             {side === "practice" && (
@@ -1759,6 +1761,7 @@ function FileForClient({ seat, people, value, onChange }: {
     queryFn: () => api.get(`/api/tasks/?client_company=${company}`),
   });
   const colleagues = people.filter((p) => p.company === company);
+  const nameOf = apart(colleagues, roleByCode);
   // A project of the chosen goal; with no goal chosen, any of the company's.
   const projectOptions = value.goal === "new" ? []
     : (projects.data ?? []).filter((p) => !value.goal || p.goal === value.goal);
@@ -1776,7 +1779,7 @@ function FileForClient({ seat, people, value, onChange }: {
           value={value.assignee || seat.user_id}
           onChange={(e) => set({ assignee: e.target.value })}>
           {colleagues.length === 0 && <option value={seat.user_id}>The person named</option>}
-          {colleagues.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {colleagues.map((p) => <option key={p.id} value={p.id}>{nameOf(p)}</option>)}
         </select>
       </label>
       <label className="inline small">{w.Goal}

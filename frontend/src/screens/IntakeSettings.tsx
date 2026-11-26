@@ -133,8 +133,9 @@ export function IntakeSettings({ me: _me }: { me: Me }) {
 
       <Card title="Test mode">
         {draft.test_mode && <Banner kind="warn"><strong>Test mode is on.</strong> Send to Track
-          runs every check and shows each step as "would send". It writes nothing to Track,
-          makes no tasks, holds no dates, and leaves the intake open, marked as a test.</Banner>}
+          runs every check and shows what each step would create or set. It writes nothing to
+          Track, makes no tasks, holds no dates, and leaves the intake open, marked as a
+          test.</Banner>}
         <fieldset disabled={!draft.may_change_test_mode} style={{ border: 0, padding: 0 }}>
           <label className="intake-inline"><input type="radio" checked={draft.test_mode}
             onChange={() => void setTestMode(true)} /> On: check everything, write

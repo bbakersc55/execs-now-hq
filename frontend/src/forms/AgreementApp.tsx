@@ -210,8 +210,11 @@ function Welcome({ page }: { page: AgreementPage }) {
       </ol>
       <Note>Your details save as you go. You can stop at any time and come back with the same
         link.</Note>
-      <Note tone="safe">This agreement never asks for your Social Security number or your bank
-        details.</Note>
+      {/* Owner, 2026-11-25: the onboarding form that follows asks for a tax
+          number, so "never asks" read as a contradiction. */}
+      <Note tone="safe">This agreement doesn't ask for your Social Security number or bank
+        details. The onboarding form that follows asks for one tax number, for your rental
+        permit.</Note>
     </>
   );
 }

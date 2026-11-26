@@ -26,6 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.ratelimit import client_ip
+from apps.tenancy.roles import role_label
 
 from . import access, mail, pdf, render, services, texts
 from .models import (
@@ -217,12 +218,16 @@ def _detail(a, membership, user) -> dict:
 
 
 def _authority_payload(row, company) -> dict:
+    # Each person's role by name, so a list holding two people of one name can
+    # tell them apart (owner, 2026-11-25: Bryan's two accounts). The record
+    # itself keeps ids and names, as it always has.
+    roles = {str(m.user_id): role_label(m.role) for m, _ in access.company_users(company)}
     return {"id": str(row.pk), "principal": row.principal_name,
             "recorded_by": services.authority_by(row),
             "recorded_at": row.recorded_at.isoformat(),
             "recorded_on": services._day(row.recorded_at, company),
-            "people": row.people, "method": row.method, "typed": row.typed_text,
-            "wording": row.wording}
+            "people": [{**p, "role": roles.get(str(p.get("user_id")), "")} for p in row.people],
+            "method": row.method, "typed": row.typed_text, "wording": row.wording}
 
 
 # ------------------------------------------------------------ companies
@@ -532,21 +537,16 @@ class AuthorityView(Base):
     def get(self, request, company_id):
         company, membership = _company(request, company_id)
         row = access.authority_in_force(company)
-        people = [{"user_id": str(m.user_id), "name": _name(m.user),
-                   "role": "Practice owner" if owner else
-                   ("Client owner" if m.role == "FCC" else "Client team member")}
-                  for m, owner in access.company_users(company)]
+        people = [{"user_id": str(m.user_id), "name": _name(m.user), "role": role_label(m.role)}
+                  for m, _ in access.company_users(company)]
         tpl = texts.get(texts.DEFAULT)
-        from . import consent
-
         return Response({
             "is_signer": access.is_signer(request.user, company),
             "signer_name": tpl.signer_name, "signer_title": tpl.signer_title,
             "authority": _authority_payload(row, company) if row else None,
             "people": people,
-            "wording": consent.authorization(company=services._brand(company),
-                                             principal=tpl.signer_name,
-                                             title=tpl.signer_title)})
+            # Exactly what recording keeps, the signed-in account's name in it.
+            "wording": services.authorization_words(company, request.user)})
 
     def post(self, request, company_id):
         services.not_while_acting()

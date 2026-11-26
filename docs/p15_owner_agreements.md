@@ -217,10 +217,20 @@ replaces `request.user`. The message comes from one place,
   still reads "Michael LeClerc, President". The audit log keeps the account's
   id and email (`agreements.countersigned`, `agreements.authority_recorded`);
   the PDF prints names only, no staff email and never an Executives Now address.
+- **The words on the screen are the words recorded** (owner, 2026-11-25). The
+  authorization screen shows its consent from the same function the record
+  keeps it from (`services.authorization_words`), the signed-in account's name
+  in it ("I, Michael LeClerc, adopt…"). Until then the screen showed "I, ,
+  adopt…" while the record held the name.
 - Before countersigning, the words are re-hashed: if they no longer match what
   the owner signed, nothing is countersigned.
 - Owner-facing records print names only, never an email (Bryan has two
   accounts, practice owner and SkyRun Client owner; both may appear).
+- **Two people of one name** (owner, 2026-11-25): wherever a list on screen
+  holds both, each says its role by name. The authorization in force reads
+  "Bryan Baker (Practice owner), Bryan Baker (Client owner)"; so do the
+  signer picker and the app's people pickers (`frontend/src/lib/people.ts`).
+  Everyone else keeps their plain name. The record itself keeps ids and names.
 
 ## The PDF
 
@@ -366,10 +376,13 @@ host with CNAME flattening or ALIAS (Cloudflare, DNS only).
   to), and Form settings shows the latest ("Test mode turned off by [name] on
   [date]"). Never while acting as someone. With it on, Send to Track
   runs every check (the plan's problems, the sensitive values, Track read for
-  a matching owner, contact or unit), shows each step as "would send", writes
-  nothing to Track and changes nothing in ENHQ (no tasks, no dates held,
-  nothing deleted, not locked). The run and the intake are marked Test. A
-  banner shows on the list, the review and Form settings.
+  a matching owner, contact or unit), shows each step as what it would create
+  or set in plain words ("Would be created in Track", "Would be set on the
+  unit in Track"; owner, 2026-11-25), writes nothing to Track and changes
+  nothing in ENHQ (no tasks, no dates held, nothing deleted, not locked). The
+  call each step would make stays out of sight, in the saved run's `request`
+  ("POST /pms/units"). The run and the intake are marked Test. A banner shows
+  on the list, the review and Form settings.
 - **Square footage** ("The property") → the unit's `area`. **Emergency
   contact** ("About you") → a new owner's `notes`; for an existing owner, a
   checklist task ("Add the emergency contact from the intake to the owner's

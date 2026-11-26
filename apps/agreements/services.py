@@ -1058,9 +1058,7 @@ def record_authority(company, user, *, method, typed="", drawn="", people=(), ag
             method=method, typed_text=typed, drawn_png=png,
             people=[{"user_id": u, "name": allowed[u]} for u in chosen],
             wording_version=consent.CURRENT,
-            wording=consent.authorization(company=_brand(company), principal=tpl.signer_name,
-                                          title=tpl.signer_title,
-                                          recorded_by=account_name(user)),
+            wording=authorization_words(company, user),
             recorded_at=now, ip_address=ip or None, user_agent=(user_agent or "")[:500])
     # The event log keeps the account's id and email; the PDF prints names only.
     _audit(company, user, "agreements.authority_recorded",
@@ -1173,6 +1171,16 @@ def account_name(user) -> str:
     """The signed-in account's full name, as the record prints it (owner,
     2026-11-24): from the account, never from the template, never an email."""
     return (getattr(user, "full_name", "") or "").strip() or "(an account with no name)"
+
+
+def authorization_words(company, user) -> str:
+    """The standing authorization's consent, with the signed-in account's name
+    in it ("I, Michael LeClerc, adopt…"). The screen shows these words and the
+    record keeps them: one function for both, so the words ticked are the
+    words recorded (owner, 2026-11-25, after the screen showed "I, , adopt")."""
+    tpl = texts.get(texts.DEFAULT)
+    return consent.authorization(company=_brand(company), principal=tpl.signer_name,
+                                 title=tpl.signer_title, recorded_by=account_name(user))
 
 
 def authority_by(authority) -> str:

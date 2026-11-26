@@ -40,8 +40,9 @@ export interface CompanyPage {
 }
 export interface Authority {
   id: string; principal: string; recorded_by: string; recorded_at: string; recorded_on: string;
-  people: { user_id: string; name: string }[]; method: "typed" | "drawn"; typed: string;
-  wording: string;
+  /** `role` by name ("Client owner"); empty for someone no longer active. */
+  people: { user_id: string; name: string; role?: string }[]; method: "typed" | "drawn";
+  typed: string; wording: string;
 }
 export interface AgreementDetail extends AgreementRow {
   owners: OwnerRow[]; co_owners: CoOwnerInput[]; shared_email: boolean;

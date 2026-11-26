@@ -175,3 +175,15 @@ describe("the owner's agreement", () => {
     expect(await screen.findByText("This link isn't valid")).toBeInTheDocument();
   });
 });
+
+describe("the welcome's tax line (owner, 2026-11-25)", () => {
+  it("says the agreement doesn't ask, and that the onboarding form asks for one tax number",
+    async () => {
+      vi.stubGlobal("fetch", mockApi({ [`GET ${BASE}`]: page() }));
+      render(<AgreementApp brand={BRAND} token={TOKEN} />);
+      expect(await screen.findByText("This agreement doesn't ask for your Social Security "
+        + "number or bank details. The onboarding form that follows asks for one tax number, "
+        + "for your rental permit.")).toBeInTheDocument();
+      expect(screen.queryByText(/never asks for your Social Security/)).toBeNull();
+    });
+});

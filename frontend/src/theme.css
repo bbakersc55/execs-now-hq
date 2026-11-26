@@ -1016,6 +1016,14 @@ ul.work-tree.card-grid .goal-card { margin-bottom: 0; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: var(--s4); }
 .stack { display: flex; flex-direction: column; gap: var(--s3); }
 .inline { display: flex; align-items: center; gap: var(--s2); }
+/* Words for screen readers only: out of sight, still read aloud (owner,
+   2026-11-25; until then the class had no rule, and the tax number's
+   "ending 4321" showed on screen). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}
 
 .timeline { list-style: none; margin: 0; padding: 0; }
 .timeline li { padding: var(--s2) 0 var(--s2) var(--s4); border-left: 2px solid var(--line);
