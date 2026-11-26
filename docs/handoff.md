@@ -3,7 +3,7 @@
 > **Read this first.** The card pages' script controls (P16, for PCI DSS
 > 6.4.3 and 11.6.1) are committed on branch `card-page-scripts` as `9cfef94`,
 > after a green gate. **Not merged, not pushed, not released**: `dev` doesn't
-> have them yet, and Release 51 (2026-11-25, below) went out without them.
+> have them yet, and Releases 51 and 52 (below) went out without them.
 > Next, in order:
 >
 > 1. Merge `card-page-scripts` into `dev` (gate first) and push. The demo
@@ -24,9 +24,9 @@
 > controls on the card pages (P16), on a branch", takes its place.
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-25**, after the fix round before Michael's test drive. **The next
-session starts at "2026-11-25, evening: the fix round before Michael's test
-drive, start here" just below**; then "2026-11-25: Release 51, owner
+2026-11-25**, after Release 52 (the fix round before Michael's test drive).
+**The next session starts at "2026-11-25, evening: the fix round before
+Michael's test drive, released at 52, start here" just below**; then "2026-11-25: Release 51, owner
 agreements and tax numbers"; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
 then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
@@ -63,11 +63,12 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-25, evening: the fix round before Michael's test drive, start here
+## 2026-11-25, evening: the fix round before Michael's test drive, released at 52, start here
 
 Bryan's five fixes from the guide walk (branch `michael-fix-round`, cut from
-`dev` at `03ac1e8`), gated and **merged into `dev` and pushed. Not
-released** (no migration). Production still runs Release 51.
+`dev` at `03ac1e8`), gated, merged into `dev` and **released as Release 52**
+(`1e48818`, pushed 2026-11-26 02:24 UTC, no migration; serving at 02:25:39;
+the record is the runbook's "Observed at Release 52").
 
 1. **The authorization's consent names the signer**, and the screen shows
    exactly the words recorded: one function for both,
@@ -102,9 +103,11 @@ this code: 57 screenshots, `click_path.md` and `screenshots.md`.
 
 ### Next, in order
 
-1. Release when Bryan says "release" (no migration).
-2. The release steps in "Releasing it" (P15 section below), then Michael's
-   test drive by `~/enhq-walks/michael-guide/click_path.md`.
+1. The steps after the release in "Releasing it" (P15 section below), none
+   run by me: owner agreements on for SkyRun, Who signs = Michael, the
+   "Owner agreements" tick for Michael. `click_path.md`'s "Before he starts"
+   lists them too.
+2. Michael's test drive by `~/enhq-walks/michael-guide/click_path.md`.
 
 ## 2026-11-25: Release 51, owner agreements and tax numbers
 

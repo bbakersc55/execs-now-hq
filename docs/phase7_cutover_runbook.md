@@ -1077,6 +1077,26 @@ release. Release 50's watcher caught every step; reading the worker's log by
 hand the moment its deployment showed SUCCESS found `WAITING` 15 s after it
 was logged.
 
+**Observed at Release 52 (2026-11-26 UTC, no migration; `1e48818`: the fix
+round before Michael's test drive: the authorization's consent names the
+signer, `.sr-only` has a rule, two people of one name show their roles, the
+welcome's tax line, a test send in plain words; and Release 51's record):**
+the full gate had passed on that exact tree (`debccd0`, 01:00 UTC, run with
+`TZ=UTC`: backend 5730, frontend 1617). R1: the owner's run-now:
+`execsnowhq_prod_20261126_021912.sql.gz`, 20.8 MB, landed 02:19:18. R2: `main`
+fast-forwarded `49e2d75..1e48818` without a checkout, pushed 02:24:28; the
+worker, web and `mcp` deployments (`b30bbf4a`, `e0a87594`, `6e910c37`)
+appeared at 02:24:33–34. R3/R4: no migration, and no `WAITING` on the new
+worker. R5: `migrations current` 02:25:27, "real calls to the card processor
+on", the cluster starting 02:25:39 and running 02:25:40. R5b: no new scheduled
+job. R6: the worker, `mcp` and web SUCCESS by themselves at 02:25:30, 02:25:31
+and 02:25:39; `/healthz` 200 and `mcp` `ok`; the served bundle carries the
+`.sr-only` rule and "would create or set", and the form's bundle "The
+onboarding form that follows asks for one tax number" where the old one had
+"never asks". **Push to serving: about 1 min 11 s.** No R6b: P16
+(`card-page-scripts`) is not in this release. Release 51's watcher, with only
+the commit changed, caught every step.
+
 ---
 
 ## Part A — the owner's steps, in order
