@@ -14,20 +14,27 @@
 >    block is expected: Collect.js reaching for Apple's Apple Pay script.
 >    `manage.py card_pages status` in the demo's web service lists what
 >    browsers reported, and a new kind of block alerts the platform owner.
+>    Include the owner agreement and intake screens: the demo is still
+>    switched on for Acme Fasteners for this.
 > 3. Release by "At release" in `docs/p16_card_page_scripts.md` (on the
 >    branch): the two migrations (`cardpages 0001`, `crm 0064`) by the
 >    runbook; `ensure_schedules`; check the live headers; open a card form
->    without paying; the first `card_pages approve`, then `card_pages check`.
->    From then on, runbook R6b at every release.
+>    without paying.
+> 4. Approve the baseline: the first `card_pages approve`, then `card_pages
+>    check`. From then on, runbook R6b at every release.
+> 5. Run the demo teardown, as Bryan's `!` line:
+>    `! sh ~/enhq-walks/owner-agreements/demo_teardown.sh`.
+> 6. Then Bryan finishes the PCI questionnaire.
 >
 > Delete this note at the merge: the branch's own section, "2026-11-25: script
-> controls on the card pages (P16), on a branch", takes its place.
+> controls on the card pages (P16), on a branch", takes its place, and
+> "where things stand" below keeps this order.
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-25**, after Releases 52 and 53 (the fix round before Michael's test
-drive, and its record).
-**The next session starts at "2026-11-25, evening: the fix round before
-Michael's test drive, released at 52, start here" just below**; then "2026-11-25: Release 51, owner
+2026-11-25**, night, wrapping up after Release 53.
+**The next session starts at "2026-11-25, night: where things stand, start
+here" just below**; then "2026-11-25, evening: the fix round before Michael's
+test drive, released at 52"; then "2026-11-25: Release 51, owner
 agreements and tax numbers"; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
 then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
@@ -64,7 +71,73 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-25, evening: the fix round before Michael's test drive, released at 52, start here
+## 2026-11-25, night: where things stand, start here
+
+Bryan wrapped up for the night after Release 53.
+
+### Live
+
+- **Releases 51 to 53 are live**; `main` is at `353daf1`. 51: owner
+  agreements (P15) and tax numbers on the intake form. 52: the fix round
+  before Michael's test drive. 53: Release 52's record, docs only. The
+  runbook records each ("Observed at Release 51" to "53"). `dev` is ahead of
+  `main` by docs only: Release 53's record and this section.
+- **Owner agreements are on for SkyRun Park City, in test mode.** Bryan ran
+  `owner_agreements … on` after Release 52. Intake's Send to Track checks
+  everything and writes nothing to Track until the practice owner or the
+  Client owner turns test mode off in Form settings.
+- **SkyRun's settings, by Bryan on screen:** "Who signs for the company" is
+  Michael, and People and permissions is corrected. Release 51 had carried
+  "Owner intake" over to Luke, Matt, Kendra, Jackie and Bryan's SkyRun
+  account, not to Michael (the Release 51 section below expected Jackie,
+  Kendra, Michael and Bryan's Client owner account). **Only Michael is to
+  have "Owner agreements" until his test drive is done.** That replaces item
+  3 of the Release 51 section's "Next" list ("a for Sandra, Jackie, Kendra,
+  Michael, Bryan").
+
+### Michael's test drive
+
+- Bryan's guide for Michael is written and ready to send. The click path and
+  screenshots made for it are in `~/enhq-walks/michael-guide/`.
+- Michael records his own authorization as its step 2, signed in as himself
+  (acting as him is refused).
+
+### Still open for onboarding
+
+- Michael's test drive, and cleaning up its ZZ TEST intake afterwards.
+- The ZZ TEST proof on SkyRun's real Track with a made-up tax number (test
+  mode has to be off for that one), before a real owner gets an intake link.
+- SkyRun's Form settings: check for hand-edited invite or reminder wording
+  that still says the form never asks for a Social Security number.
+- The GM's read of the agreement, and Exhibit A's rounding, minimum and place
+  mat rules (`apps/agreements/exhibit_a.py`, one line each).
+- The sender and domain decision (item 6 of the Release 51 section's list).
+- The attorney's review.
+- After the test drive: tick the rest of the team for "Owner agreements".
+
+### The demo
+
+The demo is still switched on for Acme Fasteners, on purpose. Its teardown
+(`~/enhq-walks/owner-agreements/demo_teardown.sh`, Bryan's `!` line) runs
+after the card-page click-through, so that check can include the owner
+agreement and intake screens.
+
+### Next session, in order
+
+1. Merge `card-page-scripts` into `dev` (gate first) and push.
+2. Click through the whole app on the demo for anything the policy blocks.
+3. Release with the steps in `docs/p16_card_page_scripts.md`, "At release".
+4. Approve the baseline (`card_pages approve`, then `card_pages check`).
+5. Run the demo teardown.
+6. Then Bryan finishes the PCI questionnaire.
+
+The note at the top has the detail of each step.
+
+### After that
+
+Bryan has a different plan for the onboarding checklist, to discuss then.
+
+## 2026-11-25, evening: the fix round before Michael's test drive, released at 52
 
 Bryan's five fixes from the guide walk (branch `michael-fix-round`, cut from
 `dev` at `03ac1e8`), gated, merged into `dev` and **released as Release 52**
