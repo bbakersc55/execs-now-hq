@@ -1097,6 +1097,19 @@ onboarding form that follows asks for one tax number" where the old one had
 (`card-page-scripts`) is not in this release. Release 51's watcher, with only
 the commit changed, caught every step.
 
+**Observed at Release 53 (2026-11-26 UTC, docs only, no migration; `353daf1`:
+Release 52's record):** the full gate passed first on tree `fff6ee1` (02:48
+UTC, `TZ=UTC`: backend 5730, frontend 1617). R1: the owner's run-now:
+`execsnowhq_prod_20261126_022809.sql.gz`, 20.8 MB, landed 02:28:14. R2: `main`
+fast-forwarded `1e48818..353daf1`, pushed with `dev` at 02:48:41; the worker,
+web and `mcp` deployments (`5e89b221`, `bbbdc828`, `678c40ec`) appeared at
+02:48:46–47. **Railway rebuilds all three for a push that changes only
+`docs/`.** R3/R4: no `WAITING`. R5: `migrations current` 02:49:13, the cluster
+running 02:49:19. R5b: none. R6: `mcp`, the worker and web SUCCESS by
+themselves at 02:49:12, 02:49:20 and 02:49:29; `/healthz` 200 and `mcp` `ok`;
+the served bundles are Release 52's own four files, so the code is unchanged.
+**Push to serving: about 48 s.**
+
 ---
 
 ## Part A — the owner's steps, in order
