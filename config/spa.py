@@ -53,7 +53,14 @@ def app_shell(request, *args, **kwargs):
         return HttpResponseNotFound(
             "The app has not been built. Run `npm run build` in frontend/, then "
             "`manage.py collectstatic`.", content_type="text/plain")
-    return HttpResponse(with_identity(html, request))
+    # P16: every page of the app carries the card policy (the bank pages the
+    # bank policy), and says which, for the app (docs/p16_card_page_scripts.md).
+    from apps.cardpages import policy
+
+    kind = policy.kind_for(request.path)
+    response = HttpResponse(policy.mark(with_identity(html, request), kind))
+    policy.apply(response, request, request.path)
+    return response
 
 
 _TITLE = re.compile(r"<title>.*?</title>", re.S)

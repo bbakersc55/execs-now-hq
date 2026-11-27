@@ -81,6 +81,8 @@ INSTALLED_APPS = [
     "apps.sops",
     "apps.intake",
     "apps.agreements",
+    # P16: script controls on the card pages (docs/p16_card_page_scripts.md).
+    "apps.cardpages",
 ]
 
 MIDDLEWARE = [

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 from datetime import date, timedelta
 from decimal import Decimal
@@ -37,6 +38,15 @@ from .factories import ClientCompanyFactory, MembershipFactory, TenantFactory
 from .test_scorecard import post, sc  # noqa: F401  (the fixture)
 
 B = "/api/scorecard/bonus/"
+
+#: The secret plan's amount, as a number standing on its own. Four digits can
+#: turn up inside a random id (a UUID's hex, a token), which is not a leak: the
+#: gate of 2026-11-27 failed on "12b0794d-9137-49ed-…".
+SECRET_AMOUNT = re.compile(r"(?<![0-9A-Za-z_-])9137(?![0-9A-Za-z_-])")
+
+
+def leaks_amount(text: str) -> bool:
+    return SECRET_AMOUNT.search(text) is not None
 
 
 def month_start(day):
@@ -916,7 +926,7 @@ def test_a_team_member_sees_no_one_elses_bonus_anywhere(sc, closed_month):
     for view in ("team", "all"):
         assert json.loads(seen[f"{B}?company={company}&view={view}"])["view"] is None
     everything = "\n".join(seen.values())
-    assert "Retention award for two" not in everything and "9137" not in everything
+    assert "Retention award for two" not in everything and not leaks_amount(everything)
     bonus_payloads = seen[f"{B}?company={company}"] + seen[f"{B}?company={company}&view=team"] \
         + seen[f"{B}?company={company}&view=all"]
     for who in ("colleague", "manager", "sales_member"):
@@ -951,7 +961,7 @@ def test_a_team_member_sees_no_one_elses_bonus_anywhere(sc, closed_month):
                     refused[tool.__name__] = str(exc)
                     continue
                 assert "Retention award" not in out and "Floor bonus" not in out, tool.__name__
-                assert "9137" not in out, tool.__name__
+                assert not leaks_amount(out), tool.__name__
                 ran.append(tool.__name__)
     assert {"scorecard_readings", "list_tasks", "list_goals", "list_sops"} <= set(ran), \
         (ran, refused)
@@ -965,3 +975,14 @@ def test_a_team_member_sees_no_one_elses_bonus_anywhere(sc, closed_month):
         text, html = digests.render(draft, [])
     for words in ("bonus", "Bonus", "Floor bonus", "Retention award", "9137"):
         assert words not in text and words not in html
+
+
+@pytest.mark.parametrize("text,leaks", [
+    ('{"amount": 9137}', True), ('{"amount":"9137.00"}', True), ("Pays $9137 a month", True),
+    ("9137", True), ('[9137,', True),
+    ('"id":"12b0794d-9137-49ed-8ebe-73f2383807d3"', False), ("a1b2c9137d4", False),
+    ("token Ab_9137xYz", False), ("19137", False), ("91370", False)])
+def test_the_amount_counts_as_a_leak_only_standing_on_its_own(text, leaks):
+    """No database: the check the privacy sweep uses finds the amount however
+    a payload would carry it, and not four digits inside an id."""
+    assert leaks_amount(text) is leaks

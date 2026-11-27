@@ -1,41 +1,13 @@
 # Execs NOW HQ — handoff to the next chat
 
-> **Read this first.** The card pages' script controls (P16, for PCI DSS
-> 6.4.3 and 11.6.1) are committed on branch `card-page-scripts` as `9cfef94`,
-> after a green gate. **Not merged, not pushed, not released**: `dev` doesn't
-> have them yet, and Releases 51 to 53 (below) went out without them.
-> Next, in order:
->
-> 1. Merge `card-page-scripts` into `dev` (gate first) and push. The demo
->    redeploys with the policy enforced and applies `cardpages 0001` itself.
-> 2. Click through the whole app on the demo with the browser's console open,
->    looking for anything the policy blocks ("Refused to load", "Refused to
->    frame", "Content Security Policy", or a panel that stays blank). One
->    block is expected: Collect.js reaching for Apple's Apple Pay script.
->    `manage.py card_pages status` in the demo's web service lists what
->    browsers reported, and a new kind of block alerts the platform owner.
->    Include the owner agreement and intake screens: the demo is still
->    switched on for Acme Fasteners for this.
-> 3. Release by "At release" in `docs/p16_card_page_scripts.md` (on the
->    branch): the two migrations (`cardpages 0001`, `crm 0064`) by the
->    runbook; `ensure_schedules`; check the live headers; open a card form
->    without paying.
-> 4. Approve the baseline: the first `card_pages approve`, then `card_pages
->    check`. From then on, runbook R6b at every release.
-> 5. Run the demo teardown, as Bryan's `!` line:
->    `! sh ~/enhq-walks/owner-agreements/demo_teardown.sh`.
-> 6. Then Bryan finishes the PCI questionnaire.
->
-> Delete this note at the merge: the branch's own section, "2026-11-25: script
-> controls on the card pages (P16), on a branch", takes its place, and
-> "where things stand" below keeps this order.
-
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-25**, night, wrapping up after Release 53.
-**The next session starts at "2026-11-25, night: where things stand, start
-here" just below**; then "2026-11-25, evening: the fix round before Michael's
-test drive, released at 52"; then "2026-11-25: Release 51, owner
-agreements and tax numbers"; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
+2026-11-27**, after merging P16 into `dev`.
+**The next session starts at "2026-11-27: P16 merged into `dev`, start
+here" just below**; then "2026-11-25, night: where things stand"; then
+"2026-11-25, evening: the fix round before Michael's test drive, released at
+52"; then "2026-11-25: Release 51, owner agreements and tax numbers"; then
+"2026-11-25: script controls on the card pages (P16), merged into `dev` on
+2026-11-27"; then "2026-11-24, night: the demo walk's fixes, merged into `dev`";
 then "2026-11-24, later: several owners, Exhibit A from Sleeps, and
 tax numbers, merged into `dev`"; then
 "2026-11-24: owner agreements (P15), merged into `dev`" (its release list is
@@ -71,7 +43,45 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-25, night: where things stand, start here
+## 2026-11-27: P16 merged into `dev`, start here
+
+`card-page-scripts` (`9cfef94`) is **merged into `dev`** (a merge commit,
+after a green gate) **and pushed. Not released.** Only this file conflicted
+(the two days' sections; both kept). Since the branch was cut at `4c7562f`,
+`dev` had added no route, no script loader or script address, no frame and no
+server-rendered page, so the inventory (`docs/card_page_scripts.md`) and
+`tests/test_card_pages_inventory.py` needed no change. The push deploys the
+demo, which applies `cardpages 0001` and `crm 0064` itself at start.
+Production is untouched: `main` is still at `353daf1`.
+
+The first gate on the merge failed on one test that had nothing to do with it:
+the bonus privacy sweep (`test_a_team_member_sees_no_one_elses_bonus_anywhere`)
+found its secret amount, "9137", inside a random id (`12b0794d-9137-…`).
+Fixed in the same commit (Bryan's choice): the sweep's two amount checks now
+count "9137" only standing on its own (`leaks_amount` in
+`tests/test_scorecard_bonus.py`, with a no-database test of its own). The
+digest check in that test still looks for the bare digits.
+
+### Next, in order (this replaces the note that was at the top)
+
+1. Click through the whole app on the demo with the browser's console open,
+   looking for anything the policy blocks ("Refused to load", "Refused to
+   frame", "Content Security Policy", or a panel that stays blank). One block
+   is expected: Collect.js reaching for Apple's Apple Pay script.
+   `manage.py card_pages status` in the demo's web service lists what
+   browsers reported. Include the owner agreement and intake screens: the demo
+   is still switched on for Acme Fasteners for this.
+2. Release by "At release" in `docs/p16_card_page_scripts.md`: the two
+   migrations (`cardpages 0001`, `crm 0064`) by the runbook;
+   `ensure_schedules`; check the live headers; open a card form without
+   paying.
+3. Approve the baseline: the first `card_pages approve`, then `card_pages
+   check`. From then on, runbook R6b at every release.
+4. Run the demo teardown, as Bryan's `!` line:
+   `! sh ~/enhq-walks/owner-agreements/demo_teardown.sh`.
+5. Then Bryan finishes the PCI questionnaire.
+
+## 2026-11-25, night: where things stand
 
 Bryan wrapped up for the night after Release 53.
 
@@ -131,7 +141,8 @@ agreement and intake screens.
 5. Run the demo teardown.
 6. Then Bryan finishes the PCI questionnaire.
 
-The note at the top has the detail of each step.
+Step 1 was done on 2026-11-27; that section, at the top, has the
+detail of the rest.
 
 ### After that
 
@@ -208,7 +219,8 @@ this code: 57 screenshots, `click_path.md` and `screenshots.md`.
 - **It carried** the three sections below: owner agreements (P15) with the
   fixes before merging; several owners, Exhibit A from Sleeps and tax numbers
   on the intake form; the demo walk's fixes. **Not P16**: `card-page-scripts`
-  (`9cfef94`) is still on its branch (the note at the top).
+  (`9cfef94`) was still on its branch (merged into `dev` on 2026-11-27: the
+  section at the top).
 
 ### What changed for SkyRun when it went live
 
@@ -242,7 +254,29 @@ this code: 57 screenshots, `click_path.md` and `screenshots.md`.
 6. Later, apart from any release: Postmark and its DNS, then
    `OWNER_EMAIL_POSTMARK_TOKEN` on web and qcluster; the forms domain once
    chosen.
-7. P16, by the note at the top.
+7. P16, by the 2026-11-27 section at the top.
+## 2026-11-25: script controls on the card pages (P16), merged into `dev` on 2026-11-27
+
+Why (Bryan): the card processor's PCI questionnaire asks whether the payment
+page scripts are monitored and protected (PCI DSS 6.4.3 and 11.6.1); until
+now nothing limited them. Branch `card-page-scripts`, cut from `dev` at
+`4c7562f`, one commit after a green gate. Merged into `dev` and pushed
+on 2026-11-27 (the section at the top); **not released.** Spec, with the plan and every default taken:
+`docs/p16_card_page_scripts.md`. Inventory: `docs/card_page_scripts.md`. The
+one-page record for Bryan's files: `docs/pci_card_page_scripts.md`.
+
+- Every page of the app is served with an enforced policy allowing scripts
+  only from ENHQ and the gateway's Collect.js address; the three bank pages add
+  Plaid and never show a card form; moving between the two reloads the page.
+- The daily check (13:00 UTC, production) and browsers' violation reports
+  alert the platform owner (Notice and email). `card_pages approve` after every
+  release (runbook R6b). The switch: `card_pages mode report-only`.
+- Proved on the laptop sandbox: both forms, all five screens, a token each,
+  nothing charged (`~/enhq-walks/card-page-scripts/`).
+- Migrations `cardpages 0001` (four new tables), `crm 0064` (no SQL); applied
+  to `execsnowhq_local` after the green gate. At release: those two, then
+  `ensure_schedules`, then check the live headers, then the first approval
+  (p16 "At release").
 
 ## 2026-11-24, night: the demo walk's fixes, merged into `dev`
 
