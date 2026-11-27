@@ -1111,6 +1111,51 @@ themselves at 02:49:12, 02:49:20 and 02:49:29; `/healthz` 200 and `mcp` `ok`;
 the served bundles are Release 52's own four files, so the code is unchanged.
 **Push to serving: about 48 s.**
 
+**Observed at Release 54 (2026-11-27 UTC, two migrations, both additive:
+`cardpages 0001` creates four new tables, `card_page_setting`, `_baseline`,
+`_check` and `_violation`, with their indexes and one foreign key between
+two of them, and `crm 0064` has no SQL, a new choice on an existing field;
+`74419cd`: the card pages' script controls (P16), merged into `dev` with the
+bonus sweep's id fix):** the full gate had passed on that exact tree
+(`9580044`, just before the commit at 19:58 UTC: backend 5772, frontend
+1628). Before the release, the demo deployed the merge from `dev` (`d194f879`, SUCCESS 20:00:01) and applied
+both migrations itself; the owner's `card_pages status` there showed 0
+violations. R1: the scheduled dump, no run-now:
+`execsnowhq_prod_20261127_080148.sql.gz`, 20.9 MB, landed 08:01:52. R2: `main`
+fast-forwarded `353daf1..74419cd` without a checkout (`git fetch . dev:main`),
+pushed 20:59:43; the worker deployment (`10269550`) was seen at 20:59:47. R3:
+the worker waited at 21:00:39 for exactly the two. R4: applied by me
+21:01:02–08, each `OK`. R5: `migrations current` 21:01:14, the cluster
+running 21:01:19. R5b: `ensure_schedules`, run by the owner from a
+copy-paste block: `created platform.card_pages_check next run 2026-11-28
+13:00 UTC`, the 46 jobs of the two practices updated. R6: web (`b48ead04`)
+and `mcp` (`1bde6aba`) SUCCESS by themselves by 21:01:48; `/healthz` 200 and
+`mcp` `ok`. **Push to serving: about 2 min 5 s.** P16's own checks: the live
+headers by `curl` (the first read came back empty, the retry was right): `/`,
+`/invoices`, `/pay/x` and `/settings/billing` carry the card policy, enforced,
+with `https://secure.vaultixpay.com/token/Collect.js` and the frames
+`secure.nmi.com` and `secure.vaultixpay.com`; the three bank pages add only
+Plaid's script and frames; reports go to
+`https://app.getexecutivesnow.com/csp-report`. The entry script
+(`index-D7tZPawl.js`, the demo's own bundle) matches its `integrity`;
+Collect.js answers 200. P16 step 5, the live card form, by the owner.
+Executives Now isn't billed, so Settings, Billing has no "Replace the
+card". Instead, acting as the Client owner of the test client Acme
+Facilities, Invoices, "Card on file and auto-pay": the card number, expiry
+and security code fields appeared, from `secure.vaultixpay.com`. Nothing
+was typed, then Cancel. The console's only policy line was Apple's Apple Pay script
+refused, which is also the only report browsers sent after the release
+(21:59, `/invoices`, ×1). Starting "Act as" logged ~20 GETs answered 403
+or 404 (21:56:00 and 21:56:48), the same set as under Release 53 (11-26
+03:31:06): not from this release. P16's step 5 now describes this way in.
+R6b, the first approval, by the owner at 22:00: "3 scripts on 3 pages"
+(the pages `/pay/card-page-check`, `/invoices` and `/settings/billing`; the
+scripts: the entry script, the one part it loads, `index-p9O_qjoa.js`, and
+Collect.js); "(the first approval)". `card_pages check` at 22:30: "As approved". The
+first daily check runs 2026-11-28 13:00 UTC. A watcher in the background
+(the new worker deployment's id, then its log for `WAITING`) caught every
+step.
+
 ---
 
 ## Part A — the owner's steps, in order

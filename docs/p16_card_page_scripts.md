@@ -212,13 +212,30 @@ until it is approved, so report-only can't be forgotten.
    `curl -sI https://<app host>/invoices | grep -i -E "content-security|reporting"` shows
    the card policy above, enforced; the same for `/pay/x` and
    `/settings/billing`; `/finance/import` shows the bank policy.
-5. Open a live card form without paying (your own practice's subscription
-   card in Settings, Billing, "Replace the card", then Cancel) with the
-   browser's console open: the card fields appear, and there is no "Refused
-   to load" or "Content Security Policy" line. The laptop proof tokenized on
-   NMI's sandbox; with sandbox keys, Collect.js from the white-label host is
-   proven only to load under the policy, not to tokenize. `card_pages status`
-   shows any violation browsers have reported since.
+5. Open a live card form without paying, with the browser's console open.
+   Two ways in:
+   - **A practice that isn't billed** (Executives Now: Settings, Billing has no
+     "Replace the card"). Go to a test client's company page; in its portal
+     access, click "Act as" on that client's Client owner. Go to Invoices; in
+     the "Card on file and auto-pay" box, click "Save a card" (or "Replace
+     the card"); then Cancel. Stop acting from the banner. This is how
+     Release 54 did it, acting as the Client owner of Acme Facilities.
+   - **A billed practice**: its own subscription card in Settings, Billing,
+     "Replace the card", then Cancel.
+
+   What passes: the card number, expiry and security code fields appear,
+   served from the gateway's host (`secure.vaultixpay.com`), and you type
+   nothing. The only policy line is the expected one: Collect.js's Apple Pay
+   script refused. There is no other "Refused to" or "Content Security
+   Policy" line.
+
+   Starting "Act as" also logs a burst of 403 and 404 answers in the console.
+   They predate P16 and are harmless; see the handoff's cleanup list.
+
+   The laptop proof tokenized on NMI's sandbox; with sandbox keys, Collect.js
+   from the white-label host is proven only to load under the policy, not to
+   tokenize. `card_pages status` shows any violation browsers have reported
+   since.
 6. The first approval: `card_pages approve --note "Release N: P16, the first"`
    (runbook R6b), then `card_pages check` says "As approved".
 7. From then on, R6b at every release.

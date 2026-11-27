@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-27**, after merging P16 into `dev`.
-**The next session starts at "2026-11-27: P16 merged into `dev`, start
-here" just below**; then "2026-11-25, night: where things stand"; then
+2026-11-27**, after Release 54.
+**The next session starts at "2026-11-27, evening: Release 54, P16 live,
+start here" just below**; then "2026-11-27: P16 merged into `dev`"; then
+"2026-11-25, night: where things stand"; then
 "2026-11-25, evening: the fix round before Michael's test drive, released at
 52"; then "2026-11-25: Release 51, owner agreements and tax numbers"; then
 "2026-11-25: script controls on the card pages (P16), merged into `dev` on
@@ -43,7 +44,98 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-27: P16 merged into `dev`, start here
+## 2026-11-27, evening: Release 54, P16 live, start here
+
+**Release 54** (`74419cd`) put the card pages' script controls (P16) live,
+with both migrations (`cardpages 0001`, `crm 0064`) applied in the waiting
+worker by the runbook. The record is in `docs/phase7_cutover_runbook.md`,
+"Observed at Release 54". This record is on `dev` only, not released.
+
+All of P16's "At release" steps are done:
+- `ensure_schedules` was run by Bryan and created `platform.card_pages_check`.
+- The live headers are right on the card and bank pages.
+- The entry script matches its integrity.
+- The live card form passed (step 5), acting as the Client owner of Acme
+  Facilities: Invoices, "Card on file and auto-pay". The card fields
+  appeared, and the only policy line was the expected Apple Pay block.
+  Executives Now isn't billed, so Settings, Billing has no "Replace the
+  card"; P16's step 5 now describes this way in.
+- The first `card_pages approve` was recorded at 22:00 UTC: 3 scripts on 3
+  pages.
+- `card_pages check` at 22:30 UTC said "As approved". The first daily check
+  runs 2026-11-28 13:00 UTC.
+
+From now on, run R6b (`card_pages approve --note "Release N" --by "Bryan"`)
+at every release. Otherwise a changed bundle makes the next daily check
+alert.
+
+**The demo teardown is done** (Bryan, ~22:40 UTC,
+`~/enhq-walks/owner-agreements/demo_teardown.log`):
+- Owner agreements and intake forms are off for Acme Fasteners, and nothing
+  is on anywhere on the demo.
+- Cleared: who signs for the company, the ticks of 13 people, See full tax
+  numbers from 1 person, and the stand-in Track connection.
+- Left behind, hidden while it's off: 4 owner agreements, 4 owner intakes, 6
+  saved door codes and tax numbers (encrypted), and 1 standing
+  authorization not ended.
+- Left behind and still shown: 25 Outbox emails (the practice owner only)
+  and 14 bell notices (each to its own person).
+
+All of it goes at the next reseed (`seed_demo`), which leaves visitors'
+copies alone.
+
+### Next, in order
+
+1. Bryan finishes the PCI questionnaire (`docs/pci_card_page_scripts.md` is
+   the page for those files).
+2. Optional, read only: why Release 51's intake ticks left Michael out.
+   Bryan's line is `! sh ~/enhq-walks/owner-agreements/intake_ticks_read.sh`.
+   It prints each SkyRun membership's role, team levels and audit trail
+   around the migration's time.
+
+### Cleanup list (seen at Release 54; for later, not now)
+
+1. **A burst of 403s and 404s when "Act as" starts.** About 20 GETs fail:
+   - 403 on the practice's company page calls: the company, its timeline,
+     client status, calendar, portal access and its candidates, contacts,
+     meetings, documents, commitments and the scorecard's connections and
+     setup;
+   - 404 on `/api/playbooks/`, `/api/tools/` and `/api/invoices/card-on-file/`.
+
+   This predates the release: production's web log shows the same set
+   under Release 53 (2026-11-26 03:31:06 UTC) and twice under 54 (21:56:00
+   and 21:56:48), each in the second the `POST /api/act-as/` returned 201,
+   and none after it. The likely cause, read from the code but not proven
+   by a test: `useIdentityChange` in `frontend/src/components/ActAs.tsx`
+   (from 963d1fd, 2026-09-15) calls `qc.resetQueries()` before
+   `navigate(to)`. That refetches every query still on screen, which is
+   the practice's company page, under the client's identity. The server
+   refuses each one, which is the role boundary doing its job, so nothing
+   leaks. The probable fix: remove the queries instead of resetting them,
+   or navigate first, plus a test that starting to act fetches nothing for
+   the old page.
+2. **"Permissions policy violation: unload is not allowed in this
+   document" on a document's Preview.** This is Chrome's own message, not
+   ENHQ's:
+   - ENHQ sends no `Permissions-Policy` header;
+   - neither live script file contains "unload";
+   - the Preview (`frontend/src/components/Documents.tsx`, unchanged since
+     826e0f9, 2026-10-29) is a PDF in a frame, which Chrome renders with
+   its built-in PDF viewer. That viewer adds an `unload` listener, and
+   Chrome no longer allows `unload` by default.
+
+   So it was there before this release. P16 changed nothing it touches:
+   the policy has no say over Permissions Policy, and it allows the
+   preview's `blob:` frame. Not reproduced side by side on an older
+   release; what's above is from the headers, the bundles and the code.
+   No fix is planned unless it bothers someone, since showing PDFs
+   without Chrome's viewer would mean bundling a viewer.
+3. `card_pages status` labels the expected Apple Pay report "[browser
+   extension]". Both kinds are stored as `noise` in
+   `apps/cardpages/reports.py`, and the status line has one label for
+   both.
+
+## 2026-11-27: P16 merged into `dev`
 
 `card-page-scripts` (`9cfef94`) is **merged into `dev`** (a merge commit,
 after a green gate) **and pushed. Not released.** Only this file conflicted
@@ -62,7 +154,7 @@ count "9137" only standing on its own (`leaks_amount` in
 `tests/test_scorecard_bonus.py`, with a no-database test of its own). The
 digest check in that test still looks for the bare digits.
 
-### Next, in order (this replaces the note that was at the top)
+### Next, in order (this replaced the note that was at the top; steps 1 to 3 were done at Release 54)
 
 1. Click through the whole app on the demo with the browser's console open,
    looking for anything the policy blocks ("Refused to load", "Refused to
