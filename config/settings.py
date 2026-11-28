@@ -23,6 +23,9 @@ IS_LOCAL = PUBLIC_BASE_URL.startswith(("http://localhost", "http://127.0.0.1"))
 # local | demo | production (config/environment.py). Defaults from the host:
 # the demo must say so, because it runs off localhost like production.
 APP_ENVIRONMENT = env("APP_ENVIRONMENT", default="local" if IS_LOCAL else "production")
+# Django's admin answers on the laptop only (2026-11-27,
+# docs/p17_security_updates.md); config/urls.py reads this.
+ADMIN_ENABLED = IS_LOCAL
 if APP_ENVIRONMENT not in ("local", "demo", "production"):
     raise RuntimeError(f"APP_ENVIRONMENT must be local, demo or production, not "
                        f"{APP_ENVIRONMENT!r}.")

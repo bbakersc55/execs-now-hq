@@ -8,8 +8,14 @@
 # at boot), and the pg_dump major version (a backup taken with an older
 # pg_dump than the server's refuses to run).
 
+# Base images (2026-11-27, docs/security_updates.md): each is pinned to the
+# exact image by its digest, so a build uses what was tested and the image
+# changes only in a commit. Dependabot (.github/dependabot.yml) proposes the new
+# digest on dev when Docker publishes a rebuilt image of the same tag; the
+# tags themselves (Python 3.12, Node 24, Debian 12) move only by decision.
+
 # ---------------------------------------------------------------- the bundle
-FROM node:24-bookworm-slim AS frontend
+FROM node:24-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -17,11 +23,23 @@ COPY frontend/ ./
 RUN npm run build
 
 # ------------------------------------------------------------------- the app
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:44cf1793efa7c7a476bb0f2cff81443f4a072c90c1cb127e2924933daa3e8c64
 
 # pg_dump must be at least the server's major version. Production's Railway
 # Postgres is 18 and the demo's 16 (2026-09-29); pg_dump 18 dumps both.
 ARG PG_MAJOR=18
+
+# Current system packages on every build (2026-11-27, docs/security_updates.md).
+# Railway keeps a layer cache: Release 54's build reused the system-package
+# step as it was last built, printing nothing. Railway gives a GitHub-triggered
+# build its commit as RAILWAY_GIT_COMMIT_SHA when it is declared here, and a
+# changed ARG used by a RUN is a cache miss, so the step below runs afresh for
+# every commit: `apt-get upgrade` brings Debian's security fixes released since
+# the base image was made. The step records what it did in
+# /etc/enhq-system-packages (commit, time, and packages still upgradable,
+# which should be 0); `cat` it in a running service to check. "unknown" there
+# means Railway passed no commit and the layer may have come from the cache.
+ARG RAILWAY_GIT_COMMIT_SHA=unknown
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -31,7 +49,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # WeasyPrint: Pango (with HarfBuzz and its subsetter) and fonts. The PDFs ask
 # for Helvetica/Arial; fonts-croscore's Arimo is what the laptop resolves that
 # to, so the PDF lays out the same here. pg_dump from PGDG, at PG_MAJOR.
-RUN apt-get update \
+RUN echo "system packages for commit ${RAILWAY_GIT_COMMIT_SHA}" \
+ && apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg \
       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 \
@@ -44,6 +64,9 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client-${PG_MAJOR} \
  && apt-get purge -y gnupg && apt-get autoremove -y \
+ && echo "commit=${RAILWAY_GIT_COMMIT_SHA} built=$(date -u +%Y-%m-%dT%H:%M:%SZ) still_upgradable=$(apt-get -s upgrade | grep -c '^Inst ')" \
+      > /etc/enhq-system-packages \
+ && cat /etc/enhq-system-packages \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

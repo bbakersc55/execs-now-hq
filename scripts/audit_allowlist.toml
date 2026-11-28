@@ -1,0 +1,20 @@
+# Exceptions to the gate's dependency audit (scripts/dependency_audit.py,
+# docs/security_updates.md).
+#
+# The audit fails on a known high or critical advisory that has a fix. An entry
+# here lets one advisory pass for a short, dated time, with its reason: for
+# example while a fix that needs code changes is being made. It never lasts
+# more than 30 days from `added`, the same 30 days a critical or high fix has to
+# go live. An expired entry fails the audit until it is removed or renewed with
+# a new reason.
+#
+# `id` is the advisory's id or any of its aliases (GHSA-..., CVE-..., PYSEC-...).
+#
+# [[allow]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# package = "example"
+# reason = "Why it may wait, and what is being done."
+# added = 2026-11-27
+# until = 2026-12-27
+#
+# None today (2026-11-27): every advisory found had its fix applied.

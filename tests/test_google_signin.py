@@ -22,7 +22,6 @@ from allauth.socialaccount.models import SocialAccount, SocialToken
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 
 from apps.accounts.models import User
-from apps.accounts.views import login_refused
 
 from . import registry_config  # noqa: F401
 from .factories import MembershipFactory, UserFactory
@@ -213,21 +212,25 @@ def test_second_sign_in_reuses_the_same_social_account(tenant_a, client):
 
 @pytest.mark.django_db
 def test_uninvited_user_cannot_reach_a_signup_route(client):
-    """The signup routes and allauth's signup_closed template are unreachable."""
+    """The signup routes and allauth's signup_closed template are unreachable:
+    since 2026-11-27 they answer "not found" (apps/accounts/urls_allauth.py).
+    A refused Google sign-in still lands on our own 403 page (the adapter
+    redirects there before any signup route, test above)."""
     from django.urls import resolve, reverse
+
+    from apps.accounts.urls_allauth import closed
 
     for name in ("account_signup", "socialaccount_signup"):
         # Resolve by NAME, not by a guessed path: allauth serves the social
         # signup at /accounts/3rdparty/signup/, and an override written against
         # a guessed path silently fails to shadow it.
         url = reverse(name)
-        assert resolve(url).func is login_refused, (
+        assert resolve(url).func is closed, (
             f"{name} ({url}) still resolves to {resolve(url).func!r}, so "
             "allauth's signup_closed page is reachable."
         )
         response = client.get(url)
-        assert response.status_code == 403, f"{url} returned {response.status_code}"
-        assert b"No access to this workspace" in response.content
+        assert response.status_code == 404, f"{url} returned {response.status_code}"
         assert b"Sign Up" not in response.content
 
 

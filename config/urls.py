@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 
@@ -22,13 +23,10 @@ from apps.scorecard import views_rails as scorecard_rails
 from config import spa
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    # There is no signup in Beta. These two overrides come BEFORE the allauth
-    # include so allauth's signup routes and its "Sign Up Closed" template are
-    # unreachable: a refused visitor always lands on our own 403 page.
-    path("accounts/signup/", account_views.login_refused, name="account_signup"),
-    path("accounts/3rdparty/signup/", account_views.login_refused,
-         name="socialaccount_signup"),
+    # Django's admin answers on the laptop only (2026-11-27,
+    # docs/p17_security_updates.md): no app registers a model with it, and in
+    # production and on the demo it was a sign-in form with nothing behind it.
+    *([path("admin/", admin.site.urls)] if settings.ADMIN_ENABLED else []),
     # Tier 1 Gmail connect (FR-6.3b). A separate consent from sign-in (C2),
     # so a separate callback — registered on the OAuth client alongside
     # allauth's. Declared BEFORE the allauth include so the path is ours.
@@ -42,7 +40,9 @@ urlpatterns = [
     path("accounts/microsoft/start", microsoft_signin.start, name="microsoft-start"),
     path("accounts/google/external/callback", google_external.google_external_callback,
          name="google-external-callback"),
-    path("accounts/", include("allauth.urls")),
+    # allauth: only the pages the sign-in uses; the rest answer "not found",
+    # sign-up included (apps/accounts/urls_allauth.py).
+    path("accounts/", include("apps.accounts.urls_allauth")),
     # AI apps' OAuth 2.1 authorization server (P7, apps/aiconnect/oauth.py).
     *aiconnect_urls.oauth_patterns,
     # The marketing site's "Request demo access" form, forwarded by the site's

@@ -669,9 +669,8 @@ def address_changed(agreement) -> bool:
 def drawn_png(data_url: str) -> bytes:
     import base64
     import binascii
-    import io
 
-    from PIL import Image
+    from apps.esign.drawing import is_png
 
     prefix = "data:image/png;base64,"
     if not (data_url or "").startswith(prefix):
@@ -682,15 +681,10 @@ def drawn_png(data_url: str) -> bytes:
         raise Refused("That drawing could not be read. Try again.") from None
     if len(content) > MAX_DRAWN_BYTES:
         raise Refused("That drawing is too large. Clear it and draw it again.")
-    try:
-        with Image.open(io.BytesIO(content)) as image:
-            image.verify()
-            if image.format != "PNG":
-                raise Refused("That drawing could not be read. Try again.")
-    except Refused:
-        raise
-    except Exception:
-        raise Refused("That drawing could not be read. Try again.") from None
+    # A PNG by its own first bytes, opened by Pillow's PNG reader alone
+    # (apps/esign/drawing.py).
+    if not is_png(content):
+        raise Refused("That drawing could not be read. Try again.")
     return content
 
 

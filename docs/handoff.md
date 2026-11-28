@@ -1,9 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-27**, after Release 54.
-**The next session starts at "2026-11-27, evening: Release 54, P16 live,
-start here" just below**; then "2026-11-27: P16 merged into `dev`"; then
+2026-11-27**, after the security updates on their branch.
+**The next session starts at "2026-11-27, night: security updates on a
+branch, start here" just below**; then "2026-11-27, evening: Release 54, P16
+live"; then "2026-11-27: P16 merged into `dev`"; then
 "2026-11-25, night: where things stand"; then
 "2026-11-25, evening: the fix round before Michael's test drive, released at
 52"; then "2026-11-25: Release 51, owner agreements and tax numbers"; then
@@ -44,7 +45,35 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-27, evening: Release 54, P16 live, start here
+## 2026-11-27, night: security updates on a branch, start here
+
+The branch is `security-updates`, cut from `dev` at `6517289`: **committed,
+not pushed, not merged.** The plan, every default and the findings are in
+`docs/p17_security_updates.md`; the routine from now on is in
+`docs/security_updates.md`. The branch contains:
+
+- every Python package with an advisory moved to a fixed version (Pillow 13,
+  allauth 65.22 for oauthlib 4, Django 5.2.19), and Vite 6.4.6 and Vitest 4.1.12;
+- the drawn signature made PNG-only before Pillow opens it;
+- base images pinned by digest, and fresh Debian fixes on every build;
+- the gate's dependency audit, with an allow-list;
+- Dependabot;
+- Django's admin off outside the laptop, and allauth's unused pages closed.
+
+Next, in order:
+
+1. Bryan reviews; on a yes, merge into `dev` and push. The demo then builds the
+   new `Dockerfile` first: check its build log and `/etc/enhq-system-packages`
+   (the steps are in the report of 2026-11-27, and at the end of p17).
+2. Release by the runbook (no migration). Then `card_pages check`, and
+   `card_pages approve` if it reports a change.
+3. Bryan switches on GitHub's dependency graph and Dependabot alerts
+   (`docs/security_updates.md`, the last section).
+4. Still open, report only: email links for practice users (the demo needs
+   them), two-step sign-in (about P16's size), masking card numbers in free
+   text, and the laptop (see the report).
+
+## 2026-11-27, evening: Release 54, P16 live
 
 **Release 54** (`74419cd`) put the card pages' script controls (P16) live,
 with both migrations (`cardpages 0001`, `crm 0064`) applied in the waiting

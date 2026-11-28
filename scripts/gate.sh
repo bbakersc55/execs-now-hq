@@ -4,9 +4,9 @@
 #
 #   git add -A && scripts/gate.sh && git commit ... && git push
 #
-# It runs the whole backend suite, the migration check, the frontend type
-# check and the whole frontend suite, each judged by its own exit status, and
-# only when all four pass does it record the tree it tested in
+# It runs the dependency audit, the whole backend suite, the migration check,
+# the frontend type check and the whole frontend suite, each judged by its own
+# exit status, and only when all five pass does it record the tree it tested in
 # .git/green-trees. The pre-commit and pre-push hooks (.githooks/, switched on
 # with `git config core.hooksPath .githooks`) refuse any tree that is not in
 # that file.
@@ -41,6 +41,14 @@ fail() { echo "gate: REFUSED. $1 failed (exit $2). Its output: $3" >&2; tail -25
 
 # The project's addopts add a second -q, which hides the line that counts.
 PYTEST=(.venv/bin/python -m pytest -o addopts="--strict-markers" -q -p no:cacheprovider)
+
+# The dependency audit first (2026-11-27, docs/security_updates.md): a known
+# high or critical advisory with a fix, in a Python pin or a frontend package
+# that ships, refuses the tree unless scripts/audit_allowlist.toml has a dated
+# exception for it. It needs the network; "couldn't check" refuses too. A few
+# seconds, so it goes before the suites rather than after them.
+echo "gate: dependency audit…"
+.venv/bin/python scripts/dependency_audit.py >"$log/audit" 2>&1 || fail "the dependency audit" $? "$log/audit"
 
 if [ "${GATE_SERIAL:-}" = "1" ]; then
   # The fallback (2026-11-05): everything one after another, the backend in
@@ -100,3 +108,4 @@ echo "$tree $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$(git rev-parse --git-dir)/green
 echo "gate: GREEN. Tree $tree may be committed and pushed."
 echo "      backend:  $(grep -E "[0-9]+ passed" "$log/pytest" | tail -1)"
 echo "      frontend: $(grep -E "Tests " "$log/vitest" | tail -1 | sed 's/^ *//')"
+echo "      $(grep -E "^audit: " "$log/audit" | tail -1)"

@@ -1,0 +1,71 @@
+# Dependabot (2026-11-27, docs/security_updates.md).
+#
+# Two things come from GitHub once the repository's settings switch them on
+# (the doc lists them):
+#   - Dependabot ALERTS: GitHub's email and Security tab, the day an advisory
+#     names a package we pin. This file doesn't control them.
+#   - The routine below: once a month, one pull request per ecosystem with the
+#     patch releases of what we pin (Python, the frontend, the base images),
+#     against `dev`, never `main`. Each is applied on `dev` through the gate
+#     (scripts/gate.sh); nothing is merged on GitHub, where no gate runs.
+#
+# Minor and major versions (Django 6, Python 3.13, Node 26, Vite 7...) are
+# left out here on purpose: they are decisions, made on a branch of their own.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"            # requirements.txt and requirements-dev.txt
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "06:00"
+      timezone: "America/Denver"
+    open-pull-requests-limit: 3
+    groups:
+      python-patches:
+        patterns: ["*"]
+        update-types: ["patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "Dependencies (Python)"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"    # package.json and package-lock.json, build and test tools included
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "06:00"
+      timezone: "America/Denver"
+    open-pull-requests-limit: 3
+    groups:
+      frontend-patches:
+        patterns: ["*"]
+        update-types: ["patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "Dependencies (frontend)"
+
+  - package-ecosystem: "docker"
+    directory: "/"            # the Dockerfile's two FROM lines, pinned by digest
+    target-branch: "dev"
+    schedule:
+      interval: "monthly"
+      time: "06:00"
+      timezone: "America/Denver"
+    open-pull-requests-limit: 2
+    ignore:
+      # The digest moves when Docker rebuilds the same tag (Debian fixes,
+      # Python 3.12 and Node 24 patch releases); the tag stays.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "Base images"
