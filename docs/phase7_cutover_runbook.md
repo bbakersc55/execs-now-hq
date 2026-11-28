@@ -1156,6 +1156,58 @@ first daily check runs 2026-11-28 13:00 UTC. A watcher in the background
 (the new worker deployment's id, then its log for `WAITING`) caught every
 step.
 
+**Observed at Release 55 (2026-11-28 UTC, no migration; `158875c`: the
+security updates (P17, `docs/p17_security_updates.md`) and the CLAUDE.md line
+naming the gate's audit):**
+
+The release carried:
+- every dependency with a known advisory, updated to a fixed version;
+- the gate's dependency audit;
+- Dependabot;
+- a fresh Debian package step on every build;
+- Django's admin and allauth's unused pages closed.
+
+*The gate.* It had passed on that exact tree (`6f43cda`, 01:30 UTC, run with
+`TZ=UTC`): backend 5838, frontend 1628, audit 0 blocking.
+
+*The demo first.* It built `067382e` (`00fd0111`, SUCCESS 01:04:35) and
+`158875c` (`96cc2693`, SUCCESS 01:33:21). Each build ran the system-package
+step afresh: 64 fetches, and the first build upgraded `libpam*`
+1.5.2-6+deb12u3 and `libzstd1`. Each running service's
+`/etc/enhq-system-packages` named its own commit, with
+`still_upgradable=0`. `/admin/` and password reset answered 404. A made-up
+Summit Associate's invitation link and sign-in link each signed them in, and
+a used one was refused. No real visitor's account was used.
+
+*R1–R6.*
+- R1: the owner's run-now: `execsnowhq_prod_20261128_014116.sql.gz`, 21.0 MB,
+  landed 01:41:20.
+- R2: `main` fast-forwarded `74419cd..158875c`, pushed 01:43:26; the worker
+  deployment (`2e61eceb`) was seen at 01:43:32.
+- R3/R4: no `WAITING`; `migrations current` 01:44:59.
+- R5: "real calls to the card processor on", the cluster running 01:45:05.
+- R5b: none.
+- R6: worker SUCCESS 01:45:03; web (`3a584187`) and `mcp` (`38be5510`)
+  SUCCESS by themselves by 01:45:43; `/healthz` 200 and `mcp` `ok`. **Push to
+  serving: about 2 min 17 s at most.** The system-package step and
+  `pip install` now run on every build.
+
+*The checks after.*
+- Both services' records read `commit=158875c…` (web `built=01:44:21Z`, worker
+  `01:43:52Z`) with `still_upgradable=0`.
+- `/admin/`, `/admin/login/`, password reset and change, and both sign-up
+  pages answer 404; `/accounts/login/` redirects to `/`.
+- Google sign-in starts at Google with the registered callback
+  (`/accounts/google/login/callback/`), which is live: 401 with no sign-in in
+  progress.
+- The email-link request answers its constant 200 for a made-up address; no
+  real person was signed in.
+
+*R6b.* `card_pages check --no-alert` at 01:46:59 said "As approved": the
+app's script files, their hashes and the headers were the same as Release
+54's approval. **No approval was needed.** The watcher was Release 54's,
+carried on to web and `mcp`.
+
 ---
 
 ## Part A — the owner's steps, in order

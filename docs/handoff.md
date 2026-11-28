@@ -1,10 +1,10 @@
 # Execs NOW HQ — handoff to the next chat
 
 Written 2026-10-03, replacing the 2026-09-22 version; **last updated
-2026-11-27**, after the security updates on their branch.
-**The next session starts at "2026-11-27, night: security updates on a
-branch, start here" just below**; then "2026-11-27, evening: Release 54, P16
-live"; then "2026-11-27: P16 merged into `dev`"; then
+2026-11-28**, after Release 55.
+**The next session starts at "2026-11-28: Release 55, the security updates
+live, start here" just below**; then "2026-11-27, night: security updates on a
+branch"; then "2026-11-27, evening: Release 54, P16 live"; then "2026-11-27: P16 merged into `dev`"; then
 "2026-11-25, night: where things stand"; then
 "2026-11-25, evening: the fix round before Michael's test drive, released at
 52"; then "2026-11-25: Release 51, owner agreements and tax numbers"; then
@@ -45,10 +45,42 @@ start of the next chat with: "Read this handoff, then pick up where it
 leaves off." The specs in `docs/` are the source of truth; this covers what
 they don't, and what changed since 9/30.
 
-## 2026-11-27, night: security updates on a branch, start here
+## 2026-11-28: Release 55, the security updates live, start here
 
-The branch is `security-updates`, cut from `dev` at `6517289`: **committed,
-not pushed, not merged.** The plan, every default and the findings are in
+**Release 55** (`158875c`) put P17 live, with no migration. The record is in
+`docs/phase7_cutover_runbook.md`, "Observed at Release 55". This record is on
+`dev` only, not released. What went live:
+- every dependency with a known advisory, updated;
+- Debian's current fixes, installed on every build: production's record
+  reads `still_upgradable=0`;
+- Django's admin, password reset and change, and sign-up: all answer 404;
+- the gate's audit, as the gate's first step.
+
+`card_pages check` said "As approved" (the bundle was unchanged), so no
+approval was needed.
+
+### Next, in order
+
+1. Bryan switches on GitHub's **Dependency graph** and **Dependabot alerts**,
+   and leaves "Dependabot security updates" off (`docs/security_updates.md`).
+   The monthly pull requests against `dev` start by themselves now that
+   `.github/dependabot.yml` is on `main`.
+2. Bryan's PCI questionnaire (SAQ A). The facts for it:
+   - the report of 2026-11-27 (accounts, sign-in, who can reach production,
+     card data);
+   - `docs/security_updates.md`;
+   - `docs/pci_card_page_scripts.md`.
+3. Still open, report only (2026-11-27, `docs/p17_security_updates.md`):
+   - email links for practice users (the demo's visitors need them);
+   - two-step sign-in, about P16's size;
+   - masking card numbers in free text;
+   - the laptop: no disk encryption, an SSH key with no passphrase, and the
+     media bucket's service-account key in `~/.config/execs-now-hq/`.
+
+## 2026-11-27, night: security updates on a branch
+
+The branch is `security-updates`, cut from `dev` at `6517289`. It was
+fast-forwarded into `dev` on 2026-11-28 (`067382e`) and **released at 55**. The plan, every default and the findings are in
 `docs/p17_security_updates.md`; the routine from now on is in
 `docs/security_updates.md`. The branch contains:
 
